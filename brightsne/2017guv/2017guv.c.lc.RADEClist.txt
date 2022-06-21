@@ -1,2 +1,0 @@
-ControlID PatternID           Ra          Dec RaOffset DecOffset Radius Ndet Ndet_c Ndet_o
-        0         0 288.34226300 -16.80115300     0.00      0.00   0.00 2165    431   1734
