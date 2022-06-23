@@ -1,4 +1,4 @@
-# Interactive Jupyter Notebooks and ATLAS Downloading Scripts for Cleaning ATLAS Light Curves
+# Interactive Jupyter Notebooks and ATLAS Downloading Script for Cleaning ATLAS Light Curves
 
 ## Jupyter Notebooks
 
