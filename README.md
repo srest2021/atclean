@@ -19,3 +19,17 @@ Control light curve cut currently in progress of being implemented and added to 
 Download an ATLAS light curve using ATLAS's REST API (more information located here: https://fallingstar-data.com/forcedphot/apiguide/) and TNS's API. 
 
 Configure default settings for downloading and saving light curves in **`atlaslc.ini`**. You must add your ATLAS credentials and TNS API key to this file for the script to work properly. Then, set the proper output directory for the files. You can also change the default flux and dflux column names as well as the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
+
+Arguments:
+- `-c` or `--controls`: download control light curves in addtion to SN light curve
+- `-u` or `--username`: override default username given in `atlaslc.ini` config file
+- `-p` or `--password`: REQUIRED! provide ATLAS password
+- `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file
+- `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
+- `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
+- `-o` or `--overwrite`: overwrite existing light curves with the same filename (default is `True`)
+
+Example commands:
+- `download_atlas_lc.py 2019vxm --password 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
+- `download_atlas_lc.py 2019vxm -l 100 --password 'XXX'` - downloads SN 2019vxm light curve with a lookback time of 100 days
+- `download_atlas_lc.py 2019vxm --controls --password 'XXX'` downloads full SN 2019vxm and control light curves
