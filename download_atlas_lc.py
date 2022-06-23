@@ -39,9 +39,9 @@ class lc:
 
 	def get_filename(self, filt, control_index):
 		if not self.is_averaged:
-			filename = f'{self.tnsname}_i{control_index:3d}.{filt}.lc.txt'
+			filename = f'{self.output_dir}/{self.tnsname}_i{control_index:3d}.{filt}.lc.txt'
 		else:
-			filename = f'{self.tnsname}_i{control_index:3d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
+			filename = f'{self.output_dir}/{self.tnsname}_i{control_index:3d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
 		print(f'# Filename: {filename}')
 		return filename
 
@@ -70,7 +70,6 @@ class download_atlas_lc:
 
 		# directories
 		self.output_dir = None
-		self.output_sub_dir = None
 
 		# other
 		self.overwrite = True
@@ -104,7 +103,6 @@ class download_atlas_lc:
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
-		self.output_sub_dir = cfg['Input/output settings']['output_sub_dir']
 
 		self.overwrite = args.overwrite
 		self.lookbacktime_days = args.lookbacktime_days
@@ -261,7 +259,7 @@ class download_atlas_lc:
 				lc.add_control_lc(control_lc)
 
 			# save control_coords table
-			self.control_coords.write(filename=f'{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
+			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 		
 		lc.save()
 
