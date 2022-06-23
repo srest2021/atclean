@@ -15,16 +15,16 @@ class lc:
 		self.pdastro = pdastrostatsclass()
 		self.lcs = {}
 
+	# get RA, Dec, and discovery date information from TNS
 	def get_tns_data(self, api_key):
 		print('Obtaining RA, Dec, and discovery date from TNS...')
 
 		try:
-			get_obj = [("objname",self.tnsname), ("objid",""), ("photometry","1"), ("spectra","1")]
-			get_url = 'https://www.wis-tns.org/api/get/object'
-			json_file = OrderedDict(get_obj)
-			get_data = {'api_key':api_key,'data':json.dumps(json_file)}
-			response = requests.post(get_url, data=get_data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
-			json_data = json.loads(response.text,object_pairs_hook=OrderedDict) #self.format(response.text)
+			url = 'https://www.wis-tns.org/api/get/object'
+			json_file = OrderedDict([("objname",self.tnsname), ("objid",""), ("photometry","1"), ("spectra","1")])
+			data = {'api_key':api_key,'data':json.dumps(json_file)}
+			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
+			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 		except Exception as e:
 			raise RuntimeError('ERROR: \n'+str(e))
 
@@ -37,6 +37,7 @@ class lc:
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		self.discdate = dateobjects.mjd
 
+	# get a light curve filename for saving
 	def get_filename(self, filt, control_index):
 		if not self.is_averaged:
 			filename = f'{self.output_dir}/{self.tnsname}_i{control_index:3d}.{filt}.lc.txt'
@@ -45,6 +46,7 @@ class lc:
 		print(f'# Filename: {filename}')
 		return filename
 
+	# save SN light curve and, if necessary, control light curves
 	def save(self, overwrite=True):
 		print('Saving SN light curve')
 		o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
@@ -58,7 +60,8 @@ class lc:
 					filt_ix = self.lcs[i].pdastro.ix_equal(colnames=['F'],val=filt)
 					self.lcs[i].pdastro.write(filename=get_filename(filt,i), indices=filt_ix, overwrite=overwrite)
 
-	def add_lc(self, control_lc):
+	# add already downloaded control light curve to control light curve dictionary
+	def add_control_lc(self, control_lc):
 		self.lcs[len(self.lcs)+1] = control_lc
 
 class download_atlas_lc:
@@ -68,32 +71,34 @@ class download_atlas_lc:
 		self.password = None
 		self.tns_api_key = None
 
-		# directories
+		# output
 		self.output_dir = None
+		self.overwrite = True
 
 		# other
-		self.overwrite = True
 		self.lookbacktime_days = None
 		self.controls = False
 		self.control_coords = pdastrostatsclass()
 		self.radius = None
 		self.num_controls = None
 
+	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
 		if parser is None:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
-		parser.add_argument('tnsnames', 					nargs='+', help='TNS names of the objects to download from ATLAS')
-		parser.add_argument('-c','--controls',				default=False, action='store_true', help='download control light curves in addition to transient light curve')
-		parser.add_argument('-u','--username', 				type=str, help='username for ATLAS api')
-		parser.add_argument('-p','--password', 				type=str, default=None, help='password for ATLAS api')
-		parser.add_argument('-a','--tns_api_key', 			type=str, help='api key to access TNS')
-		parser.add_argument('-f','--cfg_filename', 			default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
-		parser.add_argument('-l', '--lookbacktime_days', 	default=None, type=int, help='lookback time in days')
-		parser.add_argument('-o', '--dont_overwrite', 		default=False, action='store_true', help='overwrite existing file with same file name')
-
+		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
+		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
+		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
+		parser.add_argument('-p','--password', type=str, default=None, help='password for ATLAS api')
+		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
+		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
+		parser.add_argument('-o', '--dont_overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
+		
 		return parser
 
+	# load config settings from file and reconcile with command arguments
 	def load_settings(self, args):
 		cfg = configparser.ConfigParser()
 		cfg.read(args.cfg_filename)
@@ -183,18 +188,12 @@ class download_atlas_lc:
 		dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), delim_whitespace=True)
 		return dfresult
 
+	# get RA and Dec coordinates of control light curves in a circle pattern around SN location and add to control_coords table
 	def get_control_coords(self, sn_lc):
 		self.control_coords.t = pd.DataFrame(columns=['tnsname','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
 
-		self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname, 
-																'ra':sn_lc.ra, 
-																'dec':sn_lc.dec,
-																'ra_offset':0,
-																'dec_offset':0,
-																'radius':0,
-																'n_detec':np.nan,
-																'n_detec_o':np.nan,
-																'n_detec_c':np.nan},ignore_index=True)
+		# add SN coordinates as first row
+		self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
 		r = Angle(self.radius, u.arcsec)
 		ra_center = Angle(sn_lc.ra.degree, u.degree)
@@ -210,22 +209,17 @@ class download_atlas_lc:
 			dec_offset = Angle(r.degree*math.sin(angle.radian), u.degree)
 			dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
 
-			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan, 
-																	'ra':ra,
-																	'dec':dec,
-																	'ra_offset':ra_offset,
-																	'dec_offset':dec_offset,
-																	'radius':r,
-																	'n_detec':np.nan,
-																	'n_detec_o':np.nan,
-																	'n_detec_c':np.nan},ignore_index=True)
+			# add RA and Dec coordinates to control_coords table
+			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,'ra':ra,'dec':dec,'ra_offset':ra_offset,'dec_offset':dec_offset,'radius':r,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
+	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, control_lc, control_index):
 		o_ix = control_lc.pdastro.ix_equal(colnames=['F'],val='o')
 		self.control_coords.t.loc[control_index,'n_detec'] = len(control_lc.pdastro.t)
 		self.control_coords.t.loc[control_index,'n_detec_o'] = len(control_lc.pdastro.t.loc[o_ix])
 		self.control_coords.t.loc[control_index,'n_detec_c'] = len(control_lc.pdastro.t.loc[AnotB(control_lc.pdastro.getindices(),o_ix)])
 
+	# download a single light curve
 	def download_lc(self, lc):	
 		print(f'Downloading forced photometry light curve at {lc.ra}, {lc.dec} from ATLAS')
 
@@ -241,6 +235,7 @@ class download_atlas_lc:
 
 		return lc
 
+	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, obj_index, token):
 		lc = lc(tnsname=args.tnsnames[obj_index])
 		print(f'Commencing download loop for SN {lc.tnsname}')
@@ -265,6 +260,7 @@ class download_atlas_lc:
 		
 		lc.save()
 
+	# loop through each SN given and download light curves
 	def download_loop(self):
 		args = self.define_args().parse_args()
 
