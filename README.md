@@ -21,6 +21,7 @@ Download an ATLAS light curve using ATLAS's REST API (more information located h
 Configure default settings for downloading and saving light curves in **`atlaslc.ini`**. You must add your ATLAS credentials and TNS API key to this file for the script to work properly. Then, set the proper output directory for the files. You can also change the default flux and dflux column names as well as the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
 Arguments:
+- First provide TNS name(s) of object(s) to download
 - `-c` or `--controls`: download control light curves in addtion to SN light curve
 - `-u` or `--username`: override default username given in `atlaslc.ini` config file
 - `-p` or `--password`: REQUIRED! provide ATLAS password
@@ -33,3 +34,4 @@ Example commands:
 - `download_atlas_lc.py 2019vxm -p 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
 - `download_atlas_lc.py 2019vxm -l 100 -p 'XXX'` - downloads SN 2019vxm light curve with a lookback time of 100 days
 - `download_atlas_lc.py 2019vxm -c -p 'XXX'` downloads full SN 2019vxm and control light curves
+- `download_atlas_lc.py 2019vxm 2020lse -c -p 'XXX'` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
