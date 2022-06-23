@@ -26,7 +26,7 @@ class lc:
 			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 		except Exception as e:
-			raise RuntimeError('ERROR: \n'+str(e))
+			raise RuntimeError('ERROR: '+str(e))
 
 		self.ra = json_data['data']['reply']['ra']
 		self.dec = json_data['data']['reply']['dec']
@@ -101,11 +101,14 @@ class download_atlas_lc:
 	# load config settings from file and reconcile with command arguments
 	def load_settings(self, args):
 		cfg = configparser.ConfigParser()
-		cfg.read(args.cfg_filename)
+		try:
+			cfg.read(args.cfg_filename)
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
 		self.username = cfg['ATLAS credentials']['username'] if args.username is None else args.username
 		if args.password is None:
-			raise RuntimeError('ERROR: please provide ATLAS password using --password argument!')
+			raise RuntimeError('ERROR: Please provide ATLAS password using --password argument!')
 		self.password = args.password
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 
@@ -223,7 +226,10 @@ class download_atlas_lc:
 	def download_lc(self, lc):	
 		print(f'Downloading forced photometry light curve at {lc.ra}, {lc.dec} from ATLAS')
 
-		lc.pdastro.t = get_result(lc.ra, lc.dec, token, lookbacktime_days=args.lookbacktime_days)
+		try:
+			lc.pdastro.t = get_result(lc.ra, lc.dec, token, lookbacktime_days=args.lookbacktime_days)
+		except Exception as e:
+			print('ERROR: '+str(e))
 
 		# sort data by mjd
 		lc.pdastro.t = lc.pdastro.t.sort_values(by=['MJD'],ignore_index=True)
@@ -236,8 +242,8 @@ class download_atlas_lc:
 		return lc
 
 	# download SN light curve and, if necessary, control light curves, then save
-	def download_lcs(self, args, obj_index, token):
-		lc = lc(tnsname=args.tnsnames[obj_index])
+	def download_lcs(self, args, tnsname, token):
+		lc = lc(tnsname=tnsname)
 		print(f'Commencing download loop for SN {lc.tnsname}')
 		lc.get_tns_data(self.tns_api_key)
 		lc = download_lc(lc)
@@ -272,5 +278,9 @@ class download_atlas_lc:
 			raise RuntimeError('ERROR: No token header!')
 
 		for obj_index in range(0,len(args.tnsnames)):
-			download_lcs(args, obj_index, token)
+			download_lcs(args, args.tnsnames[obj_index], token)
+
+if __name__ == "__main__":
+	download_atlas_lc = download_atlas_lc()
+	download_atlas_lc.download_loop()
 
