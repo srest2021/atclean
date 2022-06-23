@@ -27,7 +27,7 @@ Arguments:
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
 - `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
-- `-o` or `--overwrite`: overwrite existing light curves with the same filename (default is `True`)
+- `-o` or `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
 Example commands:
 - `download_atlas_lc.py 2019vxm --password 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'

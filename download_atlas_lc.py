@@ -86,11 +86,11 @@ class download_atlas_lc:
 		parser.add_argument('tnsnames', 					nargs='+', help='TNS names of the objects to download from ATLAS')
 		parser.add_argument('-c','--controls',				default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-u','--username', 				type=str, help='username for ATLAS api')
-		parser.add_argument('-p','--password', 				type=str, defaukt=None, help='password for ATLAS api')
+		parser.add_argument('-p','--password', 				type=str, default=None, help='password for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', 			type=str, help='api key to access TNS')
 		parser.add_argument('-f','--cfg_filename', 			default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', 	default=None, type=int, help='lookback time in days')
-		parser.add_argument('-o', '--overwrite', 			default=True, help='overwrite existing file with same file name')
+		parser.add_argument('-o', '--dont_overwrite', 		default=False, action='store_true', help='overwrite existing file with same file name')
 
 		return parser
 
@@ -106,7 +106,7 @@ class download_atlas_lc:
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
 
-		self.overwrite = args.overwrite
+		self.overwrite = not args.dont_overwrite
 		self.lookbacktime_days = args.lookbacktime_days
 		self.controls = args.controls 
 		if self.controls:
