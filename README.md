@@ -6,7 +6,7 @@
 #### (applies chi-square-cut)
 Using an already downloaded light curve, determine the best chi-square cut for that particular object. Then, save the light curve with the appropriate chi-square cut flag.
 
-### `atlaslc.ipynb` 
+### `clean_atlas_lc.ipynb` 
 #### (applies all cuts - chi-squares, uncertainties, and averaging)
 Using an already downloaded light curve, determine the best chi-square cut, apply the chi-square cut and an uncertainty cut, and average the light curve. Then, save the light curve with the flags.
 
