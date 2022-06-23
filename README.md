@@ -30,6 +30,6 @@ Arguments:
 - `-o` or `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
 Example commands:
-- `download_atlas_lc.py 2019vxm --password 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
-- `download_atlas_lc.py 2019vxm -l 100 --password 'XXX'` - downloads SN 2019vxm light curve with a lookback time of 100 days
-- `download_atlas_lc.py 2019vxm --controls --password 'XXX'` downloads full SN 2019vxm and control light curves
+- `download_atlas_lc.py 2019vxm -p 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
+- `download_atlas_lc.py 2019vxm -l 100 -p 'XXX'` - downloads SN 2019vxm light curve with a lookback time of 100 days
+- `download_atlas_lc.py 2019vxm -c -p 'XXX'` downloads full SN 2019vxm and control light curves
