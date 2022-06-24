@@ -3,14 +3,14 @@
 Code adapted from Qinan Wang and Armin Rest by Sofia Rest
 '''
 
-import configparser, sys, argparse, requests, re, time
+import configparser, sys, argparse, requests, re, time, json
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import Angle, SkyCoord
+from collections import OrderedDict
 from pdastro import pdastrostatsclass, AorB
-from tools import RaInDeg, DecInDeg
 
-def RaInDeg(self, ra):
+def RaInDeg(ra):
 	s = re.compile('\:')
 	if isinstance(ra,str) and s.search(ra):
 	    A = Angle(ra, u.hour)
@@ -18,11 +18,11 @@ def RaInDeg(self, ra):
 	    A = Angle(ra, u.degree)
 	return(A.degree)
 	       
-def DecInDeg(self, dec):
+def DecInDeg(dec):
 	A = Angle(dec, u.degree)
 	return(A.degree)
 
-class lc:
+class light_curve:
 	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
 		self.tnsname = tnsname
 		self.is_averaged = is_averaged
@@ -44,7 +44,7 @@ class lc:
 			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 		except Exception as e:
-			raise RuntimeError('ERROR: '+str(e))
+			raise RuntimeError('ERROR in get_tns_data(): '+str(e))
 
 		self.ra = json_data['data']['reply']['ra']
 		self.dec = json_data['data']['reply']['dec']
@@ -156,41 +156,45 @@ class download_atlas_lc:
 			self.radius = cfg['Control light curve settings']['radius']
 			self.num_controls = cfg['Control light curve settings']['num_controls']
 			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
-		if not(args.closebright is None):
-			self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
-			if len(self.closebright_coords > 2):
-				raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
-			self.closebright_min_dist = cfg['Control light curve settings']['closebright_min_dist']
-			print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
-			print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
+			if not(args.closebright is None):
+				self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
+				if len(self.closebright_coords > 2):
+					raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+				self.closebright_min_dist = cfg['Control light curve settings']['closebright_min_dist']
+				print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+				print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
 
 	def connect_atlas(self):
-		resp = requests.post(url=f"{self.baseurl}/api-token-auth/",data={'username':self.username,'password':self.password})
+		baseurl = 'https://fallingstar-data.com/forcedphot'
+		resp = requests.post(url=f"{baseurl}/api-token-auth/",data={'username':self.username,'password':self.password})
 		if resp.status_code == 200:
 			token = resp.json()['token']
 			print(f'Token: {token}')
 			headers = {'Authorization':f'Token {token}','Accept':'application/json'}
 		else:
-			print(f'ERROR: {resp.status_code}')
+			raise RuntimeError(f'ERROR in connect_atlas(): {resp.status_code}')
 			print(resp.json())
 		return headers
 
 	# API GUIDE: https://fallingstar-data.com/forcedphot/apiguide/
 	def get_result(self, ra, dec, headers, lookbacktime_days=None, mjd_max=None):
-		if not(lookbacktime_days is None): lookbacktime_days = int(Time.now().mjd - lookbacktime_days)
-		else: lookbacktime_days = int(Time.now().mjd - 1890)
-		if not(mjd_max is None): mjd_max = int(Time.now().mjd - mjd_max)
-		print('MJD min: ',lookbacktime_days,'. MJD max: ',mjd_max)
+		if not(lookbacktime_days is None):
+			lookbacktime_days = int(Time.now().mjd - lookbacktime_days)
+		else:
+			lookbacktime_days = int(Time.now().mjd - 1890)
+		if not(mjd_max is None):
+			mjd_max = int(Time.now().mjd - mjd_max)
+		print(f'MJD min: {lookbacktime_days}; MJD max: {mjd_max}')
 
+		baseurl = 'https://fallingstar-data.com/forcedphot'
 		task_url = None
 		while not task_url:
 			with requests.Session() as s:
-				resp = s.post(f"{self.baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":lookbacktime_days,"mjd_max":mjd_max})
-				if resp.status_code == 201:  # successfully queued
+				resp = s.post(f"{baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":lookbacktime_days,"mjd_max":mjd_max})
+				if resp.status_code == 201: 
 					task_url = resp.json()['url']
-					print(f'The task URL is {task_url}')
-					print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
-				elif resp.status_code == 429:  # throttled
+					print(f'task url: {task_url}')
+				elif resp.status_code == 429:
 					message = resp.json()["detail"]
 					print(f'{resp.status_code} {message}')
 					t_sec = re.findall(r'available in (\d+) seconds', message)
@@ -207,12 +211,14 @@ class download_atlas_lc:
 					print(f'ERROR {resp.status_code}')
 					print(resp.text)
 					sys.exit()
+		
 		result_url = None
 		taskstarted_printed = False
+		
 		while not result_url:
 			with requests.Session() as s:
 				resp = s.get(task_url, headers=headers)
-				if resp.status_code == 200:  # HTTP OK
+				if resp.status_code == 200: 
 					if resp.json()['finishtimestamp']:
 						result_url = resp.json()['result_url']
 						print(f"Task is complete with results available at {result_url}")
@@ -222,15 +228,16 @@ class download_atlas_lc:
 							taskstarted_printed = True
 						time.sleep(2)
 					else:
-						#print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
+						print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
 						time.sleep(4)
 				else:
 					print(f'ERROR {resp.status_code}')
 					print(resp.text)
 					sys.exit()
-		
-		with requests.Session() as s: 
+			
+		with requests.Session() as s:
 			result = s.get(result_url, headers=headers).text
+			
 		dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), delim_whitespace=True)
 		return dfresult
 
@@ -298,13 +305,13 @@ class download_atlas_lc:
 		self.control_coords.t.loc[control_index,'n_detec_c'] = len(control_lc.pdastro.t.loc[AnotB(control_lc.pdastro.getindices(),o_ix)])
 
 	# download a single light curve
-	def download_lc(self, lc):	
+	def download_lc(self, args, lc, token):	
 		print(f'Downloading forced photometry light curve at {lc.ra}, {lc.dec} from ATLAS')
 
 		try:
-			lc.pdastro.t = get_result(lc.ra, lc.dec, token, lookbacktime_days=args.lookbacktime_days)
+			lc.pdastro.t = self.get_result(RaInDeg(lc.ra), DecInDeg(lc.dec), token, lookbacktime_days=self.lookbacktime_days)
 		except Exception as e:
-			print('ERROR: '+str(e))
+			raise RuntimeError('ERROR in get_result(): '+str(e))
 
 		# sort data by mjd
 		lc.pdastro.t = lc.pdastro.t.sort_values(by=['MJD'],ignore_index=True)
@@ -318,22 +325,22 @@ class download_atlas_lc:
 
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token):
-		lc = lc(tnsname=tnsname)
-		print(f'Commencing download loop for SN {lc.tnsname}')
+		lc = light_curve(tnsname=tnsname)
+		print(f'\nCommencing download loop for SN {lc.tnsname}')
 		lc.get_tns_data(self.tns_api_key)
-		lc = download_lc(lc)
+		lc = self.download_lc(args, lc, token)
 
 		if args.controls:
 			print('Control light curve downloading set to True')
 			
-			get_control_coords(lc)
+			self.get_control_coords(lc)
 			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
 			for i in range(1,len(self.control_coords.t)):
-				control_lc = lc(ra=self.control_coords.t.loc[i,'ra'], dec=self.control_coords.t.loc[i,'dec'])
-				control_lc = download_lc(control_lc)
-				update_control_coords(control_lc, i)
+				control_lc = light_curve(ra=self.control_coords.t.loc[i,'ra'], dec=self.control_coords.t.loc[i,'dec'])
+				control_lc = download_lc(args, control_lc, token)
+				self.update_control_coords(control_lc, i)
 				lc.add_control_lc(control_lc)
 
 			# save control_coords table
@@ -345,15 +352,15 @@ class download_atlas_lc:
 	def download_loop(self):
 		args = self.define_args().parse_args()
 
-		load_settings(args)
+		self.load_settings(args)
 
-		print('Connecting to ATLAS API...')
-		token = connect_atlas()
+		print('\nConnecting to ATLAS API...')
+		token = self.connect_atlas()
 		if token is None: 
-			raise RuntimeError('ERROR: No token header!')
+			raise RuntimeError('ERROR in connect_atlas(): No token header!')
 
 		for obj_index in range(0,len(args.tnsnames)):
-			download_lcs(args, args.tnsnames[obj_index], token)
+			self.download_lcs(args, args.tnsnames[obj_index], token)
 
 if __name__ == "__main__":
 	download_atlas_lc = download_atlas_lc()
