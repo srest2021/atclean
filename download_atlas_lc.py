@@ -1,8 +1,26 @@
+#!/usr/bin/env python
+'''
+Code adapted from Qinan Wang and Armin Rest by Sofia Rest
+'''
+
 import configparser, sys, argparse, requests, re, time
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import Angle, SkyCoord
 from pdastro import pdastrostatsclass, AorB
+from tools import RaInDeg, DecInDeg
+
+def RaInDeg(self, ra):
+	s = re.compile('\:')
+	if isinstance(ra,str) and s.search(ra):
+	    A = Angle(ra, u.hour)
+	else:
+	    A = Angle(ra, u.degree)
+	return(A.degree)
+	       
+def DecInDeg(self, dec):
+	A = Angle(dec, u.degree)
+	return(A.degree)
 
 class lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
@@ -81,6 +99,8 @@ class download_atlas_lc:
 		self.control_coords = pdastrostatsclass()
 		self.radius = None
 		self.num_controls = None
+		self.closebright_coords = None
+		self.closebright_min_dist = None
 
 	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
@@ -89,37 +109,60 @@ class download_atlas_lc:
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
+		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-p','--password', type=str, default=None, help='password for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
 		parser.add_argument('-o', '--dont_overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
-		
+
 		return parser
 
 	# load config settings from file and reconcile with command arguments
 	def load_settings(self, args):
+		print('LOADING SETTINGS FROM CONFIG FILE AND CMD ARGUMENTS...')
+
 		cfg = configparser.ConfigParser()
 		try:
+			print(f'Loading config file at {args.cfg_filename}')
 			cfg.read(args.cfg_filename)
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
 		self.username = cfg['ATLAS credentials']['username'] if args.username is None else args.username
+		print(f'ATLAS username: {self.username}')
 		if args.password is None:
 			raise RuntimeError('ERROR: Please provide ATLAS password using --password argument!')
 		self.password = args.password
+		
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
+		print(f'Light curve .txt files output directory: {self.output_dir}')
 
 		self.overwrite = not args.dont_overwrite
+		print(f'Overwrite existing light curve files: {self.overwrite}')
+		
 		self.lookbacktime_days = args.lookbacktime_days
+		if not(self.lookbacktime_days is None): 
+			print(f'Lookback time in days: {self.lookbacktime_days}')
+		else:
+			print('Downloading full light curve(s)')
+		
 		self.controls = args.controls 
+		print(f'Control light curve status: {self.controls}')
 		if self.controls:
 			self.radius = cfg['Control light curve settings']['radius']
 			self.num_controls = cfg['Control light curve settings']['num_controls']
+			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
+		if not(args.closebright is None):
+			self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
+			if len(self.closebright_coords > 2):
+				raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+			self.closebright_min_dist = cfg['Control light curve settings']['closebright_min_dist']
+			print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+			print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
 
 	def connect_atlas(self):
 		resp = requests.post(url=f"{self.baseurl}/api-token-auth/",data={'username':self.username,'password':self.password})
@@ -195,12 +238,35 @@ class download_atlas_lc:
 	def get_control_coords(self, sn_lc):
 		self.control_coords.t = pd.DataFrame(columns=['tnsname','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
 
-		# add SN coordinates as first row
-		self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
+		sn_ra = Angle(RaInDeg(sn_lc.ra), u.degree)
+		sn_dec = Angle(DecInDeg(sn_lc.dec), u.degree)
 
-		r = Angle(self.radius, u.arcsec)
-		ra_center = Angle(sn_lc.ra.degree, u.degree)
-		dec_center = Angle(sn_lc.dec.degree, u.degree)
+		if self.closebright_coords is None:
+			r = Angle(self.radius, u.arcsec)
+
+			# circle pattern center is SN location
+			ra_center = Angle(sn_ra.degree, u.degree)
+			dec_center = Angle(sn_dec.degree, u.degree)
+
+			# add SN coordinates as first row
+			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
+		else:
+			# coordinates of close bright object
+			cb_ra = Angle(RaInDeg(closebright_coords[0]), u.degree)
+			cb_dec = Angle(DecInDeg(closebright_coords[1]), u.degree)
+
+			# circle pattern radius is distance between SN and bright object
+			c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
+			c2 = SkyCoord(cb_ra, cb_dec, frame='fk5')
+			sep = c1.separation(c2)
+			r = sep.arcsecond
+
+			# circle pattern center is close bright object location
+			ra_center = Angle(cb_ra.degree, u.degree)
+			dec_center = Angle(cb_dec.degree, u.degree)
+
+			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
+			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':np.nan,'dec_offset':np.nan,'radius':np.nan,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
 		for i in range(self.num_controls):
 			angle = Angle(i*360.0/self.num_controls, u.degree)
@@ -211,6 +277,15 @@ class download_atlas_lc:
 
 			dec_offset = Angle(r.degree*math.sin(angle.radian), u.degree)
 			dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
+
+			if not(self.closebright_coords is None):
+				# check to see if control light curve location is within min_dist arcseconds from SN location
+				c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
+				c2 = SkyCoord(ra, dec, frame='fk5')
+				offset_sep = c1.separation(c2).arcsecond
+				if offset_sep < self.closebright_min_dist:
+					print(f'Control light curve i{i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
+					continue
 
 			# add RA and Dec coordinates to control_coords table
 			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,'ra':ra,'dec':dec,'ra_offset':ra_offset,'dec_offset':dec_offset,'radius':r,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)

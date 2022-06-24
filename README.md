@@ -20,9 +20,12 @@ Download an ATLAS light curve using ATLAS's REST API (more information located h
 
 Configure default settings for downloading and saving light curves in **`atlaslc.ini`**. You must add your ATLAS credentials and TNS API key to this file for the script to work properly. Then, set the proper output directory for the files. You can also change the default flux and dflux column names as well as the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
-Arguments:
+Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
-- `-c` or `--controls`: download control light curves in addtion to SN light curve
+- `-c` or `--controls`: download control light curves in addition to SN light curve
+- `-b` or `--closebright`: RA and Dec coordinates separated by comma of a close bright object interfering with the target object's light curve
+	- These coordinates will become the center of the circle of control light curves
+	- Note that you may only specify these for 1 object, so it is recommended to only download 1 object's group of light curves when using this command
 - `-u` or `--username`: override default username given in `atlaslc.ini` config file
 - `-p` or `--password`: REQUIRED! provide ATLAS password
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file
