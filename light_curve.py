@@ -1,7 +1,12 @@
+#!/usr/bin/env python
+"""
+Author: Sofia Rest
+"""
+
 import json, requests, re, time, sys
 from collections import OrderedDict
 from astropy.time import Time
-from pdastro import pdastrostatsclass, AorB
+from pdastro import pdastrostatsclass, AorB, AnotB
 
 class light_curve:
 	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
@@ -37,27 +42,27 @@ class light_curve:
 		self.discdate = dateobjects.mjd
 
 	# get a light curve filename for saving
-	def get_filename(self, filt, control_index):
+	def get_filename(self, filt, control_index, output_dir):
 		if not self.is_averaged:
-			filename = f'{self.output_dir}/{self.tnsname}_i{control_index:3d}.{filt}.lc.txt'
+			filename = f'{output_dir}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.lc.txt'
 		else:
-			filename = f'{self.output_dir}/{self.tnsname}_i{control_index:3d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
+			filename = f'{output_dir}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
 		print(f'# Filename: {filename}')
 		return filename
 
 	# save SN light curve and, if necessary, control light curves
-	def save(self, overwrite=True):
+	def save(self, output_dir, overwrite=True):
 		print('Saving SN light curve')
 		o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
-		self.pdastro.write(filename=get_filename('o',i), indices=o_ix, overwrite=overwrite)
-		self.pdastro.write(filename=get_filename('c',i), indices=AnotB(self.pdastro.getindices(),o_ix), overwrite=overwrite)
+		self.pdastro.write(filename=self.get_filename('o',0,output_dir), indices=o_ix, overwrite=overwrite)
+		self.pdastro.write(filename=self.get_filename('c',0,output_dir), indices=AnotB(self.pdastro.getindices(),o_ix), overwrite=overwrite)
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves')
 			for i in range(1,len(self.lcs)):
 				for filt in ['c','o']:
 					filt_ix = self.lcs[i].pdastro.ix_equal(colnames=['F'],val=filt)
-					self.lcs[i].pdastro.write(filename=get_filename(filt,i), indices=filt_ix, overwrite=overwrite)
+					self.lcs[i].pdastro.write(filename=self.get_filename(filt,i,output_dir), indices=filt_ix, overwrite=overwrite)
 
 	# add already downloaded control light curve to control light curve dictionary
 	def add_control_lc(self, control_lc):

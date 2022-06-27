@@ -3,7 +3,8 @@
 Code adapted from Qinan Wang and Armin Rest by Sofia Rest
 '''
 
-import configparser, sys, argparse, requests, re, time, json
+import configparser, sys, argparse, requests, re, time, json, io
+import pandas as pd
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import Angle, SkyCoord
@@ -49,14 +50,17 @@ class download_atlas_lc:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
+
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
+		
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-p','--password', type=str, default=None, help='password for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
+		
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
-		parser.add_argument('-o', '--dont_overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
+		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 
 		return parser
 
@@ -169,7 +173,7 @@ class download_atlas_lc:
 							taskstarted_printed = True
 						time.sleep(2)
 					else:
-						print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
+						#print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
 						time.sleep(4)
 				else:
 					print(f'ERROR {resp.status_code}')
@@ -287,7 +291,7 @@ class download_atlas_lc:
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 		
-		lc.save()
+		lc.save(self.output_dir)
 
 	# loop through each SN given and download light curves
 	def download_loop(self):
