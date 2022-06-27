@@ -34,16 +34,14 @@ Arguments (will override default config file settings if specified):
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
 Example commands:
-- `download_atlas_lc.py 2019vxm -p 'XXX'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
-- `download_atlas_lc.py 2019vxm -l 100 -p 'XXX'` - downloads SN 2019vxm light curve with a lookback time of 100 days
-- `download_atlas_lc.py 2019vxm -c -p 'XXX'` downloads full SN 2019vxm and control light curves
-- `download_atlas_lc.py 2019vxm 2020lse -c -p 'XXX'` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
+- `download_atlas_lc.py 2019vxm -p 'PASSWORD'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
+- `download_atlas_lc.py 2019vxm -l 100 -p 'PASSWORD'` - downloads SN 2019vxm light curve with a lookback time of 100 days
+- `download_atlas_lc.py 2019vxm -c -p 'PASSWORD'` downloads full SN 2019vxm and control light curves
+- `download_atlas_lc.py 2019vxm 2020lse -c -p 'PASSWORD'` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
 ### `cut_lc.py` (work in progress)
 #### (applies all cuts - chi-squares, uncertainties, control light curves)
-Using the default settings in `atlaslc.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts.
-
-Configure default settings for cutting light curves in **`atlaslc.ini`**.
+Using the default settings in `atlaslc.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts, then save the light curves with the updated 'Mask' columns.
 
 The chi-square cut procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
 
@@ -64,4 +62,4 @@ Example commands:
 - `cut_lc.py 2019vxm -x` - applies ONLY chi-square cut to SN 2019vxm
 
 ### `average_lc.py` (not started)
-#### averages light curves and flags bad days
+#### (averages light curves and flags bad days)

@@ -31,7 +31,7 @@ class download_atlas_lc:
 		self.password = None
 		self.tns_api_key = None
 
-		# output
+		# input/output
 		self.output_dir = None
 		self.overwrite = True
 
@@ -50,14 +50,11 @@ class download_atlas_lc:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
-
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
-		
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-p','--password', type=str, default=None, help='password for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
-		
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
@@ -296,7 +293,6 @@ class download_atlas_lc:
 	# loop through each SN given and download light curves
 	def download_loop(self):
 		args = self.define_args().parse_args()
-
 		self.load_settings(args)
 
 		print('\nConnecting to ATLAS API...')
@@ -310,4 +306,3 @@ class download_atlas_lc:
 if __name__ == "__main__":
 	download_atlas_lc = download_atlas_lc()
 	download_atlas_lc.download_loop()
-

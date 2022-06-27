@@ -14,7 +14,12 @@ from light_curve import light_curve
 
 class cut_lc():
     def __init__(self):
-		# output
+    	self.filt = None
+
+    	# credentials
+    	self.tns_api_key = None
+
+		# input/output
 		self.input_dir = None
 		self.output_dir = None
 		self.overwrite = True
@@ -36,6 +41,7 @@ class cut_lc():
 
 		# control light curve cut
 		self.controls = False
+		self.num_controls = None
 		self.x2_max = None
 		self.stn_max = None
 		self.Nclip_max = None
@@ -48,13 +54,12 @@ class cut_lc():
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
-
-		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
-		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
-		
 		parser.add_argument('-x', '--chisquares', default=False, action='store_true', help='apply chi-square cut')
 		parser.add_argument('-u', '--uncertainties', default=False, action='store_true', help='apply uncertainty cut')
 		parser.add_argument('-c', '--controls', default=False, action='store_true', help='apply control light curve cut')
+		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
+		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		
 		return parser
 
@@ -68,6 +73,8 @@ class cut_lc():
 			cfg.read(args.cfg_filename)
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
+
+		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 
 		self.input_dir = cfg['Input/output settings']['input_dir']
 		print(f'Light curve .txt files input directory: {self.input_dir}')
@@ -108,6 +115,7 @@ class cut_lc():
 		self.controls = args.controls
 		if self.controls:
 			print(f'Control light curve cut: {self.controls}')
+			self.num_controls = cfg['Control light curve settings']['num_controls']
 			self.x2_max = cfg['Control light curve settings']['x2_max']
 			self.stn_max = cfg['Control light curve settings']['stn_max']
 			self.Nclip_max = cfg['Control light curve settings']['Nclip_max']
@@ -119,7 +127,27 @@ class cut_lc():
 
 	# correct for atlas template changes at mjd=58417,58882 
 	# more info here: https://fallingstar-data.com/forcedphot/faq/
-	def correct_for_template(self):
+	def correct_for_template(self, lc):
+		
+
+		return lc
+
+	def cut_loop(self):
+		args = self.define_args().parse_args()
+		self.load_settings(args)
+
+		for obj_index in range(0,len(args.tnsnames)):
+			print(f'\nCommencing cut loop for SN {lc.tnsname}')
+			for filt in ['o','c']:
+				self.filt = filt
+				print(f'Filter set: {self.filt}')
+				lc = light_curve(tnsname=args.tnsnames[obj_index])
+				lc.load(self.filt, self.input_dir, num_controls=self.num_controls)
+				lc.get_tns_data(self.tns_api_key)
+				lc = self.correct_for_template(lc)
 
 
 
+if __name__ == "__main__":
+	cut_lc = cut_lc()
+	cut_lc.cut_loop()

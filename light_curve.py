@@ -42,11 +42,11 @@ class light_curve:
 		self.discdate = dateobjects.mjd
 
 	# get a light curve filename for saving
-	def get_filename(self, filt, control_index, output_dir):
+	def get_filename(self, filt, control_index, directory):
 		if not self.is_averaged:
-			filename = f'{output_dir}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.lc.txt'
+			filename = f'{directory}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.lc.txt'
 		else:
-			filename = f'{output_dir}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
+			filename = f'{directory}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
 		print(f'# Filename: {filename}')
 		return filename
 
@@ -59,11 +59,21 @@ class light_curve:
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves')
-			for i in range(1,len(self.lcs)):
+			for control_index in range(1,len(self.lcs)):
 				for filt in ['c','o']:
-					filt_ix = self.lcs[i].pdastro.ix_equal(colnames=['F'],val=filt)
-					self.lcs[i].pdastro.write(filename=self.get_filename(filt,i,output_dir), indices=filt_ix, overwrite=overwrite)
+					filt_ix = self.lcs[control_index].pdastro.ix_equal(colnames=['F'],val=filt)
+					self.lcs[control_index].pdastro.write(filename=self.get_filename(filt,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
 
-	# add already downloaded control light curve to control light curve dictionary
+	# load SN light curve and, if necessary, control light curves for a certain filter
+	def load(self, filt, input_dir, num_controls=None):
+		print('Loading SN light curve')
+		self.pdastro.load_spacesep(self.get_filename(filt,0,input_dir), delim_whitespace=True)
+
+		if not(num_controls is None):
+			print(f'Loading {num_controls} control light curves')
+			for control_index in range(1,num_controls+1):
+				self.lcs[control_index].pdastro.load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
+
+	# add downloaded control light curve to control light curve dictionary
 	def add_control_lc(self, control_lc):
 		self.lcs[len(self.lcs)+1] = control_lc
