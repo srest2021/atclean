@@ -51,11 +51,12 @@ The control light curve cut examines each SN epoch and its corresponding control
 
 Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
-- `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
-- `--dont_overwrite`: don't overwrite existing light curves with the same filename
 - `-x` or `--chisquares`: apply chi-square cut
 - `-u` or `--uncertainties`: apply uncertainty cut
 - `-c` or `--controls`: apply control light curve cut
+- `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
+- `--dont_overwrite`: don't overwrite existing light curves with the same filename
+- `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file
 
 Example commands:
 - `cut_lc.py 2019vxm -x -u -c` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm

@@ -10,14 +10,18 @@ from pdastro import pdastrostatsclass, AorB, AnotB
 
 class light_curve:
 	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
+		self.pdastro = pdastrostatsclass()
+		self.lcs = {}
+
 		self.tnsname = tnsname
 		self.is_averaged = is_averaged
 		self.mjdbinsize = mjdbinsize
 		self.discdate = discdate
 		self.ra = ra
 		self.dec = dec
-		self.pdastro = pdastrostatsclass()
-		self.lcs = {}
+
+		self.corrected_baseline_ix = None
+		self.during_sn_ix = None
 
 	# get RA, Dec, and discovery date information from TNS
 	def get_tns_data(self, api_key):
@@ -40,6 +44,11 @@ class light_curve:
 		time = list(discoverydate.partition(' '))[2]
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		self.discdate = dateobjects.mjd
+
+	def get_baseline_ix(self):
+		if self.discate is None:
+			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
+		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=discdate,exclude_uplim=True)
 
 	# get a light curve filename for saving
 	def get_filename(self, filt, control_index, directory):
