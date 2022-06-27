@@ -48,7 +48,7 @@ class light_curve:
 	def get_baseline_ix(self):
 		if self.discate is None:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
-		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=discdate,exclude_uplim=True)
+		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate,exclude_uplim=True)
 
 	# get a light curve filename for saving
 	def get_filename(self, filt, control_index, directory):

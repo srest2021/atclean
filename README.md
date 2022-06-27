@@ -1,4 +1,4 @@
-# Interactive Jupyter Notebooks and ATLAS Downloading Script for Cleaning ATLAS Light Curves
+# Interactive Jupyter Notebooks and Python Scripts for Cleaning ATLAS Light Curves
 
 ## Jupyter Notebooks
 
@@ -24,20 +24,19 @@ Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
 - `-c` or `--controls`: download control light curves in addition to SN light curve
 - `-b` or `--closebright`: RA and Dec coordinates separated by comma of a close bright object interfering with the target object's light curve
-	- These coordinates will become the center of the circle of control light curves
-	- Note that you may only specify these for 1 object, so it is recommended to only download 1 object's group of light curves when using this command
+	- These coordinates will become the center of the circle of control light curves.
+	- Note that you may only specify these for 1 object, so it is recommended to only download 1 object's group of light curves when using this command.
 - `-u` or `--username`: override default username given in `atlaslc.ini` config file
-- `-p` or `--password`: REQUIRED! provide ATLAS password
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
 - `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
 Example commands:
-- `download_atlas_lc.py 2019vxm -p 'PASSWORD'` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
-- `download_atlas_lc.py 2019vxm -l 100 -p 'PASSWORD'` - downloads SN 2019vxm light curve with a lookback time of 100 days
-- `download_atlas_lc.py 2019vxm -c -p 'PASSWORD'` downloads full SN 2019vxm and control light curves
-- `download_atlas_lc.py 2019vxm 2020lse -c -p 'PASSWORD'` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
+- `download_atlas_lc.py 2019vxm` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
+- `download_atlas_lc.py 2019vxm -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days
+- `download_atlas_lc.py 2019vxm -c` downloads full SN 2019vxm and control light curves
+- `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
 ### `cut_lc.py` (work in progress)
 #### (applies all cuts - chi-squares, uncertainties, control light curves)

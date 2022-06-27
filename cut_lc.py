@@ -125,6 +125,7 @@ class cut_lc():
 			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.Nclip_max}')
 			print(f'# Bound for an epoch\'s minimum number of good control measurements: {self.Ngood_min}')
 
+	# helper function for get_baseline_regions()
 	def get_Ndays(self, SN_region_index):
 		return 200 if SN_region_index == 2 else 40
 
