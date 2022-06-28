@@ -105,3 +105,11 @@ class light_curve:
 	        self.pdastro.loc[indices[0],'Mask'] = int(self.pdastro.loc[indices[0],'Mask']) | flag
 	    else:
 	        print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')
+
+	def get_xth_percentile_flux(self, percentile, indices=None):
+		if indices is None:
+	        indices = self.pdastro.getindices()
+	    if len(indices)==0: 
+	        return None
+	    else:
+	        return np.percentile(lc.pdastro.t.loc[indices, 'uJy'], percentile)

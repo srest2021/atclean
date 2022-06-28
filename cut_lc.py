@@ -531,14 +531,17 @@ class cut_lc():
 					lc = self.apply_uncertainty_cut()
 
 
-				
+
 
 
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 				if args.plot:
 					plot_lc.set(lc=lc, filt=filt)
-					plot_lc.plot_lc()
+					plot_lc.plot_lc(xlim_lower=lc.discdate-100, 
+									xlim_upper=lc.discate+800, 
+									ylim_lower=-2000, 
+									ylim_upper=3*lc.get_xth_percentile_flux(97)
 					plot_lc.plot_chisquare_cut()
 					plot_lc.plot_uncertainty_cut()
 					plot_lc.plot_controls_cut()
