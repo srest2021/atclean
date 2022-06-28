@@ -96,6 +96,7 @@ class light_curve:
 	def add_control_lc(self, control_lc):
 		self.lcs[len(self.lcs)+1] = control_lc
 
+	# update given indices of mask column with given flag(s)
 	def update_mask_col(self, flag, indices):
 	    if len(indices) > 1:
 	        flag_arr = np.full(self.pdastro.loc[indices,'Mask'].shape, flag)

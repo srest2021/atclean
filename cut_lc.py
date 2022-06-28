@@ -15,8 +15,6 @@ from plot_lc import plot_lc
 
 class cut_lc():
     def __init__(self):
-    	self.filt = None
-
     	# credentials
     	self.tns_api_key = None
 
@@ -240,6 +238,7 @@ class cut_lc():
 
 		return lc
 
+	# for a range of chi-square cuts, determine contamination, loss, and other pecentages
 	def get_limcuts_table(self, lc, indices=None):
 		limcuts = pdastrostatsclass(columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
                                           	  'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
@@ -287,6 +286,7 @@ class cut_lc():
         	limcuts.t = pd.concat([limcuts.t,df],ignore_index=True)
 		return limcuts 
 
+	# get contamination and loss plus other percentages and information for a certain chi-square cut 
 	def get_limcuts_data(self, lc, name, cut, case):
 		indices = lc.corrected_baseline_ix
 	  
@@ -315,6 +315,7 @@ class cut_lc():
 	    data['Ploss'] = 100*len(AandB(b_good_i,b_cut_i))/len(b_good_i)
 	    data['Pcontamination'] = 100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i)
 
+	# get the optimal contamination and loss cuts according to percentages in limcuts table
 	def get_limcuts(self, limcuts):
 		contam_cut = None
 	    loss_cut = None
@@ -398,6 +399,7 @@ class cut_lc():
 
 	    return loss_cut_data, contam_cut_data
 
+	# choose between contamination cut and loss cut
 	def get_final_chisquare_cut(self, contam_cut, loss_cut, contam_case, loss_case):
 		# case 1 and 1: final_cut = 3
 	    # case 1 and 2: take limit of case 2
@@ -451,9 +453,12 @@ class cut_lc():
 	                final_cut = contam_lim_cut
 	    return final_cut
 
-	def chisquare_cut(self, lc):
+	# apply chi-square cut to SN light curve and update mask column with flag
+	def apply_chisquare_cut(self, lc):
 		print('Now applying dynamic chi-square cut...')
+		
 		limcuts = self.get_limcuts_table(lc)
+
 		loss_cut_data, contam_cut_data = self.get_limcuts(limcuts)
 
 	    print(f'# Contamination cut according to given contam_limit, with {contam_cut_data['Pcontamination']:0.2f}% contamination and {contam_cut_data['Ploss']:0.2f}% loss: {contam_cut_data['cut']:0.2f}')
@@ -474,7 +479,6 @@ class cut_lc():
 		    else:
 		    	Pcontamination = loss_cut_data['Pcontamination']
 		    	Ploss = loss_cut_data['Ploss']
-
 		    print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
 		   	if (Pcontamination > contam_lim):
 		        print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {contam_lim:0.2f}%!')
@@ -487,9 +491,19 @@ class cut_lc():
 
 		# create new mask column and update it with final chi-square cut
 		lc.pdastro.t['Mask'] = 0
-		kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'], uplim=self.chisquare_cut)
-		cut_i = AnotB(lc.pdastro.getindices(), kept_i)
-		lc.update_mask_col(flags['flag_chisquare'], cut_i)
+		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
+		lc.update_mask_col(flags['flag_chisquare'], cut_ix)
+		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
+
+		return lc
+
+	# apply chi-square cut to SN light curve and update mask column with flag
+	def apply_uncertainty_cut(self, lc):
+		print('Now applying uncertainty cut...')
+
+		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
+		lc.update_mask_col(flags['flag_uncertainty'], cut_ix)
+		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
 
 		return lc
 
@@ -504,20 +518,26 @@ class cut_lc():
 				plot_lc = plot_lc(output_dir=self.output_dir, flags=self.flags)
 
 			for filt in ['o','c']:
-				self.filt = filt
-				print(f'Filter set: {self.filt}')
+				print(f'Filter set: {filt}')
 				lc = light_curve(tnsname=args.tnsnames[obj_index])
-				lc.load(self.filt, self.input_dir, num_controls=self.num_controls)
+				lc.load(filt, self.input_dir, num_controls=self.num_controls)
 				lc.get_tns_data(self.tns_api_key)
 				lc = self.correct_for_template(lc)
 
-				if self.chisquare_cut is None:
-					lc = self.chisquare_cut(lc)
+				if self.chisquares and self.chisquare_cut is None:
+					lc = self.apply_chisquare_cut(lc)
+
+				if self.uncertainties:
+					lc = self.apply_uncertainty_cut()
 
 
+				
+
+
+				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 				if args.plot:
-					plot_lc.set(lc=lc, filt=self.filt)
+					plot_lc.set(lc=lc, filt=filt)
 					plot_lc.plot_lc()
 					plot_lc.plot_chisquare_cut()
 					plot_lc.plot_uncertainty_cut()
