@@ -45,6 +45,8 @@ class light_curve:
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		self.discdate = dateobjects.mjd
 
+	# get baseline indices (any indices before the SN discovery date)
+	# NOTE: DO INSTEAD uplim=self.discdate-20 TO MAKE SURE NO SN FLUX RETURNED?
 	def get_baseline_ix(self):
 		if self.discate is None:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
@@ -60,18 +62,25 @@ class light_curve:
 		return filename
 
 	# save SN light curve and, if necessary, control light curves
-	def save(self, output_dir, overwrite=True):
+	def save(self, output_dir, filt=None, overwrite=True):
 		print('Saving SN light curve')
-		o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
-		self.pdastro.write(filename=self.get_filename('o',0,output_dir), indices=o_ix, overwrite=overwrite)
-		self.pdastro.write(filename=self.get_filename('c',0,output_dir), indices=AnotB(self.pdastro.getindices(),o_ix), overwrite=overwrite)
+
+		if filt is None:
+			o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
+			self.pdastro.write(filename=self.get_filename('o',0,output_dir), indices=o_ix, overwrite=overwrite)
+			self.pdastro.write(filename=self.get_filename('c',0,output_dir), indices=AnotB(self.pdastro.getindices(),o_ix), overwrite=overwrite)
+		else:
+			self.pdastro.write(filename=self.get_filename(filt,0,output_dir), overwrite=overwrite)
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves')
 			for control_index in range(1,len(self.lcs)):
-				for filt in ['c','o']:
-					filt_ix = self.lcs[control_index].pdastro.ix_equal(colnames=['F'],val=filt)
-					self.lcs[control_index].pdastro.write(filename=self.get_filename(filt,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+				if filt is None:
+					for filt_ in ['c','o']:
+						filt_ix = self.lcs[control_index].pdastro.ix_equal(colnames=['F'],val=filt_)
+						self.lcs[control_index].pdastro.write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+				else:
+					self.lcs[control_index].pdastro.write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def load(self, filt, input_dir, num_controls=None):
@@ -86,3 +95,12 @@ class light_curve:
 	# add downloaded control light curve to control light curve dictionary
 	def add_control_lc(self, control_lc):
 		self.lcs[len(self.lcs)+1] = control_lc
+
+	def update_mask_col(self, flag, indices):
+	    if len(indices) > 1:
+	        flag_arr = np.full(self.pdastro.loc[indices,'Mask'].shape, flag)
+	        self.pdastro.loc[indices,'Mask'] = np.bitwise_or(self.pdastro.loc[indices,'Mask'], flag_arr)
+	    elif len(indices) == 1:
+	        self.pdastro.loc[indices[0],'Mask'] = int(self.pdastro.loc[indices[0],'Mask']) | flag
+	    else:
+	        print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')

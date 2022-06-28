@@ -54,7 +54,6 @@ class download_atlas_lc:
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
-		#parser.add_argument('-p','--password', type=str, default=None, help='password for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
@@ -134,7 +133,7 @@ class download_atlas_lc:
 				resp = s.post(f"{baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":lookbacktime_days,"mjd_max":mjd_max})
 				if resp.status_code == 201: 
 					task_url = resp.json()['url']
-					print(f'task url: {task_url}')
+					print(f'Task url: {task_url}')
 				elif resp.status_code == 429:
 					message = resp.json()["detail"]
 					print(f'{resp.status_code} {message}')
@@ -156,6 +155,7 @@ class download_atlas_lc:
 		result_url = None
 		taskstarted_printed = False
 		
+		print('Waiting for job to start...')
 		while not result_url:
 			with requests.Session() as s:
 				resp = s.get(task_url, headers=headers)
