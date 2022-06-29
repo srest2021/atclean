@@ -72,6 +72,8 @@ class download_atlas_lc:
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
+		print(f'List of transients to download: {args.tnsnames}')
+
 		self.username = cfg['ATLAS credentials']['username'] if args.username is None else args.username
 		print(f'ATLAS username: {self.username}')
 		self.password = getpass(prompt='Enter ATLAS password: ')

@@ -52,12 +52,24 @@ class light_curve:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
 		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate,exclude_uplim=True)
 
-	# get a light curve filename for saving
+	# get a light curve filename for saving/loading
 	def get_filename(self, filt, control_index, directory):
-		if not self.is_averaged:
-			filename = f'{directory}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.lc.txt'
-		else:
-			filename = f'{directory}/{self.tnsname}/{self.tnsname}_i{control_index:03d}.{filt}.{self.mjdbinsize:0.2f}days.lc.txt'
+		# SN light curve: 				DIRECTORY/2022xxx/2022xxx.o.lc.txt
+		# averaged light curve: 		DIRECTORY/2022xxx/2022xxx.o.1.00days.lc.txt
+		# control light curve: 			DIRECTORY/2022xxx/controls/2022xxx_i001.o.lc.txt
+		# averaged control light curve: DIRECTORY/2022xxx/controls/2022xxx_i001.o.1.00days.lc.txt
+
+		filename = f'{directory}/{self.tnsname}'
+		if control_index != 0:
+			filename += '/controls'
+		filename += f'/{self.tnsname}'
+		if control_index != 0:
+			filename += f'_i{control_index:03d}'
+		filename += f'.{filt}'
+		if self.is_averaged:
+			filename += f'.{self.mjdbinsize:0.2f}days'
+		filename += '.lc.txt'
+		
 		print(f'# Filename: {filename}')
 		return filename
 
@@ -96,7 +108,7 @@ class light_curve:
 	def add_control_lc(self, control_lc):
 		self.lcs[len(self.lcs)+1] = control_lc
 
-	# update given indices of mask column with given flag(s)
+	# update given indices of 'Mask' column in the SN light curve with given flag(s)
 	def update_mask_col(self, flag, indices):
 	    if len(indices) > 1:
 	        flag_arr = np.full(self.pdastro.loc[indices,'Mask'].shape, flag)
@@ -106,6 +118,7 @@ class light_curve:
 	    else:
 	        print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')
 
+	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):
 		if indices is None:
 	        indices = self.pdastro.getindices()

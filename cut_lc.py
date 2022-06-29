@@ -14,9 +14,9 @@ from light_curve import light_curve
 from plot_lc import plot_lc
 
 class cut_lc():
-    def __init__(self):
-    	# credentials
-    	self.tns_api_key = None
+	def __init__(self):
+		# credentials
+		self.tns_api_key = None
 
 		# input/output
 		self.input_dir = None
@@ -61,8 +61,8 @@ class cut_lc():
 		self.stn_max = None
 		self.Nclip_max = None
 		self.Ngood_min = None
-    
-    # define command line arguments
+	
+	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
 		if parser is None:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
@@ -224,7 +224,7 @@ class cut_lc():
 		for region_index in range(0,3):
 			region_i = regions['b_t%d'%region_index]
 			if len(region_i) > 0:
-				print(f'# Adjusting for template change in region b_t{region_index:%d} from {lc.pdastro.t.loc[region_i[0],'MJD']:%0.2f}-{lc.pdastro.t.loc[region_i[-1],'MJD']:%0.2f}...')
+				print(f'# Adjusting for template change in region b_t{region_index:01d} from {lc.pdastro.t.loc[region_i[0],'MJD']:0.2f}-{lc.pdastro.t.loc[region_i[-1],'MJD']:0.2f}...')
 				print(f'## Baseline median before: {np.median(lc.pdastro.t.loc[region_i,'uJy'])}')
 				if len(AandB(region_i,b_goodx2_i)) > 0:
 					median = np.median(lc.pdastro.t.loc[AandB(region_i,b_goodx2_i),'uJy'])
@@ -238,220 +238,241 @@ class cut_lc():
 
 		return lc
 
+	# drop mask column and any extra/unneeded columns from previous iterations
+	def drop_extra_columns(self, lc):
+		dropcols=[]
+
+		for col in ['Noffsetlc', '__tmp_SN', 'Mask']:
+			if col in lc.pdastro.t.columns:
+				dropcols.append(col)
+		for col in lc.pdastro.t.columns:
+			if re.search('^c\d_',col): 
+				dropcols.append(col)
+
+		# drop any extra columns
+		if len(dropcols)>0: 
+			print('Dropping extra columns: ',dropcols)
+			lc.pdastro.t = lc.pdastro.t.drop(columns=dropcols,inplace=True)
+
+		# add new mask column
+		lc.pdastro.t['Mask'] = 0
+
+		return lc
+
 	# for a range of chi-square cuts, determine contamination, loss, and other pecentages
 	def get_limcuts_table(self, lc, indices=None):
 		limcuts = pdastrostatsclass(columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
-                                          	  'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
-                                              'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
+											  'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
+											  'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
 
 		if indices is None:
 			indices = lc.corrected_baseline_ix
 		
 		# define good and bad baseline measurement indices according to abs(uJy/duJy) bound
-	    b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-self.stn_bound, uplim=self.stn_bound, indices=indices)
-	    b_bad_i = AnotB(indices, b_good_i)
+		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-self.stn_bound, uplim=self.stn_bound, indices=indices)
+		b_bad_i = AnotB(indices, b_good_i)
 
-	    # for different x2 cuts decreasing from 50
-	    for cut in range(self.min_cut, self.max_cut+1, self.cut_step):
-	        # define kept baseline measurement indices according to current chi-square cut
-	        b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'], uplim=cut, indices=indices)
-	        b_cut_i = AnotB(indices, b_kept_i)
+		# for different x2 cuts decreasing from 50
+		for cut in range(self.min_cut, self.max_cut+1, self.cut_step):
+			# define kept baseline measurement indices according to current chi-square cut
+			b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'], uplim=cut, indices=indices)
+			b_cut_i = AnotB(indices, b_kept_i)
 
-	        # construct new row of limcuts table
-	        df = pd.DataFrame([[cut, len(indices), # N
-                            len(b_good_i), # Ngood
-                            len(b_bad_i), # Nbad
-                            len(b_kept_i), # Nkept
-                            len(b_cut_i), # Ncut
-                            len(AandB(b_good_i,b_kept_i)), # Ngood,kept
-                            len(AandB(b_good_i,b_cut_i)), # Ngood,cut
-                            len(AandB(b_bad_i,b_kept_i)), # Nbad,kept
-                            len(AandB(b_bad_i,b_cut_i)), # Nbad,cut
-                            100*len(AandB(b_good_i,b_kept_i))/len(indices), # Ngood,kept/Nbaseline
-                            100*len(AandB(b_good_i,b_cut_i))/len(indices), # Ngood,cut/Nbaseline 
-                            100*len(AandB(b_bad_i,b_kept_i))/len(indices), # Nbad,kept/Nbaseline
-                            100*len(AandB(b_bad_i,b_cut_i))/len(indices), # Nbad,cut/Nbaseline
-                            100*len(AandB(b_good_i,b_kept_i))/len(b_good_i), # Ngood,kept/Ngood
-                            100*len(AandB(b_good_i,b_cut_i))/len(b_good_i), # Ngood,cut/Ngood = Loss
-                            100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i), # Nbad,kept/Nkept = Contamination
-                            len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
-                            len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
-                            len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
-                            len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
-                            len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
-                            len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
-                            ]], columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
-                                         'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
-                                         'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
-        	limcuts.t = pd.concat([limcuts.t,df],ignore_index=True)
+			# construct new row of limcuts table
+			df = pd.DataFrame([[cut, len(indices), # N
+							len(b_good_i), # Ngood
+							len(b_bad_i), # Nbad
+							len(b_kept_i), # Nkept
+							len(b_cut_i), # Ncut
+							len(AandB(b_good_i,b_kept_i)), # Ngood,kept
+							len(AandB(b_good_i,b_cut_i)), # Ngood,cut
+							len(AandB(b_bad_i,b_kept_i)), # Nbad,kept
+							len(AandB(b_bad_i,b_cut_i)), # Nbad,cut
+							100*len(AandB(b_good_i,b_kept_i))/len(indices), # Ngood,kept/Nbaseline
+							100*len(AandB(b_good_i,b_cut_i))/len(indices), # Ngood,cut/Nbaseline 
+							100*len(AandB(b_bad_i,b_kept_i))/len(indices), # Nbad,kept/Nbaseline
+							100*len(AandB(b_bad_i,b_cut_i))/len(indices), # Nbad,cut/Nbaseline
+							100*len(AandB(b_good_i,b_kept_i))/len(b_good_i), # Ngood,kept/Ngood
+							100*len(AandB(b_good_i,b_cut_i))/len(b_good_i), # Ngood,cut/Ngood = Loss
+							100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i), # Nbad,kept/Nkept = Contamination
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
+							]], columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
+										 'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
+										 'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
+			limcuts.t = pd.concat([limcuts.t,df],ignore_index=True)
 		return limcuts 
 
 	# get contamination and loss plus other percentages and information for a certain chi-square cut 
 	def get_limcuts_data(self, lc, name, cut, case):
 		indices = lc.corrected_baseline_ix
 	  
-	    b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'],lowlim=-stn_bound,uplim=stn_bound,indices=indices)
-	    b_bad_i = AnotB(indices, b_good_i)
-	    b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'],uplim=cut,indices=indices)
-	    b_cut_i = AnotB(indices, b_kept_i)
+		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'],lowlim=-stn_bound,uplim=stn_bound,indices=indices)
+		b_bad_i = AnotB(indices, b_good_i)
+		b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'],uplim=cut,indices=indices)
+		b_cut_i = AnotB(indices, b_kept_i)
 
-	    data = {}
-	    data['name'] = name
-	    data['cut'] = cut
-	    data['case'] = case
-	    data['Ngood'] = len(b_good_i)
-	    data['Nbad'] = len(b_bad_i)
-	    data['Nkept'] = len(b_kept_i)
-	    data['Ncut'] = len(b_cut_i)
-	    data['Ngood,kept'] = len(AandB(b_good_i,b_kept_i))
-	    data['Ngood,cut'] = len(AandB(b_good_i,b_cut_i))
-	    data['Nbad,kept'] = len(AandB(b_bad_i,b_kept_i))
-	    data['Nbad,cut'] = len(AandB(b_bad_i,b_cut_i))
-	    data['Pgood,kept'] = 100*len(AandB(b_good_i,b_kept_i))/len(indices)
-	    data['Pgood,cut'] = 100*len(AandB(b_good_i,b_cut_i))/len(indices)
-	    data['Pbad,kept'] = 100*len(AandB(b_bad_i,b_kept_i))/len(indices)
-	    data['Pbad,cut'] = 100*len(AandB(b_bad_i,b_cut_i))/len(indices)
-	    data['Ngood,kept/Ngood'] = 100*len(AandB(b_good_i,b_kept_i))/len(b_good_i)
-	    data['Ploss'] = 100*len(AandB(b_good_i,b_cut_i))/len(b_good_i)
-	    data['Pcontamination'] = 100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i)
+		data = {}
+		data['name'] = name
+		data['cut'] = cut
+		data['case'] = case
+		data['Ngood'] = len(b_good_i)
+		data['Nbad'] = len(b_bad_i)
+		data['Nkept'] = len(b_kept_i)
+		data['Ncut'] = len(b_cut_i)
+		data['Ngood,kept'] = len(AandB(b_good_i,b_kept_i))
+		data['Ngood,cut'] = len(AandB(b_good_i,b_cut_i))
+		data['Nbad,kept'] = len(AandB(b_bad_i,b_kept_i))
+		data['Nbad,cut'] = len(AandB(b_bad_i,b_cut_i))
+		data['Pgood,kept'] = 100*len(AandB(b_good_i,b_kept_i))/len(indices)
+		data['Pgood,cut'] = 100*len(AandB(b_good_i,b_cut_i))/len(indices)
+		data['Pbad,kept'] = 100*len(AandB(b_bad_i,b_kept_i))/len(indices)
+		data['Pbad,cut'] = 100*len(AandB(b_bad_i,b_cut_i))/len(indices)
+		data['Ngood,kept/Ngood'] = 100*len(AandB(b_good_i,b_kept_i))/len(b_good_i)
+		data['Ploss'] = 100*len(AandB(b_good_i,b_cut_i))/len(b_good_i)
+		data['Pcontamination'] = 100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i)
 
 	# get the optimal contamination and loss cuts according to percentages in limcuts table
 	def get_limcuts(self, limcuts):
 		contam_cut = None
-	    loss_cut = None
-	    contam_case = None
-	    loss_case = None
+		loss_cut = None
+		contam_case = None
+		loss_case = None
 
-	    sortby_loss = limcuts.t.iloc[(limcuts.t['Ploss']).argsort()].reset_index()
-	    min_loss = sortby_loss.loc[0,'Ploss']
-	    max_loss = sortby_loss.loc[len(sortby_loss)-1,'Ploss']
-	    # if all loss below lim, loss_cut is min cut
-	    if min_loss < loss_lim and max_loss < loss_lim:
-	        loss_case = 'below lim'
-	        loss_cut = limcuts.t.loc[0,'PSF Chi-Square Cut']
-	    else:
-	        # else if all loss above lim, loss_cut is min cut with min% loss
-	        if min_loss > loss_lim and max_loss > loss_lim:
-	            loss_case = 'above lim'
-	            a = np.where(limcuts.t['Ploss'] == min_loss)[0]
-	            b = limcuts.t.iloc[a]
-	            c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-	            loss_cut = c.loc[0,'PSF Chi-Square Cut']
-	        # else if loss crosses lim at some point, loss_cut is min cut with max% loss <= loss_lim
-	        else:
-	            loss_case = 'crosses lim'
-	            valid_cuts = sortby_loss[sortby_loss['Ploss'] <= loss_lim]
-	            a = np.where(limcuts.t['Ploss'] == valid_cuts.loc[len(valid_cuts)-1,'Ploss'])[0]
-	            # sort by cuts
-	            b = limcuts.t.iloc[a]
-	            c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-	            # get midpoint of loss1 and loss2 (two points on either side of lim)
-	            loss1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[0,'PSF Chi-Square Cut'])[0][0]
-	            if limcuts.t.loc[loss1_i,'Ploss'] == loss_lim:
-	                loss_cut = limcuts.t.loc[loss1_i,'PSF Chi-Square Cut']
-	            else:
-	                loss2_i = loss1_i - 1
-	                x = np.array([limcuts.t.loc[loss1_i,'PSF Chi-Square Cut'], limcuts.t.loc[loss2_i,'PSF Chi-Square Cut']])
-	                contam_y = np.array([limcuts.t.loc[loss1_i,'Pcontamination'], limcuts.t.loc[loss2_i,'Pcontamination']])
-	                loss_y = np.array([limcuts.t.loc[loss1_i,'Ploss'], limcuts.t.loc[loss2_i,'Ploss']])
-	                contam_line = np.polyfit(x,contam_y,1)
-	                loss_line = np.polyfit(x,loss_y,1)
-	                loss_cut = (loss_lim-loss_line[1])/loss_line[0]
+		sortby_loss = limcuts.t.iloc[(limcuts.t['Ploss']).argsort()].reset_index()
+		min_loss = sortby_loss.loc[0,'Ploss']
+		max_loss = sortby_loss.loc[len(sortby_loss)-1,'Ploss']
+		# if all loss below lim, loss_cut is min cut
+		if min_loss < loss_lim and max_loss < loss_lim:
+			loss_case = 'below lim'
+			loss_cut = limcuts.t.loc[0,'PSF Chi-Square Cut']
+		else:
+			# else if all loss above lim, loss_cut is min cut with min% loss
+			if min_loss > loss_lim and max_loss > loss_lim:
+				loss_case = 'above lim'
+				a = np.where(limcuts.t['Ploss'] == min_loss)[0]
+				b = limcuts.t.iloc[a]
+				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
+				loss_cut = c.loc[0,'PSF Chi-Square Cut']
+			# else if loss crosses lim at some point, loss_cut is min cut with max% loss <= loss_lim
+			else:
+				loss_case = 'crosses lim'
+				valid_cuts = sortby_loss[sortby_loss['Ploss'] <= loss_lim]
+				a = np.where(limcuts.t['Ploss'] == valid_cuts.loc[len(valid_cuts)-1,'Ploss'])[0]
+				# sort by cuts
+				b = limcuts.t.iloc[a]
+				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
+				# get midpoint of loss1 and loss2 (two points on either side of lim)
+				loss1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[0,'PSF Chi-Square Cut'])[0][0]
+				if limcuts.t.loc[loss1_i,'Ploss'] == loss_lim:
+					loss_cut = limcuts.t.loc[loss1_i,'PSF Chi-Square Cut']
+				else:
+					loss2_i = loss1_i - 1
+					x = np.array([limcuts.t.loc[loss1_i,'PSF Chi-Square Cut'], limcuts.t.loc[loss2_i,'PSF Chi-Square Cut']])
+					contam_y = np.array([limcuts.t.loc[loss1_i,'Pcontamination'], limcuts.t.loc[loss2_i,'Pcontamination']])
+					loss_y = np.array([limcuts.t.loc[loss1_i,'Ploss'], limcuts.t.loc[loss2_i,'Ploss']])
+					contam_line = np.polyfit(x,contam_y,1)
+					loss_line = np.polyfit(x,loss_y,1)
+					loss_cut = (loss_lim-loss_line[1])/loss_line[0]
 
-	    sortby_contam = limcuts.t.iloc[(limcuts.t['Pcontamination']).argsort()].reset_index()
-	    min_contam = sortby_contam.loc[0,'Pcontamination']
-	    max_contam = sortby_contam.loc[len(sortby_contam)-1,'Pcontamination']
-	    # if all contam below lim, contam_cut is max cut
-	    if min_contam < contam_lim and max_contam < contam_lim:
-	        contam_case = 'below lim'
-	        contam_cut = limcuts.t.loc[len(limcuts.t)-1,'PSF Chi-Square Cut']
-	    else:
-	        # else if all contam above lim, contam_cut is max cut with min% contam
-	        if min_contam > contam_lim and max_contam > contam_lim:
-	            contam_case = 'above lim'
-	            a = np.where(limcuts.t['Pcontamination'] == min_contam)[0]
-	            b = limcuts.t.iloc[a]
-	            c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-	            contam_cut = c.loc[len(c)-1,'PSF Chi-Square Cut']
-	        # else if contam crosses lim at some point, contam_cut is max cut with max% contam <= contam_lim
-	        else:
-	            contam_case = 'crosses lim'
-	            valid_cuts = sortby_contam[sortby_contam['Pcontamination'] <= contam_lim]
-	            a = np.where(limcuts.t['Pcontamination'] == valid_cuts.loc[len(valid_cuts)-1,'Pcontamination'])[0]
-	            # sort by cuts
-	            b = limcuts.t.iloc[a]
-	            c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-	            # get midpoint of contam1 and contam2 (two points on either side of lim)
-	            contam1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[len(c)-1,'PSF Chi-Square Cut'])[0][0]
-	            if limcuts.t.loc[contam1_i,'Pcontamination'] == contam_lim:
-	                contam_cut = limcuts.t.loc[contam1_i,'PSF Chi-Square Cut']
-	            else:
-	                contam2_i = contam1_i + 1
-	                x = np.array([limcuts.t.loc[contam1_i,'PSF Chi-Square Cut'], limcuts.t.loc[contam2_i,'PSF Chi-Square Cut']])
-	                contam_y = np.array([limcuts.t.loc[contam1_i,'Pcontamination'], limcuts.t.loc[contam2_i,'Pcontamination']])
-	                loss_y = np.array([limcuts.t.loc[contam1_i,'Ploss'], limcuts.t.loc[contam2_i,'Ploss']])
-	                contam_line = np.polyfit(x,contam_y,1)
-	                loss_line = np.polyfit(x,loss_y,1)
-	                contam_cut = (contam_lim-contam_line[1])/contam_line[0]
+		sortby_contam = limcuts.t.iloc[(limcuts.t['Pcontamination']).argsort()].reset_index()
+		min_contam = sortby_contam.loc[0,'Pcontamination']
+		max_contam = sortby_contam.loc[len(sortby_contam)-1,'Pcontamination']
+		# if all contam below lim, contam_cut is max cut
+		if min_contam < contam_lim and max_contam < contam_lim:
+			contam_case = 'below lim'
+			contam_cut = limcuts.t.loc[len(limcuts.t)-1,'PSF Chi-Square Cut']
+		else:
+			# else if all contam above lim, contam_cut is max cut with min% contam
+			if min_contam > contam_lim and max_contam > contam_lim:
+				contam_case = 'above lim'
+				a = np.where(limcuts.t['Pcontamination'] == min_contam)[0]
+				b = limcuts.t.iloc[a]
+				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
+				contam_cut = c.loc[len(c)-1,'PSF Chi-Square Cut']
+			# else if contam crosses lim at some point, contam_cut is max cut with max% contam <= contam_lim
+			else:
+				contam_case = 'crosses lim'
+				valid_cuts = sortby_contam[sortby_contam['Pcontamination'] <= contam_lim]
+				a = np.where(limcuts.t['Pcontamination'] == valid_cuts.loc[len(valid_cuts)-1,'Pcontamination'])[0]
+				# sort by cuts
+				b = limcuts.t.iloc[a]
+				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
+				# get midpoint of contam1 and contam2 (two points on either side of lim)
+				contam1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[len(c)-1,'PSF Chi-Square Cut'])[0][0]
+				if limcuts.t.loc[contam1_i,'Pcontamination'] == contam_lim:
+					contam_cut = limcuts.t.loc[contam1_i,'PSF Chi-Square Cut']
+				else:
+					contam2_i = contam1_i + 1
+					x = np.array([limcuts.t.loc[contam1_i,'PSF Chi-Square Cut'], limcuts.t.loc[contam2_i,'PSF Chi-Square Cut']])
+					contam_y = np.array([limcuts.t.loc[contam1_i,'Pcontamination'], limcuts.t.loc[contam2_i,'Pcontamination']])
+					loss_y = np.array([limcuts.t.loc[contam1_i,'Ploss'], limcuts.t.loc[contam2_i,'Ploss']])
+					contam_line = np.polyfit(x,contam_y,1)
+					loss_line = np.polyfit(x,loss_y,1)
+					contam_cut = (contam_lim-contam_line[1])/contam_line[0]
 
-	    loss_cut_data = self.get_limcuts_data(lc, 'loss_cut', loss_cut, loss_case)
-	    contam_cut_data = self.get_limcuts_data(lc, 'contam_cut', contam_cut, contam_case)
+		loss_cut_data = self.get_limcuts_data(lc, 'loss_cut', loss_cut, loss_case)
+		contam_cut_data = self.get_limcuts_data(lc, 'contam_cut', contam_cut, contam_case)
 
-	    return loss_cut_data, contam_cut_data
+		return loss_cut_data, contam_cut_data
 
 	# choose between contamination cut and loss cut
 	def get_final_chisquare_cut(self, contam_cut, loss_cut, contam_case, loss_case):
+		case1 = loss_case == 'below lim' or contam_case == 'below lim'
+		case2 = loss_case == 'above lim' or contam_case == 'above lim'
+		case3 = loss_case == 'crosses lim' or contam_case == 'crosses lim'
+
 		# case 1 and 1: final_cut = 3
-	    # case 1 and 2: take limit of case 2
-	    # case 1 and 3: take limit of case 3
-	    # case 2 and 2: print lims don't work
-	    # case 2 and 3: get_final_chisquare_cut
-	    # case 3 and 3: get_final_chisquare_cut
+		# case 1 and 2: take limit of case 2
+		# case 1 and 3: take limit of case 3
+		# case 2 and 2: print lims don't work
+		# case 2 and 3: get_final_chisquare_cut
+		# case 3 and 3: get_final_chisquare_cut
 
-	    case1 = loss_case == 'below lim' or contam_case == 'below lim'
-	    case2 = loss_case == 'above lim' or contam_case == 'above lim'
-	    case3 = loss_case == 'crosses lim' or contam_case == 'crosses lim'
-
-	    final_cut = None
-	    if case1 and not case2 and not case3: # 1 and 1
-	        print('Valid chi-square cut range from %0.2f to %0.2f! Setting to 3...' % (loss_lim_cut, contam_lim_cut))
-	        final_cut = cut_start
-	    elif case1: # 1
-	        if case2: # and 2
-	            if loss_case == 'above lim':
-	                print('WARNING: contam_lim_cut <= %0.2f falls below limit %0.2f%%, but loss_lim_cut >= %0.2f falls above limit %0.2f%%! Setting to %0.2f...' % (contam_lim_cut, contam_lim, loss_lim_cut, loss_lim, loss_lim_cut))
-	                final_cut = loss_lim_cut
-	            else:
-	                print('WARNING: loss_lim_cut <= %0.2f falls below limit %0.2f%%, but contam_lim_cut >= %0.2f falls above limit %0.2f%%! Setting to %0.2f...' % (loss_lim_cut, loss_lim, contam_lim_cut, contam_lim, contam_lim_cut))
-	                final_cut = contam_lim_cut
-	        else: # and 3
-	            if loss_case == 'crosses lim':
-	                print('Contam_lim_cut <= %0.2f falls below limit %0.2f%% and loss_lim_cut >= %0.2f crosses limit %0.2f%%, setting to %0.2f...' % (contam_lim_cut, contam_lim, loss_lim_cut, loss_lim, loss_lim_cut))
-	                final_cut = loss_lim_cut
-	            else:
-	                print('Loss_lim_cut <= %0.2f falls below limit %0.2f%% and contam_lim_cut >= %0.2f crosses limit %0.2f%%, setting to %0.2f...' % (loss_lim_cut, loss_lim, contam_lim_cut, contam_lim, contam_lim_cut))
-	                final_cut = contam_lim_cut
-	    elif case2 and not case3: # 2 and 2
-	        print('ERROR: chi-square loss_lim_cut >= %0.2f and contam_lim_cut <= %0.2f both fall above limits %0.2f%% and %0.2f%%! Try setting less strict limits. Setting final cut to nan.' % (loss_lim_cut, contam_lim_cut, loss_lim, contam_lim))
-	        final_cut = np.nan
-	    else: # 2 and 3 or 3 and 3
-	        if loss_lim_cut > contam_lim_cut:
-	            print('WARNING: chi-square loss_lim_cut >= %0.2f and contam_lim_cut <= %0.2f do not overlap! ' % (loss_lim_cut, contam_lim_cut))
-	            if lim_to_prioritize == 'contam_lim':
-	                print('Prioritizing %s and setting to %0.2f...' % (lim_to_prioritize, contam_lim_cut))
-	                final_cut = contam_lim_cut
-	            else:
-	                print('Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, loss_lim_cut))
-	                final_cut = loss_lim_cut
-	        else:
-	            print('Valid chi-square cut range from %0.2f to %0.2f! ' % (loss_lim_cut, contam_lim_cut))
-	            if lim_to_prioritize == 'contam_lim':
-	                print('Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, loss_lim_cut))
-	                final_cut = loss_lim_cut
-	            else:
-	                print('Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, contam_lim_cut))
-	                final_cut = contam_lim_cut
-	    return final_cut
+		final_cut = None
+		if case1 and not case2 and not case3: # 1 and 1
+			print(f'# Valid chi-square cut range from {loss_cut:0.2f} to {contam_cut:0.2f}! Setting to 3...')
+			final_cut = cut_start
+		elif case1: # 1
+			if case2: # and 2
+				if loss_case == 'above lim':
+					print(f'# WARNING: contam_cut <= {contam_cut:0.2f} falls below limit {contam_lim:0.2f}%, but loss_cut >= {loss_cut:0.2f} falls above limit {loss_lim:0.2f}%! Setting to {loss_cut:0.2f}...')
+					final_cut = loss_cut
+				else:
+					print(f'# WARNING: loss_cut <= {loss_cut:0.2f} falls below limit {loss_lim:0.2f}%, but contam_cut >= {contam_cut:0.2f} falls above limit {contam_lim:0.2f}%! Setting to {contam_cut:0.2f}...')
+					final_cut = contam_cut
+			else: # and 3
+				if loss_case == 'crosses lim':
+					print(f'# contam_cut <= {contam_cut:0.2f} falls below limit {contam_lim:0.2f}% and loss_cut >= {loss_cut:0.2f} crosses limit {loss_lim:0.2f}%, setting to {loss_cut:0.2f}...')
+					final_cut = loss_cut
+				else:
+					print(f'# loss_cut <= {loss_cut:0.2f} falls below limit {loss_lim:0.2f}% and contam_cut >= {contam_cut:0.2f} crosses limit {contam_lim:0.2f}%, setting to {contam_cut:0.2f}...')
+					final_cut = contam_cut
+		elif case2 and not case3: # 2 and 2
+			print(f'# ERROR: chi-square loss_cut >= {loss_cut:0.2f} and contam_cut <= {contam_cut:0.2f} both fall above respective limits {loss_lim:0.2f}% and {contam_lim:0.2f}%! Try setting less strict limits. Setting final cut to nan.')
+			final_cut = np.nan
+		else: # 2 and 3 or 3 and 3
+			if loss_cut > contam_cut:
+				print(f'# WARNING: chi-square loss_cut >= {loss_cut:0.2f} and contam_cut <= {contam_cut:0.2f} do not overlap!')
+				if self.lim_to_prioritize == 'contam_lim':
+					print(f'# Prioritizing {self.lim_to_prioritize} and setting to {contam_cut:0.2f}...')
+					final_cut = contam_cut
+				else:
+					print(f'# Prioritizing {self.lim_to_prioritize} and setting to {loss_cut:0.2f}...')
+					final_cut = loss_cut
+			else:
+				print(f'# Valid chi-square cut range from {loss_cut:0.2f} to {contam_cut:0.2f}!')
+				if self.lim_to_prioritize == 'contam_lim':
+					print(f'# Prioritizing {self.lim_to_prioritize} and setting to {loss_cut:0.2f}...')
+					final_cut = loss_cut
+				else:
+					print(f'# Prioritizing {self.lim_to_prioritize} and setting to {contam_cut:0.2f}...')
+					final_cut = contam_cut
+		return final_cut
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_chisquare_cut(self, lc):
@@ -461,36 +482,32 @@ class cut_lc():
 
 		loss_cut_data, contam_cut_data = self.get_limcuts(limcuts)
 
-	    print(f'# Contamination cut according to given contam_limit, with {contam_cut_data['Pcontamination']:0.2f}% contamination and {contam_cut_data['Ploss']:0.2f}% loss: {contam_cut_data['cut']:0.2f}')
+		print(f'# Contamination cut according to given contam_limit, with {contam_cut_data['Pcontamination']:0.2f}% contamination and {contam_cut_data['Ploss']:0.2f}% loss: {contam_cut_data['cut']:0.2f}')
 		if contam_cut_data['case'] == 'above lim':
-		    print(f'## WARNING: Contamination cut not possible with contamination <= contam_lim {self.contam_lim:0.2f}%!')
+			print(f'## WARNING: Contamination cut not possible with contamination <= contam_lim {self.contam_lim:0.2f}%!')
 		print(f'# Loss cut according to given loss_limit, with {loss_cut_data['Pcontamination']:0.2f}% contamination and {loss_cut_data['Ploss']:0.2f}% loss: {loss_cut_data['cut']:0.2f}')
 		if loss_cut_data['case'] == 'above lim':
-		    print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
+			print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
 
 		self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
 		if np.isnan(self.chisquare_cut):
-		    raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
+			raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
 		else:
-		    if self.chisquare_cut == contam_cut:
-		    	Pcontamination = contam_cut_data['Pcontamination']
-		    	Ploss = contam_cut_data['Ploss']
-		    else:
-		    	Pcontamination = loss_cut_data['Pcontamination']
-		    	Ploss = loss_cut_data['Ploss']
-		    print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
-		   	if (Pcontamination > contam_lim):
-		        print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {contam_lim:0.2f}%!')
-		    if (Ploss > loss_lim):
-		        print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {loss_lim:0.2f}%!')
+			if self.chisquare_cut == contam_cut:
+				Pcontamination = contam_cut_data['Pcontamination']
+				Ploss = contam_cut_data['Ploss']
+			else:
+				Pcontamination = loss_cut_data['Pcontamination']
+				Ploss = loss_cut_data['Ploss']
+			print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
+			if (Pcontamination > contam_lim):
+				print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {contam_lim:0.2f}%!')
+			if (Ploss > loss_lim):
+				print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {loss_lim:0.2f}%!')
 
-		# remove old mask column
-		if 'Mask' in lc.pdastro.t.columns: 
-		    lc.pdastro.t.drop(columns=['Mask'],inplace=True)
 
-		# create new mask column and update it with final chi-square cut
-		lc.pdastro.t['Mask'] = 0
+		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
 		lc.update_mask_col(flags['flag_chisquare'], cut_ix)
 		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
@@ -522,13 +539,14 @@ class cut_lc():
 				lc = light_curve(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.input_dir, num_controls=self.num_controls)
 				lc.get_tns_data(self.tns_api_key)
+				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
 				if self.chisquares and self.chisquare_cut is None:
 					lc = self.apply_chisquare_cut(lc)
 
 				if self.uncertainties:
-					lc = self.apply_uncertainty_cut()
+					lc = self.apply_uncertainty_cut(lc)
 
 
 
@@ -541,10 +559,11 @@ class cut_lc():
 					plot_lc.plot_lc(xlim_lower=lc.discdate-100, 
 									xlim_upper=lc.discate+800, 
 									ylim_lower=-2000, 
-									ylim_upper=3*lc.get_xth_percentile_flux(97)
+									ylim_upper=3*lc.get_xth_percentile_flux(97))
 					plot_lc.plot_chisquare_cut()
 					plot_lc.plot_uncertainty_cut()
 					plot_lc.plot_controls_cut()
+					plot_lc.plot_all_cuts()
 
 if __name__ == "__main__":
 	cut_lc = cut_lc()

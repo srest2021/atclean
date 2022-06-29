@@ -129,6 +129,8 @@ class plot_lc():
 		self.pdf.savefig(fig)
 
 	def plot_averaged_lc(self):
+		if not self.lc.is_averaged:
+			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 		self.plot_cut_lc(self.flags['flag_badday'])
 
 	def plot_chisquare_cut(self):
@@ -139,3 +141,7 @@ class plot_lc():
 
 	def plot_controls_cut(self):
 		self.plot_cut_lc(self.flags['flag_controls_bad'])
+
+	def plot_all_cuts(self):
+		self.plot_cut_lc(self.flags['flag_chisquare']|self.flags['flag_uncertainty']|self.flags['flag_controls_bad'])
+
