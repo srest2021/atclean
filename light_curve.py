@@ -78,7 +78,7 @@ class light_curve:
 
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
-		print('Saving SN light curve')
+		print('Saving SN light curve...')
 
 		if filt is None:
 			o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
@@ -88,7 +88,7 @@ class light_curve:
 			self.pdastro.write(filename=self.get_filename(filt,0,output_dir), overwrite=overwrite)
 
 		if len(self.lcs) > 0:
-			print('Saving control light curves')
+			print('Saving control light curves...')
 			for control_index in range(1,len(self.lcs)):
 				if filt is None:
 					for filt_ in ['c','o']:
@@ -99,11 +99,11 @@ class light_curve:
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def load(self, filt, input_dir, num_controls=None):
-		print('Loading SN light curve')
+		print('Loading SN light curve...')
 		self.pdastro.load_spacesep(self.get_filename(filt,0,input_dir), delim_whitespace=True)
 
 		if not(num_controls is None):
-			print(f'Loading {num_controls} control light curves')
+			print(f'Loading {num_controls} control light curves...')
 			for control_index in range(1,num_controls+1):
 				self.lcs[control_index].pdastro.load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
 
@@ -128,4 +128,4 @@ class light_curve:
 		if len(indices)==0: 
 			return None
 		else:
-			return np.percentile(lc.pdastro.t.loc[indices, 'uJy'], percentile)
+			return np.percentile(self.pdastro.t.loc[indices, 'uJy'], percentile)

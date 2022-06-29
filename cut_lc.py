@@ -165,14 +165,22 @@ class cut_lc():
 		regions['b_t1'] = AandB(regions['t1'], baseline_ix)
 		regions['b_t2'] = AandB(regions['t2'], baseline_ix)
 
+		for region_index in range(0,3):
+			if len(regions['t%d'%region_index]) > 0:
+				print('## TEMPLATE REGION t%d MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['t%d'%region_index][-1],'MJD']))
+			else:
+				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
+
 		# find region SN starts in 
 		SN_region_index = None
-		for region_index in range(0,3):
-			region_i = regions['t%d' % region_index]
-			if lc.discdate >= lc.pdastro.t.loc[region_i[0],'MJD'] and lc.discdate <= lc.pdastro.t.loc[region_i[-1],'MJD']:
-				SN_region_index = region_index
+		if lc.discdate <= tchange1:
+			SN_region_index = 0
+		elif lc.discdate > tchange1 and lc.discdate <= tchange2:
+			SN_region_index = 1
+		elif lc.discdate > tchange2:
+			SN_region_index = 2
 		if SN_region_index is None:
-			raise RuntimeError('## ERROR: could not find region with SN discovery date!')
+			raise RuntimeError('## ERROR: Something went wrong--could not find region with SN discovery date!')
 		else:
 			print('## SN discovery date located in template region t%d' % SN_region_index)
 
@@ -189,10 +197,6 @@ class cut_lc():
 		if adjust_region_index < 2: regions['b_t2'] = regions['t2']
 
 		for region_index in range(0,3):
-			if len(regions['t%d'%region_index]) > 0:
-				print('## TEMPLATE REGION t%d MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['t%d'%region_index][-1],'MJD']))
-			else:
-				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
 			if len(regions['b_t%d'%region_index]) > 0:
 				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['b_t%d'%region_index][-1],'MJD']))
 			else:
@@ -214,7 +218,7 @@ class cut_lc():
 	# correct for atlas template changes at mjd=58417,58882 
 	# more info here: https://fallingstar-data.com/forcedphot/faq/
 	def correct_for_template(self, lc):
-		print('Correcting for potential flux in template due to template changes at MJD=58417,58882...')
+		print('\nCorrecting for potential flux in template due to template changes at MJD=58417,58882...')
 		
 		# automatically define baseline regions according to discovery date
 		regions, lc = self.get_baseline_regions(lc, Ndays_min=6)
@@ -244,7 +248,7 @@ class cut_lc():
 	def drop_extra_columns(self, lc):
 		dropcols=[]
 
-		for col in ['Noffsetlc', '__tmp_SN', 'Mask']:
+		for col in ['Noffsetlc', '__tmp_SN']:
 			if col in lc.pdastro.t.columns:
 				dropcols.append(col)
 		for col in lc.pdastro.t.columns:
@@ -255,9 +259,6 @@ class cut_lc():
 		if len(dropcols)>0: 
 			print('Dropping extra columns: ',dropcols)
 			lc.pdastro.t.drop(columns=dropcols,inplace=True)
-
-		# replace 'Mask' column
-		lc.pdastro.t['Mask'] = 0
 
 		return lc
 
@@ -480,7 +481,7 @@ class cut_lc():
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_chisquare_cut(self, lc):
-		print('Now applying dynamic chi-square cut...')
+		print('\nNow applying dynamic chi-square cut...')
 
 		if self.chisquare_cut is None:
 			limcuts = self.get_limcuts_table(lc)
@@ -493,28 +494,28 @@ class cut_lc():
 			if loss_cut_data['case'] == 'above lim':
 				print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
 
-			self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
+			final_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
-			if np.isnan(self.chisquare_cut):
+			if np.isnan(final_cut):
 				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
 			else:
-				if self.chisquare_cut == contam_cut_data['cut']:
+				if final_cut == contam_cut_data['cut']:
 					Pcontamination = contam_cut_data['Pcontamination']
 					Ploss = contam_cut_data['Ploss']
 				else:
 					Pcontamination = loss_cut_data['Pcontamination']
 					Ploss = loss_cut_data['Ploss']
-				print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
+				print(f'# Final suggested chi-square cut is {final_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
 				if (Pcontamination > self.contam_lim):
 					print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {self.contam_lim:0.2f}%!')
 				if (Ploss > self.loss_lim):
 					print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {self.loss_lim:0.2f}%!')
 		else:
-			print(f'Chi-square cut set to {self.chisquare_cut} manually by user, overriding dynamic chi-square cut')
+			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
 
 
 		# update mask column with final chi-square cut
-		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
+		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
 		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
 
@@ -522,8 +523,9 @@ class cut_lc():
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
-		print('Now applying uncertainty cut...')
+		print('\nNow applying uncertainty cut...')
 
+		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
 		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
@@ -535,20 +537,24 @@ class cut_lc():
 		self.load_settings(args)
 
 		for obj_index in range(0,len(args.tnsnames)):
-			print(f'\nCommencing cut loop for SN {args.tnsnames[obj_index]}')
+			print(f'\nCOMMENCING CUT LOOP FOR SN {args.tnsnames[obj_index]}')
 
 			if args.plot:
-				plot_lc = plot_lc(output_dir=self.output_dir, flags=self.flags)
+				plot = plot_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, flags=self.flags)
 
 			for filt in ['o','c']:
-				print(f'Filter set: {filt}')
+				print(f'\nFILTER SET: {filt}')
 				lc = light_curve(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.input_dir, num_controls=self.num_controls)
-				lc.get_tns_data(self.tns_api_key)
+				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT FOR EACH FILTER
 
-				# SHOULD THE FOLLOWING ALSO BE DONE TO CONTROL LIGHT CURVES?
+				# TO DO: SHOULD THE FOLLOWING ALSO BE DONE TO CONTROL LIGHT CURVES?
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
+
+				# replace 'Mask' column
+				lc.pdastro.t['Mask'] = 0
+
 				# add flux/dflux column
 				print('Adding uJy/duJy column to light curve...')
 				lc.pdastro.t['uJy/duJy'] = lc.pdastro.t['uJy']/lc.pdastro.t['duJy']
@@ -560,22 +566,26 @@ class cut_lc():
 				if self.uncertainties:
 					lc = self.apply_uncertainty_cut(lc)
 
+				if self.controls:
+					lc = self.apply_control_cut(lc)
 
-
-
-
+				# drop extra control lc cut columns and save lc with new 'Mask' column
+				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 				if args.plot:
-					plot_lc.set(lc=lc, filt=filt)
-					plot_lc.plot_lc(xlim_lower=lc.discdate-100, 
-									xlim_upper=lc.discate+800, 
+					plot.set(lc=lc, filt=filt)
+					plot.plot_og_lc(xlim_lower=lc.discdate-100, 
+									xlim_upper=lc.discdate+800, 
 									ylim_lower=-2000, 
 									ylim_upper=3*lc.get_xth_percentile_flux(97))
-					plot_lc.plot_chisquare_cut()
-					plot_lc.plot_uncertainty_cut()
-					plot_lc.plot_controls_cut()
-					plot_lc.plot_all_cuts()
+					plot.plot_chisquare_cut()
+					plot.plot_uncertainty_cut()
+					plot.plot_controls_cut()
+					plot.plot_all_cuts()
+
+			if args.plot:
+				plot.save()
 
 if __name__ == "__main__":
 	cut_lc = cut_lc()

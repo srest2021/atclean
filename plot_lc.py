@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 from light_curve import light_curve
-from pdastro import pdastrostatsclass
+from pdastro import pdastrostatsclass, AnotB
 
 # plotting
 import matplotlib
@@ -30,11 +30,11 @@ plt.rcParams['font.size'] = 12
 plt.style.use('bmh')
 
 class plot_lc():
-	def __init__(self, output_dir, flags):
+	def __init__(self, tnsname, output_dir, flags):
 		self.lc = None
 		self.filt = None
 		self.flags = flags
-		self.pdf = PdfPages(f'{output_dir}/{self.lc.tnsname}/{self.lc.tnsname}_plots.pdf')
+		self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots.pdf')
 
 		self.tchange1 = 58417
 		self.tchange2 = 58882
@@ -44,10 +44,11 @@ class plot_lc():
 		self.filt = filt
 
 	def save(self):
+		print('\nSaving PDF of plots...')
 		self.pdf.close()
 
-	def plot_lc(self, filt, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
-		color = 'orange' if filt == 'o' else 'cyan'
+	def plot_og_lc(self, add2title=None, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
@@ -55,7 +56,7 @@ class plot_lc():
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Flux (µJy)')
 		plt.xlabel('MJD')
-		title = f'SN {self.lc.tnsname} {filt}-band flux'
+		title = f'SN {self.lc.tnsname} {self.filt}-band flux'
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
@@ -63,18 +64,18 @@ class plot_lc():
 		plt.axvline(x=self.tchange2, color='blue')
 
 		# set x and y limits
-		if xlim_lower is None: xlim_lower = self.lc.pdasto.t['MJD'].min() * 0.999
-		if xlim_upper is None: xlim_upper = self.lc.pdasto.t['MJD'].max() * 1.001
-		if ylim_lower is None: ylim_lower = self.lc.pdasto.t['uJy'].min()
-		if ylim_upper is None: ylim_upper = self.lc.pdasto.t['uJy'].max()
+		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
+		if xlim_upper is None: xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
+		if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
+		if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
 		plt.xlim(xlim_lower,xlim_upper)
 		plt.ylim(ylim_lower,ylim_upper)
 
-		plt.errorbar(self.lc.pdasto.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdasto.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdasto.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		plt.scatter(self.lc.pdasto.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdasto.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
+		plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
 		
-		plt.errorbar(self.lc.pdasto.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdasto.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdasto.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
-		plt.scatter(self.lc.pdasto.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdasto.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
+		plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
+		plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
 		
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
 
@@ -90,12 +91,12 @@ class plot_lc():
 		title = f'SN {self.lc.tnsname} {self.filt}-band'
 		if self.lc.is_averaged:
 			title += ', averaged'
-		title += f', mask value {mask}'
+		title += f', mask value {flags}'
 		plt.suptitle(title, fontsize=19, y=1)
 		
 		if ylim_lower is None: ylim_lower = -2000
 		if ylim_upper is None: 
-			ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.afterdiscdate_ix)
+			ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
 		if xlim_lower is None: xlim_lower = self.lc.discdate - 100
 		if xlim_upper is None: xlim_upper = self.lc.discdate + 800
 		cut.set_ylim(ylim_lower, ylim_upper)
@@ -103,12 +104,12 @@ class plot_lc():
 		clean.set_ylim(ylim_lower, ylim_upper)
 		clean.set_xlim(xlim_lower,xlim_upper)
 
-		cut.spines.right.set_visible(False)
-		cut.spines.top.set_visible(False)
-		cut.errorbar(lc.pdastro.t.loc[good_ix,'MJD'], lc.pdastro.t.loc[good_ix,'uJy'], yerr=lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		cut.scatter(lc.pdastro.t.loc[good_ix,'MJD'], lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
-		cut.errorbar(lc.pdastro.t.loc[bad_ix,'MJD'], lc.pdastro.t.loc[bad_ix,'uJy'], yerr=lc.pdastro.t.loc[bad_ix,'duJy'], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
-		cut.scatter(lc.pdastro.t.loc[bad_ix,'MJD'], lc.pdastro.t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
+		#cut.spines.right.set_visible(False)
+		#cut.spines.top.set_visible(False)
+		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
+		cut.errorbar(self.lc.pdastro.t.loc[bad_ix,'MJD'], self.lc.pdastro.t.loc[bad_ix,'uJy'], yerr=self.lc.pdastro.t.loc[bad_ix,'duJy'], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
+		cut.scatter(self.lc.pdastro.t.loc[bad_ix,'MJD'], self.lc.pdastro.t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
 		cut.set_title('All measurements')
 		cut.axhline(linewidth=1,color='k')
 		cut.set_xlabel('MJD')
@@ -116,10 +117,10 @@ class plot_lc():
 
 		fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2)
 
-		clean.spines.right.set_visible(False)
-		clean.spines.top.set_visible(False)
-		clean.errorbar(lc.pdastro.t.loc[good_ix,'MJD'], lc.pdastro.t.loc[good_ix,'uJy'], yerr=lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		clean.scatter(lc.pdastro.t.loc[good_ix,'MJD'], lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
+		#clean.spines.right.set_visible(False)
+		#clean.spines.top.set_visible(False)
+		clean.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		clean.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
 		clean.set_title('Kept measurements only')
 		clean.axhline(linewidth=1,color='k')
 		clean.set_xlabel('MJD')
