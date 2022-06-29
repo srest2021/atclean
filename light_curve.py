@@ -6,6 +6,7 @@ Author: Sofia Rest
 import json, requests, re, time, sys
 from collections import OrderedDict
 from astropy.time import Time
+import numpy as np
 from pdastro import pdastrostatsclass, AorB, AnotB
 
 class light_curve:
@@ -34,7 +35,7 @@ class light_curve:
 			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 		except Exception as e:
-			raise RuntimeError('ERROR in get_tns_data(): '+str(e))
+			raise RuntimeError('# ERROR in get_tns_data(): '+str(e))
 
 		self.ra = json_data['data']['reply']['ra']
 		self.dec = json_data['data']['reply']['dec']
@@ -45,10 +46,12 @@ class light_curve:
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		self.discdate = dateobjects.mjd
 
+		print(f'# RA: {self.ra}, Dec: {self.dec}, discovery date: {self.discdate}')
+
 	# get baseline indices (any indices before the SN discovery date)
 	# NOTE: DO INSTEAD uplim=self.discdate-20 TO MAKE SURE NO SN FLUX RETURNED?
 	def get_baseline_ix(self):
-		if self.discate is None:
+		if self.discdate is None:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
 		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate,exclude_uplim=True)
 
@@ -110,19 +113,19 @@ class light_curve:
 
 	# update given indices of 'Mask' column in the SN light curve with given flag(s)
 	def update_mask_col(self, flag, indices):
-	    if len(indices) > 1:
-	        flag_arr = np.full(self.pdastro.loc[indices,'Mask'].shape, flag)
-	        self.pdastro.loc[indices,'Mask'] = np.bitwise_or(self.pdastro.loc[indices,'Mask'], flag_arr)
-	    elif len(indices) == 1:
-	        self.pdastro.loc[indices[0],'Mask'] = int(self.pdastro.loc[indices[0],'Mask']) | flag
-	    else:
-	        print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')
+		if len(indices) > 1:
+			flag_arr = np.full(self.pdastro.t.loc[indices,'Mask'].shape, flag)
+			self.pdastro.t.loc[indices,'Mask'] = np.bitwise_or(self.pdastro.t.loc[indices,'Mask'], flag_arr)
+		elif len(indices) == 1:
+			self.pdastro.t.loc[indices[0],'Mask'] = int(self.pdastro.t.loc[indices[0],'Mask']) | flag
+		else:
+			print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')
 
 	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):
 		if indices is None:
-	        indices = self.pdastro.getindices()
-	    if len(indices)==0: 
-	        return None
-	    else:
-	        return np.percentile(lc.pdastro.t.loc[indices, 'uJy'], percentile)
+			indices = self.pdastro.getindices()
+		if len(indices)==0: 
+			return None
+		else:
+			return np.percentile(lc.pdastro.t.loc[indices, 'uJy'], percentile)

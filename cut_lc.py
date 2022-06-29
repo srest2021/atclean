@@ -3,8 +3,8 @@
 @author: Sofia Rest
 """
 
-import sys
-from copy import deepcopys
+import sys, argparse, configparser, re
+from copy import deepcopy
 import pandas as pd
 import numpy as np
 
@@ -104,20 +104,20 @@ class cut_lc():
 
 		self.chisquares = args.chisquares
 		if self.chisquares:
-			print(f'Chi-square cut: {self.chisquares}')
-			if isdigit(cfg['Chi-square cut settings']['override_cut']):
+			print(f'\nChi-square cut: {self.chisquares}')
+			if cfg['Chi-square cut settings']['override_cut'].isdigit():
 				self.chisquare_cut = cfg['Chi-square cut settings']['override_cut']
 				print(f'# Overriding dynamic chi-square cut with manual cut of x2 = {self.chisquare_cut}')
 			else:
-				self.stn_bound = cfg['Chi-square cut settings']['stn_bound']
-				self.min_cut = cfg['Chi-square cut settings']['min_cut']
-				self.max_cut = cfg['Chi-square cut settings']['max_cut']
-				self.cut_step = cfg['Chi-square cut settings']['cut_step']
-				self.contam_lim = cfg['Chi-square cut settings']['contamination_limit']
-				self.loss_lim = cfg['Chi-square cut settings']['loss_limit']
+				self.stn_bound = float(cfg['Chi-square cut settings']['stn_bound'])
+				self.min_cut = int(cfg['Chi-square cut settings']['min_cut'])
+				self.max_cut = int(cfg['Chi-square cut settings']['max_cut'])
+				self.cut_step = int(cfg['Chi-square cut settings']['cut_step'])
+				self.contam_lim = float(cfg['Chi-square cut settings']['contamination_limit'])
+				self.loss_lim = float(cfg['Chi-square cut settings']['loss_limit'])
 				self.lim_to_prioritize = cfg['Chi-square cut settings']['limit_to_prioritize']
-				if not(self.lim_to_prioritize is 'loss') and not(self.lim_to_prioritize is 'contamination'):
-					raise RuntimeError('ERROR: Limit to prioritize (limit_to_prioritize in config file) must be set to \'contamination\' or \'loss\'!')
+				if not(self.lim_to_prioritize == 'loss') and not(self.lim_to_prioritize == 'contamination'):
+					raise RuntimeError(f'ERROR: Limit to prioritize (limit_to_prioritize in config file) must be set to \'contamination\' or \'loss\' but currently set to {self.lim_to_prioritize}!')
 				print(f'# abs(flux/dflux) bound that determines a "good" measurement vs. "bad" measurement: {self.stn_bound}')
 				print(f'# Cut range: [{self.min_cut}, {self.max_cut}], both ends inclusive, with step size {self.cut_step}')
 				print(f'# Contamination percent limit: {self.contam_lim}')
@@ -126,13 +126,13 @@ class cut_lc():
 
 		self.uncertainties = args.uncertainties
 		if self.uncertainties:
-			print(f'Uncertainty cut: {self.uncertainties}')
+			print(f'\nUncertainty cut: {self.uncertainties}')
 			self.uncertainty_cut = cfg['Uncertainty cut settings']['cut']
 			print(f'# Set to cut at dflux = {self.uncertainty_cut}')
 
 		self.controls = args.controls
 		if self.controls:
-			print(f'Control light curve cut: {self.controls}')
+			print(f'\nControl light curve cut: {self.controls}')
 			self.num_controls = cfg['Control light curve settings']['num_controls']
 			self.x2_max = cfg['Control light curve settings']['x2_max']
 			self.stn_max = cfg['Control light curve settings']['stn_max']
@@ -154,6 +154,8 @@ class cut_lc():
 		print('# Getting region indices around SN... ')
 
 		baseline_ix = lc.get_baseline_ix()
+		tchange1 = 58417
+		tchange2 = 58882
 
 		regions = {}
 		regions['t0'] = lc.pdastro.ix_inrange(colnames=['MJD'], uplim=tchange1)
@@ -192,9 +194,9 @@ class cut_lc():
 			else:
 				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
 			if len(regions['b_t%d'%region_index]) > 0:
-				print('## TEMPLATE REGION b_t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['b_t%d'%region_index][-1],'MJD']))
+				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['b_t%d'%region_index][-1],'MJD']))
 			else:
-				print('## TEMPLATE REGION b_t%d BASELINE MJD RANGE: not found' % region_index)
+				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: not found' % region_index)
 
 		# check to make sure baseline flux is still consistent by getting median of first and last halves of affected region
 		first_i = regions['b_t%d'%adjust_region_index][0]
@@ -202,7 +204,7 @@ class cut_lc():
 		last_i  = regions['b_t%d'%adjust_region_index][-1]
 		median1 = np.median(lc.pdastro.t.loc[lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=lc.pdastro.t.loc[first_i,'MJD'], uplim=lc.pdastro.t.loc[mid_i,'MJD']), 'uJy'])
 		median2 = np.median(lc.pdastro.t.loc[lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=lc.pdastro.t.loc[mid_i+1,'MJD'], uplim=lc.pdastro.t.loc[last_i,'MJD']), 'uJy'])
-		print(f'## Checking that baseline flux is consistent throughout adjusted region...\n## Median of first half: {median1:%0.2f}\n## Median of second half: {median2:%0.2f}')
+		print(f'## Checking that baseline flux is consistent throughout adjusted region...\n## Median of first half: {median1:0.2f}\n## Median of second half: {median2:0.2f}')
 
 		lc.corrected_baseline_ix = np.concatenate([regions['b_t0'], regions['b_t1'], regions['b_t2']])
 		lc.during_sn_ix = AnotB(lc.pdastro.getindices(), lc.corrected_baseline_ix)
@@ -222,17 +224,17 @@ class cut_lc():
 
 		# for each region, adjust for template change by subtracting median of that region's baseline flux
 		for region_index in range(0,3):
-			region_i = regions['b_t%d'%region_index]
+			region_i = regions[f'b_t{region_index}']
 			if len(region_i) > 0:
-				print(f'# Adjusting for template change in region b_t{region_index:01d} from {lc.pdastro.t.loc[region_i[0],'MJD']:0.2f}-{lc.pdastro.t.loc[region_i[-1],'MJD']:0.2f}...')
-				print(f'## Baseline median before: {np.median(lc.pdastro.t.loc[region_i,'uJy'])}')
+				print(f'# Adjusting for template change in region b_t{region_index} from {lc.pdastro.t.loc[region_i[0],"MJD"]:0.2f}-{lc.pdastro.t.loc[region_i[-1],"MJD"]:0.2f}...')
+				print(f'## Baseline median before: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
 				if len(AandB(region_i,b_goodx2_i)) > 0:
 					median = np.median(lc.pdastro.t.loc[AandB(region_i,b_goodx2_i),'uJy'])
 				else:
 					median = np.median(lc.pdastro.t.loc[region_i,'uJy'])
 				print(f'## Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
 				lc.pdastro.t.loc[regions['t%d'%region_index],'uJy'] -= median
-				print(f'## Baseline median now: {np.median(lc.pdastro.t.loc[region_i,'uJy'])}')
+				print(f'## Baseline median now: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 
@@ -252,9 +254,9 @@ class cut_lc():
 		# drop any extra columns
 		if len(dropcols)>0: 
 			print('Dropping extra columns: ',dropcols)
-			lc.pdastro.t = lc.pdastro.t.drop(columns=dropcols,inplace=True)
+			lc.pdastro.t.drop(columns=dropcols,inplace=True)
 
-		# add new mask column
+		# replace 'Mask' column
 		lc.pdastro.t['Mask'] = 0
 
 		return lc
@@ -311,7 +313,7 @@ class cut_lc():
 	def get_limcuts_data(self, lc, name, cut, case):
 		indices = lc.corrected_baseline_ix
 	  
-		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'],lowlim=-stn_bound,uplim=stn_bound,indices=indices)
+		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'],lowlim=-self.stn_bound,uplim=self.stn_bound,indices=indices)
 		b_bad_i = AnotB(indices, b_good_i)
 		b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'],uplim=cut,indices=indices)
 		b_cut_i = AnotB(indices, b_kept_i)
@@ -336,8 +338,10 @@ class cut_lc():
 		data['Ploss'] = 100*len(AandB(b_good_i,b_cut_i))/len(b_good_i)
 		data['Pcontamination'] = 100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i)
 
+		return data
+
 	# get the optimal contamination and loss cuts according to percentages in limcuts table
-	def get_limcuts(self, limcuts):
+	def get_limcuts(self, lc, limcuts):
 		contam_cut = None
 		loss_cut = None
 		contam_case = None
@@ -347,12 +351,12 @@ class cut_lc():
 		min_loss = sortby_loss.loc[0,'Ploss']
 		max_loss = sortby_loss.loc[len(sortby_loss)-1,'Ploss']
 		# if all loss below lim, loss_cut is min cut
-		if min_loss < loss_lim and max_loss < loss_lim:
+		if min_loss < self.loss_lim and max_loss < self.loss_lim:
 			loss_case = 'below lim'
 			loss_cut = limcuts.t.loc[0,'PSF Chi-Square Cut']
 		else:
 			# else if all loss above lim, loss_cut is min cut with min% loss
-			if min_loss > loss_lim and max_loss > loss_lim:
+			if min_loss > self.loss_lim and max_loss > self.loss_lim:
 				loss_case = 'above lim'
 				a = np.where(limcuts.t['Ploss'] == min_loss)[0]
 				b = limcuts.t.iloc[a]
@@ -361,14 +365,14 @@ class cut_lc():
 			# else if loss crosses lim at some point, loss_cut is min cut with max% loss <= loss_lim
 			else:
 				loss_case = 'crosses lim'
-				valid_cuts = sortby_loss[sortby_loss['Ploss'] <= loss_lim]
+				valid_cuts = sortby_loss[sortby_loss['Ploss'] <= self.loss_lim]
 				a = np.where(limcuts.t['Ploss'] == valid_cuts.loc[len(valid_cuts)-1,'Ploss'])[0]
 				# sort by cuts
 				b = limcuts.t.iloc[a]
 				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
 				# get midpoint of loss1 and loss2 (two points on either side of lim)
 				loss1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[0,'PSF Chi-Square Cut'])[0][0]
-				if limcuts.t.loc[loss1_i,'Ploss'] == loss_lim:
+				if limcuts.t.loc[loss1_i,'Ploss'] == self.loss_lim:
 					loss_cut = limcuts.t.loc[loss1_i,'PSF Chi-Square Cut']
 				else:
 					loss2_i = loss1_i - 1
@@ -377,18 +381,18 @@ class cut_lc():
 					loss_y = np.array([limcuts.t.loc[loss1_i,'Ploss'], limcuts.t.loc[loss2_i,'Ploss']])
 					contam_line = np.polyfit(x,contam_y,1)
 					loss_line = np.polyfit(x,loss_y,1)
-					loss_cut = (loss_lim-loss_line[1])/loss_line[0]
+					loss_cut = (self.loss_lim-loss_line[1])/loss_line[0]
 
 		sortby_contam = limcuts.t.iloc[(limcuts.t['Pcontamination']).argsort()].reset_index()
 		min_contam = sortby_contam.loc[0,'Pcontamination']
 		max_contam = sortby_contam.loc[len(sortby_contam)-1,'Pcontamination']
 		# if all contam below lim, contam_cut is max cut
-		if min_contam < contam_lim and max_contam < contam_lim:
+		if min_contam < self.contam_lim and max_contam < self.contam_lim:
 			contam_case = 'below lim'
 			contam_cut = limcuts.t.loc[len(limcuts.t)-1,'PSF Chi-Square Cut']
 		else:
 			# else if all contam above lim, contam_cut is max cut with min% contam
-			if min_contam > contam_lim and max_contam > contam_lim:
+			if min_contam > self.contam_lim and max_contam > self.contam_lim:
 				contam_case = 'above lim'
 				a = np.where(limcuts.t['Pcontamination'] == min_contam)[0]
 				b = limcuts.t.iloc[a]
@@ -397,14 +401,14 @@ class cut_lc():
 			# else if contam crosses lim at some point, contam_cut is max cut with max% contam <= contam_lim
 			else:
 				contam_case = 'crosses lim'
-				valid_cuts = sortby_contam[sortby_contam['Pcontamination'] <= contam_lim]
+				valid_cuts = sortby_contam[sortby_contam['Pcontamination'] <= self.contam_lim]
 				a = np.where(limcuts.t['Pcontamination'] == valid_cuts.loc[len(valid_cuts)-1,'Pcontamination'])[0]
 				# sort by cuts
 				b = limcuts.t.iloc[a]
 				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
 				# get midpoint of contam1 and contam2 (two points on either side of lim)
 				contam1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[len(c)-1,'PSF Chi-Square Cut'])[0][0]
-				if limcuts.t.loc[contam1_i,'Pcontamination'] == contam_lim:
+				if limcuts.t.loc[contam1_i,'Pcontamination'] == self.contam_lim:
 					contam_cut = limcuts.t.loc[contam1_i,'PSF Chi-Square Cut']
 				else:
 					contam2_i = contam1_i + 1
@@ -413,7 +417,7 @@ class cut_lc():
 					loss_y = np.array([limcuts.t.loc[contam1_i,'Ploss'], limcuts.t.loc[contam2_i,'Ploss']])
 					contam_line = np.polyfit(x,contam_y,1)
 					loss_line = np.polyfit(x,loss_y,1)
-					contam_cut = (contam_lim-contam_line[1])/contam_line[0]
+					contam_cut = (self.contam_lim-contam_line[1])/contam_line[0]
 
 		loss_cut_data = self.get_limcuts_data(lc, 'loss_cut', loss_cut, loss_case)
 		contam_cut_data = self.get_limcuts_data(lc, 'contam_cut', contam_cut, contam_case)
@@ -477,39 +481,41 @@ class cut_lc():
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_chisquare_cut(self, lc):
 		print('Now applying dynamic chi-square cut...')
-		
-		limcuts = self.get_limcuts_table(lc)
 
-		loss_cut_data, contam_cut_data = self.get_limcuts(limcuts)
+		if self.chisquare_cut is None:
+			limcuts = self.get_limcuts_table(lc)
+			loss_cut_data, contam_cut_data = self.get_limcuts(lc, limcuts)
 
-		print(f'# Contamination cut according to given contam_limit, with {contam_cut_data['Pcontamination']:0.2f}% contamination and {contam_cut_data['Ploss']:0.2f}% loss: {contam_cut_data['cut']:0.2f}')
-		if contam_cut_data['case'] == 'above lim':
-			print(f'## WARNING: Contamination cut not possible with contamination <= contam_lim {self.contam_lim:0.2f}%!')
-		print(f'# Loss cut according to given loss_limit, with {loss_cut_data['Pcontamination']:0.2f}% contamination and {loss_cut_data['Ploss']:0.2f}% loss: {loss_cut_data['cut']:0.2f}')
-		if loss_cut_data['case'] == 'above lim':
-			print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
+			print(f'# Contamination cut according to given contam_limit, with {contam_cut_data["Pcontamination"]:0.2f}% contamination and {contam_cut_data["Ploss"]:0.2f}% loss: {contam_cut_data["cut"]:0.2f}')
+			if contam_cut_data['case'] == 'above lim':
+				print(f'## WARNING: Contamination cut not possible with contamination <= contam_lim {self.contam_lim:0.2f}%!')
+			print(f'# Loss cut according to given loss_limit, with {loss_cut_data["Pcontamination"]:0.2f}% contamination and {loss_cut_data["Ploss"]:0.2f}% loss: {loss_cut_data["cut"]:0.2f}')
+			if loss_cut_data['case'] == 'above lim':
+				print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
 
-		self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
+			self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
-		if np.isnan(self.chisquare_cut):
-			raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
-		else:
-			if self.chisquare_cut == contam_cut:
-				Pcontamination = contam_cut_data['Pcontamination']
-				Ploss = contam_cut_data['Ploss']
+			if np.isnan(self.chisquare_cut):
+				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
 			else:
-				Pcontamination = loss_cut_data['Pcontamination']
-				Ploss = loss_cut_data['Ploss']
-			print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
-			if (Pcontamination > contam_lim):
-				print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {contam_lim:0.2f}%!')
-			if (Ploss > loss_lim):
-				print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {loss_lim:0.2f}%!')
+				if self.chisquare_cut == contam_cut_data['cut']:
+					Pcontamination = contam_cut_data['Pcontamination']
+					Ploss = contam_cut_data['Ploss']
+				else:
+					Pcontamination = loss_cut_data['Pcontamination']
+					Ploss = loss_cut_data['Ploss']
+				print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
+				if (Pcontamination > self.contam_lim):
+					print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {self.contam_lim:0.2f}%!')
+				if (Ploss > self.loss_lim):
+					print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {self.loss_lim:0.2f}%!')
+		else:
+			print(f'Chi-square cut set to {self.chisquare_cut} manually by user, overriding dynamic chi-square cut')
 
 
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
-		lc.update_mask_col(flags['flag_chisquare'], cut_ix)
+		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
 		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
 
 		return lc
@@ -519,7 +525,7 @@ class cut_lc():
 		print('Now applying uncertainty cut...')
 
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
-		lc.update_mask_col(flags['flag_uncertainty'], cut_ix)
+		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
 		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
 
 		return lc
@@ -529,7 +535,7 @@ class cut_lc():
 		self.load_settings(args)
 
 		for obj_index in range(0,len(args.tnsnames)):
-			print(f'\nCommencing cut loop for SN {lc.tnsname}')
+			print(f'\nCommencing cut loop for SN {args.tnsnames[obj_index]}')
 
 			if args.plot:
 				plot_lc = plot_lc(output_dir=self.output_dir, flags=self.flags)
@@ -539,10 +545,16 @@ class cut_lc():
 				lc = light_curve(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.input_dir, num_controls=self.num_controls)
 				lc.get_tns_data(self.tns_api_key)
+
+				# SHOULD THE FOLLOWING ALSO BE DONE TO CONTROL LIGHT CURVES?
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
+				# add flux/dflux column
+				print('Adding uJy/duJy column to light curve...')
+				lc.pdastro.t['uJy/duJy'] = lc.pdastro.t['uJy']/lc.pdastro.t['duJy']
+				lc.pdastro.t = lc.pdastro.t.replace([np.inf, -np.inf], np.nan)
 
-				if self.chisquares and self.chisquare_cut is None:
+				if self.chisquares:
 					lc = self.apply_chisquare_cut(lc)
 
 				if self.uncertainties:
