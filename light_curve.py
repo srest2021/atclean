@@ -77,7 +77,7 @@ class light_curve:
 
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
-		print('Saving SN light curve...')
+		print('\nSaving SN light curve...')
 
 		if filt is None:
 			o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')

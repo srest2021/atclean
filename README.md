@@ -53,6 +53,7 @@ Arguments (will override default config file settings if specified):
 - `-x` or `--chisquares`: apply chi-square cut
 - `-u` or `--uncertainties`: apply uncertainty cut
 - `-c` or `--controls`: apply control light curve cut
+- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlaslc.ini`)
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlaslc.ini` config file

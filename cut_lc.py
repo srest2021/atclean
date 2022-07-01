@@ -517,7 +517,7 @@ class cut_lc():
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
-		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+		print(f'# Total % of data cut: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
 
@@ -528,13 +528,112 @@ class cut_lc():
 		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
-		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+		print(f'# Total % of data cut: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+
+		return lc
+
+	def verify_mjds(self, lc):
+		print('# Making sure SN and control light curve MJDs match up exactly...')
+		# sort SN lc by MJD
+		mjd_sorted_i = lc.pdastro.ix_sort_by_cols('MJD')
+		lc.pdastro.t = lc.pdastro.t.loc[mjd_sorted_i]
+		sn_sorted = lc.pdastro.t.loc[mjd_sorted_i,'MJD'].to_numpy()
+
+		for control_index in range(1,self.num_controls+1):
+			# sort control light curves by MJD
+			mjd_sorted_i = lc.lcs[control_index].ix_sort_by_cols('MJD')
+			control_sorted = lc.lcs[control_index].t.loc[mjd_sorted_i,'MJD'].to_numpy()
+			
+			# compare control light curve to SN light curve and, if out of agreement, fix
+			if (len(sn_sorted) != len(control_sorted)) or (np.array_equal(sn_sorted, control_sorted) is False):
+				print('## MJDs out of agreement for control light curve %03d, fixing...' % control_index)
+
+				mjds_onlysn = AnotB(sn_sorted, control_sorted)
+				mjds_onlycontrol = AnotB(control_sorted, sn_sorted)
+
+				# for the MJDs only in SN, add row with that MJD to control light curve, with all values of other columns NaN
+				if len(mjds_onlysn) > 0:
+					print('### Adding %d NaN rows to control light curve...' % len(mjds_onlysn))
+					for mjd in mjds_onlysn:
+						lc.lcs[control_index].newrow({'MJD':mjd,'Mask':0})
+				
+				# remove indices of rows in control light curve for which there is no MJD in the SN lc
+				if len(mjds_onlycontrol) > 0:
+					print('### Removing %d control light curve rows without matching SN rows...' % len(mjds_onlycontrol))
+					indices2skip = []
+					for mjd in mjds_onlycontrol:
+						ix = lc.lcs[control_index].ix_equal('MJD',mjd)
+						if len(ix)!=1:
+							raise RuntimeError(f'### Couldn\'t find MJD={mjd} in column MJD, but should be there!')
+						indices2skip.extend(ix)
+					indices = AnotB(lc.lcs[control_index].getindices(),indices2skip)
+				else:
+					indices = lc.lcs[control_index].getindices()
+				
+				ix_sorted = lc.lcs[control_index].ix_sort_by_cols('MJD',indices=indices)
+				lc.lcs[control_index].t = lc.lcs[control_index].t.loc[ix_sorted]
+		
+		return lc 
+
+	def get_control_stats(self, lc):
+		print('# Calculating control light curve statistics...')
+
+		# construct arrays for control lc data
+		uJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
+		duJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
+		Mask = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), 0, dtype=np.int32)
+		
+		for control_index in range(1,self.num_controls+1):
+			if (len(lc.lcs[control_index].t) != len(lc.pdastro.t['MJD'])) or (np.array_equal(lc.pdastro.t['MJD'], lc.lcs[control_index].t['MJD']) is False):
+				raise RuntimeError(f'## sERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds().')
+			else:
+				uJy[control_index-1,:] = lc.lcs[control_index].t['uJy']
+				duJy[control_index-1,:] = lc.lcs[control_index].t['duJy']
+				Mask[control_index-1,:] = lc.lcs[control_index].t['Mask']
+
+		c2_param2columnmapping = lc.pdastro.intializecols4statparams(prefix='c2_',format4outvals='{:.2f}',skipparams=['converged','i'])
+
+		for index in range(uJy.shape[-1]):
+			pda4MJD = pdastrostatsclass()
+			pda4MJD.t['uJy'] = uJy[1:,index]
+			pda4MJD.t['duJy'] = duJy[1:,index]
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[1:,index], self.flags['flag_chisquare']|self.flags['flag_uncertainty'])
+			
+			pda4MJD.calcaverage_sigmacutloop('uJy',noisecol='duJy',maskcol='Mask',maskval=(self.flags['flag_chisquare']|self.flags['flag_uncertainty']),verbose=1,Nsigma=3.0,median_firstiteration=True)
+			lc.pdastro.statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index) 
 
 		return lc
 
 	def apply_control_cut(self, lc):
 		print('\nNow applying control light curve cut...')
 
+		# clear any previous flags in control light curves' 'Mask' columns
+		for control_index in range(1,self.num_controls+1):
+			lc.lcs[control_index].t['Mask'] = 0
+
+		lc = self.verify_mjds(lc)
+		lc = self.get_control_stats(lc)
+
+		print('# Flagging SN light curve based on control light curve statistics...')
+		lc.pdastro.t['c2_abs_stn'] = lc.pdastro.t['c2_mean']/lc.pdastro.t['c2_mean_err']
+
+		# flag measurements according to given bounds
+		flag_x2_i = lc.pdastro.ix_inrange(colnames=['c2_X2norm'], lowlim=self.x2_max, exclude_lowlim=True)
+		lc.update_mask_col(self.flags['flag_controls_x2'], flag_x2_i)
+		flag_stn_i = lc.pdastro.ix_inrange(colnames=['c2_abs_stn'], lowlim=self.stn_max, exclude_lowlim=True)
+		lc.update_mask_col(self.flags['flag_controls_stn'], flag_stn_i)
+		flag_nclip_i = lc.pdastro.ix_inrange(colnames=['c2_Nclip'], lowlim=self.Nclip_max, exclude_lowlim=True)
+		lc.update_mask_col(self.flags['flag_controls_Nclip'], flag_nclip_i)
+		flag_ngood_i = lc.pdastro.ix_inrange(colnames=['c2_Ngood'], uplim=self.Ngood_min, exclude_uplim=True)
+		lc.update_mask_col(self.flags['flag_controls_Ngood'], flag_ngood_i)
+
+		# update mask column with control light curve cut on any measurements flagged according to given bounds
+		zero_Nclip_i = lc.pdastro.ix_equal('c2_Nclip', 0)
+		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['flag_controls_x2']|self.flags['flag_controls_stn']|self.flags['flag_controls_Nclip']|self.flags['flag_controls_Ngood'])
+		lc.update_mask_col(self.flags['flag_controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
+		lc.update_mask_col(self.flags['flag_controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
+		print(f'# Total % of data cut: {100*len(AnotB(lc.pdastro.getindices(),unmasked_i))/len(lc.pdastro.getindices()):0.2f}%')
+		
 		return lc
 
 	def cut_loop(self):
@@ -557,7 +656,7 @@ class cut_lc():
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
-				# replace 'Mask' column
+				# clear 'Mask' column
 				lc.pdastro.t['Mask'] = 0
 
 				# add flux/dflux column
