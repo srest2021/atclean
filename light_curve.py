@@ -44,16 +44,15 @@ class light_curve:
 		date = list(discoverydate.partition(' '))[0]
 		time = list(discoverydate.partition(' '))[2]
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
-		self.discdate = dateobjects.mjd
+		self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices
 
 		print(f'# RA: {self.ra}, Dec: {self.dec}, discovery date: {self.discdate}')
 
 	# get baseline indices (any indices before the SN discovery date)
-	# NOTE: DO INSTEAD uplim=self.discdate-20 TO MAKE SURE NO SN FLUX RETURNED?
 	def get_baseline_ix(self):
 		if self.discdate is None:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
-		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate,exclude_uplim=True)
+		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate-20,exclude_uplim=True)
 
 	# get a light curve filename for saving/loading
 	def get_filename(self, filt, control_index, directory):
