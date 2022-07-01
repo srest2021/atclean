@@ -78,8 +78,8 @@ class plot_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-		plt.axvline(x=self.tchange1, color='blue', label='ATLAS template change')
-		plt.axvline(x=self.tchange2, color='blue')
+		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange2, color='magenta')
 
 		# set x and y limits
 		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
@@ -112,8 +112,8 @@ class plot_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-		plt.axvline(x=self.tchange1, color='blue', label='ATLAS template change')
-		plt.axvline(x=self.tchange2, color='blue')
+		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange2, color='magenta')
 
 		# set x and y limits
 		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
@@ -122,21 +122,21 @@ class plot_lc():
 		if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
 		plt.xlim(xlim_lower,xlim_upper)
 		plt.ylim(ylim_lower,ylim_upper)
+		
+		for control_index in range(1, len(self.lc.lcs)+1):
+			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t['duJy'], fmt='none',ecolor='blue',elinewidth=1,c='blue')
+			if control_index == 1:
+				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{len(self.lc.lcs)} control light curves')
+			else:
+				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')
 
 		plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
 		
 		plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
 		plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
-		
-		for control_index in range(1, len(self.lc.lcs)+1):
-			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t['duJy'], fmt='none',ecolor='blue',elinewidth=1,c='blue')
-			if control_index == 1:
-				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{len(self.lc.lcs)} control light curve')
-			else:
-				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')
 
-		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
+		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
 		self.pdf.savefig(fig)
 
@@ -189,4 +189,4 @@ class plot_lc():
 		clean.set_ylabel('Flux (uJy)')
 		clean.set_ylim(ylim_lower, ylim_upper)
 
-		self.pdf.savefig(fig)
+		self.pdf.savefig(fig, bbox_inches='tight')
