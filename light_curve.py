@@ -91,10 +91,10 @@ class light_curve:
 			for control_index in range(1,len(self.lcs)+1):
 				if filt is None:
 					for filt_ in ['c','o']:
-						filt_ix = self.lcs[control_index].pdastro.ix_equal(colnames=['F'],val=filt_)
-						self.lcs[control_index].pdastro.write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+						filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
+						self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
 				else:
-					self.lcs[control_index].pdastro.write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
+					self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def load(self, filt, input_dir, num_controls=None):
@@ -104,7 +104,8 @@ class light_curve:
 		if not(num_controls is None):
 			print(f'Loading {num_controls} control light curves...')
 			for control_index in range(1,num_controls+1):
-				self.lcs[control_index].pdastro.load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
+				self.lcs[control_index] = pdastrostatsclass()
+				self.lcs[control_index].load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
 
 	# add downloaded control light curve to control light curve dictionary
 	def add_control_lc(self, control_lc):

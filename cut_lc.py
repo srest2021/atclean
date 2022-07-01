@@ -134,10 +134,10 @@ class cut_lc():
 		if self.controls:
 			print(f'\nControl light curve cut: {self.controls}')
 			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
-			self.x2_max = float(cfg['Control light curve settings']['x2_max'])
-			self.stn_max = float(cfg['Control light curve settings']['stn_max'])
-			self.Nclip_max = int(cfg['Control light curve settings']['Nclip_max'])
-			self.Ngood_min = int(cfg['Control light curve settings']['Ngood_min'])
+			self.x2_max = float(cfg['Control light curve cut settings']['x2_max'])
+			self.stn_max = float(cfg['Control light curve cut settings']['stn_max'])
+			self.Nclip_max = int(cfg['Control light curve cut settings']['Nclip_max'])
+			self.Ngood_min = int(cfg['Control light curve cut settings']['Ngood_min'])
 			print(f'# Bound for an epoch\'s maximum chi-square: {self.x2_max}')
 			print(f'# Bound for an epoch\'s maximum abs(flux/dflux) ratio: {self.stn_max}')
 			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.Nclip_max}')
@@ -517,7 +517,7 @@ class cut_lc():
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
-		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
+		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
 
@@ -528,7 +528,12 @@ class cut_lc():
 		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
-		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices())}%')
+		print(f'# Total % of data cut: {len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+
+		return lc
+
+	def apply_control_cut(self, lc):
+		print('\nNow applying control light curve cut...')
 
 		return lc
 
