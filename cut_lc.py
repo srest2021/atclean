@@ -441,7 +441,7 @@ class cut_lc():
 		final_cut = None
 		if case1 and not case2 and not case3: # 1 and 1
 			print(f'# Valid chi-square cut range from {loss_cut:0.2f} to {contam_cut:0.2f}! Setting to 3...')
-			final_cut = cut_start
+			final_cut = self.min_cut
 		elif case1: # 1
 			if case2: # and 2
 				if loss_case == 'above lim':
@@ -517,7 +517,7 @@ class cut_lc():
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
-		print(f'# Total % of data cut: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
 
@@ -528,7 +528,7 @@ class cut_lc():
 		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
-		print(f'# Total % of data cut: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
 

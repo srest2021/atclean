@@ -82,12 +82,18 @@ class plot_lc():
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		# set x and y limits
+		"""
 		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
 		if xlim_upper is None: xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
-		if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
-		if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
-		plt.xlim(xlim_lower,xlim_upper)
-		plt.ylim(ylim_lower,ylim_upper)
+		#if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
+		#if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
+		if ylim_lower is None: 
+			ylim_lower = -2000
+		if ylim_upper is None: 
+			ylim_upper = 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
+		"""
+		#plt.xlim(xlim_lower,xlim_upper)
+		#plt.ylim(ylim_lower,ylim_upper)
 
 		plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
@@ -116,12 +122,20 @@ class plot_lc():
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		# set x and y limits
-		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
-		if xlim_upper is None: xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
-		if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
-		if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
-		plt.xlim(xlim_lower,xlim_upper)
-		plt.ylim(ylim_lower,ylim_upper)
+		"""
+		if xlim_lower is None: 
+			xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
+		if xlim_upper is None: 
+			xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
+		#if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
+		#if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
+		if ylim_lower is None: 
+			ylim_lower = -2000
+		if ylim_upper is None: 
+			ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
+		"""
+		#plt.xlim(xlim_lower,xlim_upper)
+		#plt.ylim(ylim_lower,ylim_upper)
 		
 		for control_index in range(1, len(self.lc.lcs)+1):
 			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t['duJy'], fmt='none',ecolor='blue',elinewidth=1,c='blue')
@@ -156,18 +170,16 @@ class plot_lc():
 			title += f', {add2title}'
 		plt.suptitle(title, fontsize=19, y=1)
 		
-		if ylim_lower is None: ylim_lower = -2000
-		if ylim_upper is None: 
-			ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
+		#if ylim_lower is None: ylim_lower = -2000
+		#if ylim_upper is None: 
+			#ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
 		if xlim_lower is None: xlim_lower = self.lc.discdate - 100
 		if xlim_upper is None: xlim_upper = self.lc.discdate + 800
-		cut.set_ylim(ylim_lower, ylim_upper)
+		#cut.set_ylim(ylim_lower, ylim_upper)
 		cut.set_xlim(xlim_lower,xlim_upper)
-		clean.set_ylim(ylim_lower, ylim_upper)
+		#clean.set_ylim(ylim_lower, ylim_upper)
 		clean.set_xlim(xlim_lower,xlim_upper)
 
-		#cut.spines.right.set_visible(False)
-		#cut.spines.top.set_visible(False)
 		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
 		cut.errorbar(self.lc.pdastro.t.loc[bad_ix,'MJD'], self.lc.pdastro.t.loc[bad_ix,'uJy'], yerr=self.lc.pdastro.t.loc[bad_ix,'duJy'], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
@@ -179,8 +191,6 @@ class plot_lc():
 
 		fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2)
 
-		#clean.spines.right.set_visible(False)
-		#clean.spines.top.set_visible(False)
 		clean.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		clean.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
 		clean.set_title('Kept measurements only')
