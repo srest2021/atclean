@@ -89,7 +89,7 @@ class light_curve:
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves...')
-			for control_index in range(1,len(self.lcs)):
+			for control_index in range(1,len(self.lcs)+1):
 				if filt is None:
 					for filt_ in ['c','o']:
 						filt_ix = self.lcs[control_index].pdastro.ix_equal(colnames=['F'],val=filt_)

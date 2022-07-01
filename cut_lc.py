@@ -127,17 +127,17 @@ class cut_lc():
 		self.uncertainties = args.uncertainties
 		if self.uncertainties:
 			print(f'\nUncertainty cut: {self.uncertainties}')
-			self.uncertainty_cut = cfg['Uncertainty cut settings']['cut']
+			self.uncertainty_cut = float(cfg['Uncertainty cut settings']['cut'])
 			print(f'# Set to cut at dflux = {self.uncertainty_cut}')
 
 		self.controls = args.controls
 		if self.controls:
 			print(f'\nControl light curve cut: {self.controls}')
-			self.num_controls = cfg['Control light curve settings']['num_controls']
-			self.x2_max = cfg['Control light curve settings']['x2_max']
-			self.stn_max = cfg['Control light curve settings']['stn_max']
-			self.Nclip_max = cfg['Control light curve settings']['Nclip_max']
-			self.Ngood_min = cfg['Control light curve settings']['Ngood_min']
+			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
+			self.x2_max = float(cfg['Control light curve settings']['x2_max'])
+			self.stn_max = float(cfg['Control light curve settings']['stn_max'])
+			self.Nclip_max = int(cfg['Control light curve settings']['Nclip_max'])
+			self.Ngood_min = int(cfg['Control light curve settings']['Ngood_min'])
 			print(f'# Bound for an epoch\'s maximum chi-square: {self.x2_max}')
 			print(f'# Bound for an epoch\'s maximum abs(flux/dflux) ratio: {self.stn_max}')
 			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.Nclip_max}')
@@ -548,7 +548,7 @@ class cut_lc():
 				lc.load(filt, self.input_dir, num_controls=self.num_controls)
 				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT FOR EACH FILTER
 
-				# TO DO: SHOULD THE FOLLOWING ALSO BE DONE TO CONTROL LIGHT CURVES?
+				# TO DO: DO ALSO FOR CONTROL LCS
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
@@ -560,28 +560,33 @@ class cut_lc():
 				lc.pdastro.t['uJy/duJy'] = lc.pdastro.t['uJy']/lc.pdastro.t['duJy']
 				lc.pdastro.t = lc.pdastro.t.replace([np.inf, -np.inf], np.nan)
 
-				if self.chisquares:
-					lc = self.apply_chisquare_cut(lc)
-
-				if self.uncertainties:
-					lc = self.apply_uncertainty_cut(lc)
-
-				if self.controls:
-					lc = self.apply_control_cut(lc)
-
-				# drop extra control lc cut columns and save lc with new 'Mask' column
-				lc = self.drop_extra_columns(lc)
-				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
-
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc(xlim_lower=lc.discdate-100, 
 									xlim_upper=lc.discdate+800, 
 									ylim_lower=-2000, 
 									ylim_upper=3*lc.get_xth_percentile_flux(97))
-					plot.plot_chisquare_cut()
-					plot.plot_uncertainty_cut()
-					plot.plot_controls_cut()
+
+				if self.chisquares:
+					lc = self.apply_chisquare_cut(lc)
+					if args.plot:
+						plot.plot_chisquare_cut()
+
+				if self.uncertainties:
+					lc = self.apply_uncertainty_cut(lc)
+					if args.plot:
+						plot.plot_uncertainty_cut()
+
+				if self.controls:
+					lc = self.apply_control_cut(lc)
+					if args.plot:
+						plot.plot_controls_cut()
+
+				# drop extra control lc cut columns and save lc with new 'Mask' column
+				lc = self.drop_extra_columns(lc)
+				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+
+				if args.plot:
 					plot.plot_all_cuts()
 
 			if args.plot:
