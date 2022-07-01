@@ -604,6 +604,16 @@ class cut_lc():
 
 		return lc
 
+	def print_flag_stats(self, lc):
+		print('# Control light curve cut results:')
+		print('## Length of SN light curve: %d' % len(lc.pdastro.t))
+		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_x2']))/len(lc.pdastro.t)))
+		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_stn']))/len(lc.pdastro.t)))
+		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_Nclip']))/len(lc.pdastro.t)))
+		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_Ngood']))/len(lc.pdastro.t)))
+		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_bad']))/len(lc.pdastro.t)))
+		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_questionable']))/len(lc.pdastro.t)))
+
 	def apply_control_cut(self, lc):
 		print('\nNow applying control light curve cut...')
 
@@ -632,8 +642,8 @@ class cut_lc():
 		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['flag_controls_x2']|self.flags['flag_controls_stn']|self.flags['flag_controls_Nclip']|self.flags['flag_controls_Ngood'])
 		lc.update_mask_col(self.flags['flag_controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
 		lc.update_mask_col(self.flags['flag_controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
-		print(f'# Total % of data cut: {100*len(AnotB(lc.pdastro.getindices(),unmasked_i))/len(lc.pdastro.getindices()):0.2f}%')
-		
+		self.print_flag_stats(lc)
+
 		return lc
 
 	def cut_loop(self):
