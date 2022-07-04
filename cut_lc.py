@@ -102,9 +102,9 @@ class cut_lc():
 		print(f'Light curve .txt files input directory: {self.input_dir}')
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
-
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
+		print(f'Plotting: {args.plot}')
 
 		self.chisquares = args.chisquares
 		if self.chisquares:

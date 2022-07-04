@@ -95,6 +95,7 @@ class download_atlas_lc:
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		self.flux2mag_sigmalimit = cfg['Input/output settings']['flux2mag_sigmalimit']
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
+		print(f'Plotting: {args.plot}')
 		
 		self.lookbacktime_days = args.lookbacktime_days
 		if not(self.lookbacktime_days is None): 
