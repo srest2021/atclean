@@ -9,7 +9,7 @@ from astropy.time import Time
 import numpy as np
 from pdastro import pdastrostatsclass, AorB, AnotB
 
-class light_curve:
+class atlas_lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
 		self.pdastro = pdastrostatsclass()
 		self.lcs = {}

@@ -11,7 +11,7 @@ from astropy.coordinates import Angle, SkyCoord
 from collections import OrderedDict
 from getpass import getpass
 from pdastro import pdastrostatsclass, AorB
-from light_curve import light_curve
+from atlas_lc import atlas_lc
 
 def RaInDeg(ra):
 	s = re.compile('\:')
@@ -64,7 +64,7 @@ class download_atlas_lc:
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
-		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-f','--cfg_filename', default='atlas_lc_settings.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 
@@ -281,7 +281,7 @@ class download_atlas_lc:
 
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token):
-		lc = light_curve(tnsname=tnsname)
+		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCommencing download loop for SN {lc.tnsname}')
 		lc.get_tns_data(self.tns_api_key)
 		lc = self.download_lc(args, lc, token)
@@ -299,7 +299,7 @@ class download_atlas_lc:
 
 			# download control light curves
 			for i in range(1,len(self.control_coords.t)):
-				control_lc = light_curve(ra=self.control_coords.t.loc[i,'ra'], dec=self.control_coords.t.loc[i,'dec'])
+				control_lc = atlas_lc(ra=self.control_coords.t.loc[i,'ra'], dec=self.control_coords.t.loc[i,'dec'])
 				control_lc = download_lc(args, control_lc, token)
 				self.update_control_coords(control_lc, i)
 				lc.add_control_lc(control_lc)

@@ -10,10 +10,10 @@ import numpy as np
 
 import sigmacut
 from pdastro import pdastrostatsclass, AandB, AnotB
-from light_curve import light_curve
-from plot_lc import plot_lc
+from atlas_lc import atlas_lc
+from plot_atlas_lc import plot_atlas_lc
 
-class cut_lc():
+class clean_atlas_lc():
 	def __init__(self):
 		# credentials
 		self.tns_api_key = None
@@ -79,7 +79,7 @@ class cut_lc():
 		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
 		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
 
-		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-f','--cfg_filename', default='atlas_lc_settings.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		
@@ -697,15 +697,14 @@ class cut_lc():
 			print(f'\nCOMMENCING CUT LOOP FOR SN {args.tnsnames[obj_index]}')
 
 			if args.plot:
-				plot = plot_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
+				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
 
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
-				lc = light_curve(tnsname=args.tnsnames[obj_index])
+				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.input_dir, num_controls=self.num_controls)
-				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT FOR EACH FILTER
+				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT THIS FOR EACH FILTER--ADD SNLIST.TXT?
 
-				# TO DO: DO ALSO FOR CONTROL LCS
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
@@ -747,5 +746,5 @@ class cut_lc():
 				plot.save()
 
 if __name__ == "__main__":
-	cut_lc = cut_lc()
-	cut_lc.cut_loop()
+	clean_atlas_lc = clean_atlas_lc()
+	clean_atlas_lc.cut_loop()

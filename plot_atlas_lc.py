@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 
-from light_curve import light_curve
+from atlas_lc import atlas_lc
 from pdastro import pdastrostatsclass, AnotB
 
 # plotting
@@ -29,7 +29,7 @@ plt.rc('font', size=13)
 plt.rcParams['font.size'] = 12
 #plt.style.use('bmh')
 
-class plot_lc():
+class plot_atlas_lc():
 	def __init__(self, tnsname, output_dir, args, flags=None):
 		self.lc = None
 		self.filt = None
