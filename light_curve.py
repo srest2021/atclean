@@ -118,8 +118,6 @@ class light_curve:
 			self.pdastro.t.loc[indices,'Mask'] = np.bitwise_or(self.pdastro.t.loc[indices,'Mask'], flag_arr)
 		elif len(indices) == 1:
 			self.pdastro.t.loc[indices[0],'Mask'] = int(self.pdastro.t.loc[indices[0],'Mask']) | flag
-		else:
-			print('WARNING: must pass at least 1 index to update_mask_col()! No indices masked...')
 
 	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):

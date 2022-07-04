@@ -74,7 +74,11 @@ class cut_lc():
 		parser.add_argument('-c', '--controls', default=False, action='store_true', help='apply control light curve cut')
 		
 		parser.add_argument('-p', '--plot', default=False, action='store_true', help='plot each cut and save into PDF file')
-		
+		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
+		parser.add_argument('--xlim_upper', type=float, default=None, help='if plotting, manually set upper x axis limit to a certain MJD')
+		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
+		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
+
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
@@ -218,32 +222,31 @@ class cut_lc():
 	# correct control light curves for atlas template changes at mjd=58417,58882 
 	# get median of same baseline regions as SN, then apply to entire region
 	def controls_correct_for_template(self, lc, control_index, regions, region_index):
-		for region_index in range(0,3):
-			b_goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
+		b_goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
 
-			lowlim = lc.pdastro.t.loc[regions[f'b_t{region_index}'][0], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][0],"MJD"]
-			uplim= lc.pdastro.t.loc[regions[f'b_t{region_index}'][-1], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][-1],"MJD"]
-			b_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+		lowlim = lc.pdastro.t.loc[regions[f'b_t{region_index}'][0], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][0],"MJD"]
+		uplim= lc.pdastro.t.loc[regions[f'b_t{region_index}'][-1], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][-1],"MJD"]
+		b_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
 
-			if len(b_region_i) > 0:
-				print(f'#### Adjusting for template change in region b_t{region_index} from {lowlim:0.2f}-{uplim:0.2f}...')
-				print(f'#### Baseline median before: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
+		if len(b_region_i) > 0:
+			#print(f'#### Adjusting for template change in region b_t{region_index} from {lowlim:0.2f}-{uplim:0.2f}...')
+			#print(f'#### Baseline median before: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
 						
-				if len(AandB(b_region_i,b_goodx2_i)) > 0:
-					median = np.median(lc.lcs[control_index].t.loc[AandB(b_region_i,b_goodx2_i),'uJy'])
-				else:
-					median = np.median(lc.lcs[control_index].t.loc[b_region_i,'uJy'])
-
-				lowlim = lc.pdastro.t.loc[regions[f't{region_index}'][0], 'MJD']
-				uplim = lc.pdastro.t.loc[regions[f't{region_index}'][-1], 'MJD']
-				t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
-
-				print(f'#### Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
-				lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
-				print(f'#### Baseline median now: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
-
+			if len(AandB(b_region_i,b_goodx2_i)) > 0:
+				median = np.median(lc.lcs[control_index].t.loc[AandB(b_region_i,b_goodx2_i),'uJy'])
 			else:
-				print(f'#### No baseline region for region b_t{region_index}, skipping...')
+				median = np.median(lc.lcs[control_index].t.loc[b_region_i,'uJy'])
+
+			lowlim = lc.pdastro.t.loc[regions[f't{region_index}'][0], 'MJD']
+			uplim = lc.pdastro.t.loc[regions[f't{region_index}'][-1], 'MJD']
+			t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+
+			#print(f'#### Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
+			lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
+			#print(f'#### Baseline median now: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
+
+		#else:
+			#print(f'#### No baseline region for region b_t{region_index}, skipping...')
 
 		return lc
 
@@ -277,8 +280,8 @@ class cut_lc():
 				if self.controls:
 					print(f'## Correcting control light curves for potential flux in template...')
 					for control_index in range(1,self.num_controls+1):
-						print(f'### Control index: {control_index}')
-						lc = controls_correct_for_template(lc, control_index, regions, region_index)
+						#print(f'### Control index: {control_index}')
+						lc = self.controls_correct_for_template(lc, control_index, regions, region_index)
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 
@@ -694,7 +697,7 @@ class cut_lc():
 			print(f'\nCOMMENCING CUT LOOP FOR SN {args.tnsnames[obj_index]}')
 
 			if args.plot:
-				plot = plot_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, flags=self.flags)
+				plot = plot_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
 
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
@@ -716,10 +719,7 @@ class cut_lc():
 
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
-					plot.plot_og_lc(xlim_lower=lc.discdate-100, 
-									xlim_upper=lc.discdate+800, 
-									ylim_lower=-2000, 
-									ylim_upper=3*lc.get_xth_percentile_flux(97))
+					plot.plot_og_lc()
 
 				if self.chisquares:
 					lc = self.apply_chisquare_cut(lc)

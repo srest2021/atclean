@@ -52,8 +52,16 @@ class download_atlas_lc:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
+		
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
+		
+		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
+		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
+		parser.add_argument('--xlim_upper', type=float, default=None, help='if plotting, manually set upper x axis limit to a certain MJD')
+		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
+		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
+
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		parser.add_argument('-f','--cfg_filename', default='atlaslc.ini', type=str, help='file name of ini file with settings for this class')
@@ -277,6 +285,11 @@ class download_atlas_lc:
 		lc.get_tns_data(self.tns_api_key)
 		lc = self.download_lc(args, lc, token)
 
+		if args.plot:
+			plot = plot_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args)
+			plot.set(lc=lc, filt=filt)
+			plot.plot_og_lc(separate_baseline=False)
+
 		if args.controls:
 			print('Control light curve downloading set to True')
 			
@@ -292,6 +305,9 @@ class download_atlas_lc:
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
+
+			if args.plot:
+				plot.plot_og_control_lcs()
 		
 		lc.save(self.output_dir)
 

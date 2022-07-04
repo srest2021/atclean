@@ -30,10 +30,11 @@ plt.rcParams['font.size'] = 12
 #plt.style.use('bmh')
 
 class plot_lc():
-	def __init__(self, tnsname, output_dir, flags):
+	def __init__(self, tnsname, output_dir, args, flags=None):
 		self.lc = None
 		self.filt = None
 		self.flags = flags
+		self.args = args
 		self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots.pdf')
 
 		self.tchange1 = 58417
@@ -65,7 +66,7 @@ class plot_lc():
 	def plot_all_cuts(self):
 		self.plot_cut_lc(self.flags['flag_chisquare']|self.flags['flag_uncertainty']|self.flags['flag_controls_bad'], add2title='all cuts')
 
-	def plot_og_lc(self, add2title=None, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	def plot_og_lc(self, separate_baseline=True, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -81,31 +82,29 @@ class plot_lc():
 		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
 		plt.axvline(x=self.tchange2, color='magenta')
 
-		# set x and y limits
-		"""
-		if xlim_lower is None: xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
-		if xlim_upper is None: xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
-		#if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
-		#if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
-		if ylim_lower is None: 
-			ylim_lower = -2000
-		if ylim_upper is None: 
-			ylim_upper = 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
-		"""
-		#plt.xlim(xlim_lower,xlim_upper)
-		#plt.ylim(ylim_lower,ylim_upper)
+		if separate_baseline:
+			plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
+			
+			plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
+			plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
 
-		plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
-		
-		plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
-		plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
-		
-		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
+			plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
+		else:
+			plt.errorbar(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], self.lc.pdastro.t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], s=45,color=color,marker='o')
+
+		# set x and y limits
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
+		plt.xlim(xlim_lower,xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
+		plt.ylim(ylim_lower,ylim_upper)
 
 		self.pdf.savefig(fig)
 
-	def plot_og_control_lcs(self, add2title=None, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	def plot_og_control_lcs(self, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -120,22 +119,6 @@ class plot_lc():
 		plt.title(title)
 		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
 		plt.axvline(x=self.tchange2, color='magenta')
-
-		# set x and y limits
-		"""
-		if xlim_lower is None: 
-			xlim_lower = self.lc.pdastro.t['MJD'].min() * 0.999
-		if xlim_upper is None: 
-			xlim_upper = self.lc.pdastro.t['MJD'].max() * 1.001
-		#if ylim_lower is None: ylim_lower = self.lc.pdastro.t['uJy'].min()
-		#if ylim_upper is None: ylim_upper = self.lc.pdastro.t['uJy'].max()
-		if ylim_lower is None: 
-			ylim_lower = -2000
-		if ylim_upper is None: 
-			ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
-		"""
-		#plt.xlim(xlim_lower,xlim_upper)
-		#plt.ylim(ylim_lower,ylim_upper)
 		
 		for control_index in range(1, len(self.lc.lcs)+1):
 			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t['duJy'], fmt='none',ecolor='blue',elinewidth=1,c='blue')
@@ -152,9 +135,17 @@ class plot_lc():
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
+		# set x and y limits
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
+		plt.xlim(xlim_lower,xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
+		plt.ylim(ylim_lower,ylim_upper)
+
 		self.pdf.savefig(fig)
 
-	def plot_cut_lc(self, flags, add2title=None, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	def plot_cut_lc(self, flags, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		good_ix = self.lc.pdastro.ix_unmasked('Mask',maskval=flags)
@@ -170,15 +161,15 @@ class plot_lc():
 			title += f', {add2title}'
 		plt.suptitle(title, fontsize=19, y=1)
 		
-		#if ylim_lower is None: ylim_lower = -2000
-		#if ylim_upper is None: 
-			#ylim_upper = 3*self.lc.get_xth_percentile_flux(95, indices=self.lc.during_sn_ix)
-		if xlim_lower is None: xlim_lower = self.lc.discdate - 100
-		if xlim_upper is None: xlim_upper = self.lc.discdate + 800
-		#cut.set_ylim(ylim_lower, ylim_upper)
+		# set x and y limits
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
 		cut.set_xlim(xlim_lower,xlim_upper)
-		#clean.set_ylim(ylim_lower, ylim_upper)
 		clean.set_xlim(xlim_lower,xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
+		cut.set_ylim(ylim_lower,ylim_upper)
+		clean.set_ylim(ylim_lower,ylim_upper)
 
 		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
@@ -197,6 +188,5 @@ class plot_lc():
 		clean.axhline(linewidth=1,color='k')
 		clean.set_xlabel('MJD')
 		clean.set_ylabel('Flux (uJy)')
-		clean.set_ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig, bbox_inches='tight')
