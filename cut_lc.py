@@ -215,6 +215,38 @@ class cut_lc():
 		
 		return regions, lc
 
+	# correct control light curves for atlas template changes at mjd=58417,58882 
+	# get median of same baseline regions as SN, then apply to entire region
+	def controls_correct_for_template(self, lc, control_index, regions, region_index):
+		for region_index in range(0,3):
+			b_goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
+
+			lowlim = lc.pdastro.t.loc[regions[f'b_t{region_index}'][0], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][0],"MJD"]
+			uplim= lc.pdastro.t.loc[regions[f'b_t{region_index}'][-1], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][-1],"MJD"]
+			b_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+
+			if len(b_region_i) > 0:
+				print(f'#### Adjusting for template change in region b_t{region_index} from {lowlim:0.2f}-{uplim:0.2f}...')
+				print(f'#### Baseline median before: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
+						
+				if len(AandB(b_region_i,b_goodx2_i)) > 0:
+					median = np.median(lc.lcs[control_index].t.loc[AandB(b_region_i,b_goodx2_i),'uJy'])
+				else:
+					median = np.median(lc.lcs[control_index].t.loc[b_region_i,'uJy'])
+
+				lowlim = lc.pdastro.t.loc[regions[f't{region_index}'][0], 'MJD']
+				uplim = lc.pdastro.t.loc[regions[f't{region_index}'][-1], 'MJD']
+				t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+
+				print(f'#### Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
+				lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
+				print(f'#### Baseline median now: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
+
+			else:
+				print(f'#### No baseline region for region b_t{region_index}, skipping...')
+
+		return lc
+
 	# correct for atlas template changes at mjd=58417,58882 
 	# more info here: https://fallingstar-data.com/forcedphot/faq/
 	def correct_for_template(self, lc):
@@ -232,13 +264,21 @@ class cut_lc():
 			if len(region_i) > 0:
 				print(f'# Adjusting for template change in region b_t{region_index} from {lc.pdastro.t.loc[region_i[0],"MJD"]:0.2f}-{lc.pdastro.t.loc[region_i[-1],"MJD"]:0.2f}...')
 				print(f'## Baseline median before: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
+				
 				if len(AandB(region_i,b_goodx2_i)) > 0:
 					median = np.median(lc.pdastro.t.loc[AandB(region_i,b_goodx2_i),'uJy'])
 				else:
 					median = np.median(lc.pdastro.t.loc[region_i,'uJy'])
+
 				print(f'## Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
 				lc.pdastro.t.loc[regions['t%d'%region_index],'uJy'] -= median
 				print(f'## Baseline median now: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
+
+				if self.controls:
+					print(f'## Correcting control light curves for potential flux in template...')
+					for control_index in range(1,self.num_controls+1):
+						print(f'### Control index: {control_index}')
+						lc = controls_correct_for_template(lc, control_index, regions, region_index)
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 

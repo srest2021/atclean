@@ -35,6 +35,7 @@ class download_atlas_lc:
 		# input/output
 		self.output_dir = None
 		self.overwrite = True
+		self.flux2mag_sigmalimit = None
 
 		# other
 		self.lookbacktime_days = None
@@ -82,9 +83,10 @@ class download_atlas_lc:
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
-
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
+		self.flux2mag_sigmalimit = cfg['Input/output settings']['flux2mag_sigmalimit']
+		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		
 		self.lookbacktime_days = args.lookbacktime_days
 		if not(self.lookbacktime_days is None): 
@@ -263,6 +265,8 @@ class download_atlas_lc:
 		dflux_zero_ix = lc.pdastro.ix_inrange(colnames='duJy',lowlim=0,uplim=0)
 		flux_nan_ix = lc.pdastro.ix_remove_null(colnames='uJy')
 		lc.pdastro.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
+
+		lc.pdastro.flux2mag('uJy', 'duJy' 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
 		return lc
 
