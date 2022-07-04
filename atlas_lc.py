@@ -10,13 +10,13 @@ import numpy as np
 from pdastro import pdastrostatsclass, AorB, AnotB
 
 class atlas_lc:
-	def __init__(self, tnsname=None, is_averaged=False, mjdbinsize=None, discdate=None, ra=None, dec=None):
+	def __init__(self, tnsname=None, is_averaged=False, mjd_bin_size=None, discdate=None, ra=None, dec=None):
 		self.pdastro = pdastrostatsclass()
 		self.lcs = {}
 
 		self.tnsname = tnsname
 		self.is_averaged = is_averaged
-		self.mjdbinsize = mjdbinsize
+		self.mjd_bin_size = mjd_bin_size
 		self.discdate = discdate
 		self.ra = ra
 		self.dec = dec
