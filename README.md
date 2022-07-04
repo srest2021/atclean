@@ -2,10 +2,6 @@
 
 ## Jupyter Notebooks
 
-### `chisquarecut_master.ipynb` 
-#### (applies chi-square-cut)
-Using an already downloaded light curve, determine the best chi-square cut for that particular object. Then, save the light curve with the appropriate chi-square cut flag.
-
 ### `clean_atlas_lc.ipynb` (work in progress)
 #### (applies all cuts--chi-squares, uncertainties, and control light curves--and applies averaging)
 Using an already downloaded light curve, determine the best chi-square cut, apply the chi-square cut and an uncertainty cut, and average the light curve with bad day flagging. Then, save the light curve with the flags.
@@ -40,7 +36,7 @@ Example commands:
 - `download_atlas_lc.py 2019vxm -c` downloads full SN 2019vxm and control light curves
 - `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
-### `cut_lc.py` (work in progress)
+### `clean_atlas_lc.py`
 #### (applies all cuts - chi-squares, uncertainties, control light curves)
 Using the default settings in `atlaslc.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts, then save the light curves with the updated 'Mask' columns.
 
