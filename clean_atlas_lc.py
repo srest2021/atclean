@@ -24,20 +24,16 @@ class clean_atlas_lc():
 		self.overwrite = True
 
 		# flags
-		self.flags = {'flag_chisquare':0x1,
+		self.flags = {'chisquare':0x1,
 
-					  'flag_uncertainty':0x2,
+					  'uncertainty':0x2,
 
-					  'flag_controls_bad':0x400000,
-					  'flag_controls_questionable':0x80000,
-					  'flag_controls_x2':0x100,
-					  'flag_controls_stn':0x200,
-					  'flag_controls_Nclip':0x400,
-					  'flag_controls_Ngood':0x800,
-
-					  'flag_badday':0x800000,
-					  'flag_ixclip':0x1000,
-					  'flag_smallnum':0x2000}
+					  'controls_bad':0x400000,
+					  'controls_questionable':0x80000,
+					  'controls_x2':0x100,
+					  'controls_stn':0x200,
+					  'controls_Nclip':0x400,
+					  'controls_Ngood':0x800}
 
 		# chi-square cut
 		self.chisquares = False
@@ -559,7 +555,7 @@ class clean_atlas_lc():
 
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['flag_chisquare'], cut_ix)
+		lc.update_mask_col(self.flags['chisquare'], cut_ix)
 		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
@@ -570,7 +566,7 @@ class clean_atlas_lc():
 
 		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['flag_uncertainty'], cut_ix)
+		lc.update_mask_col(self.flags['uncertainty'], cut_ix)
 		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
 		return lc
@@ -640,9 +636,9 @@ class clean_atlas_lc():
 			pda4MJD = pdastrostatsclass()
 			pda4MJD.t['uJy'] = uJy[1:,index]
 			pda4MJD.t['duJy'] = duJy[1:,index]
-			pda4MJD.t['Mask'] = np.bitwise_and(Mask[1:,index], self.flags['flag_chisquare']|self.flags['flag_uncertainty'])
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[1:,index], self.flags['chisquare']|self.flags['uncertainty'])
 			
-			pda4MJD.calcaverage_sigmacutloop('uJy',noisecol='duJy',maskcol='Mask',maskval=(self.flags['flag_chisquare']|self.flags['flag_uncertainty']),verbose=1,Nsigma=3.0,median_firstiteration=True)
+			pda4MJD.calcaverage_sigmacutloop('uJy',noisecol='duJy',maskcol='Mask',maskval=(self.flags['chisquare']|self.flags['uncertainty']),verbose=1,Nsigma=3.0,median_firstiteration=True)
 			lc.pdastro.statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index) 
 
 		return lc
@@ -650,11 +646,11 @@ class clean_atlas_lc():
 	def print_flag_stats(self, lc):
 		print('# Control light curve cut results:')
 		print('## Length of SN light curve: %d' % len(lc.pdastro.t))
-		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_x2']))/len(lc.pdastro.t)))
-		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_stn']))/len(lc.pdastro.t)))
-		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_Nclip']))/len(lc.pdastro.t)))
-		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_Ngood']))/len(lc.pdastro.t)))
-		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_bad']))/len(lc.pdastro.t)))
+		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_x2']))/len(lc.pdastro.t)))
+		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_stn']))/len(lc.pdastro.t)))
+		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Nclip']))/len(lc.pdastro.t)))
+		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Ngood']))/len(lc.pdastro.t)))
+		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t)))
 		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_questionable']))/len(lc.pdastro.t)))
 
 	def apply_control_cut(self, lc):
@@ -682,9 +678,9 @@ class clean_atlas_lc():
 
 		# update mask column with control light curve cut on any measurements flagged according to given bounds
 		zero_Nclip_i = lc.pdastro.ix_equal('c2_Nclip', 0)
-		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['flag_controls_x2']|self.flags['flag_controls_stn']|self.flags['flag_controls_Nclip']|self.flags['flag_controls_Ngood'])
-		lc.update_mask_col(self.flags['flag_controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
-		lc.update_mask_col(self.flags['flag_controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
+		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
+		lc.update_mask_col(self.flags['controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
+		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
 		self.print_flag_stats(lc)
 
 		return lc

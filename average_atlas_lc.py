@@ -21,20 +21,16 @@ class average_atlas_lc():
 		self.overwrite = True
 
 		# flags
-		self.flags = {'flag_chisquare':0x1,
+		self.flags = {'chisquare':0x1,
 
-					  'flag_uncertainty':0x2,
+					  'uncertainty':0x2,
 
-					  'flag_controls_bad':0x400000,
-					  'flag_controls_questionable':0x80000,
-					  'flag_controls_x2':0x100,
-					  'flag_controls_stn':0x200,
-					  'flag_controls_Nclip':0x400,
-					  'flag_controls_Ngood':0x800,
+					  'controls_bad':0x400000,
+					  'controls_questionable':0x80000,
 
-					  'flag_badday':0x800000,
-					  'flag_ixclip':0x1000,
-					  'flag_smallnum':0x2000}
+					  'avg_badday':0x800000,
+					  'avg_ixclip':0x1000,
+					  'avg_smallnum':0x2000}
 
 		self.mjd_bin_size = None
 		self.keep_empty_bins = False
@@ -116,108 +112,108 @@ class average_atlas_lc():
 		return lc
 
 	def average_lc(self, lc, avglc):
-	    mjd = int(np.amin(lc.pdastro.t['MJD']))
-	    mjd_max = int(np.amax(lc.pdastro.t['MJD']))+1
+		mjd = int(np.amin(lc.pdastro.t['MJD']))
+		mjd_max = int(np.amax(lc.pdastro.t['MJD']))+1
 
-	    good_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['flag_chisquare']|self.flags['flag_uncertainty']|self.flags['flag_controls_bad'])
+		good_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'])
 
-	    while mjd <= mjd_max:
-	        range_i = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+self.mjd_bin_size, exclude_uplim=True)
-	        range_good_i = AandB(range_i,good_i)
+		while mjd <= mjd_max:
+			range_i = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+self.mjd_bin_size, exclude_uplim=True)
+			range_good_i = AandB(range_i,good_i)
 
-	        # add new row to averaged light curve if keep_empty_bins or any measurements present
-	        if self.keep_empty_bins or len(range_i) >= 1:
-	            new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
-	            avglc_index = avglc.pdastro.newrow(new_row)
-	        
-	        # if no measurements present, flag or skip over day
-	        if len(range_i) < 1:
-	            if self.keep_empty_bins:
-	                avglc.update_mask_col(self.flags['flag_badday'], [avglc_index])
-	            mjd += self.mjd_bin_size
-	            continue
-	        
-	        # if no good measurements, average values anyway and flag
-	        if len(range_good_i) < 1:
-	            # average flux
-	            lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_i, Nsigma=3.0, median_firstiteration=True)
-	            fluxstatparams = deepcopy(lc.pdastro.statparams)
+			# add new row to averaged light curve if keep_empty_bins or any measurements present
+			if self.keep_empty_bins or len(range_i) >= 1:
+				new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
+				avglc_index = avglc.pdastro.newrow(new_row)
+			
+			# if no measurements present, flag or skip over day
+			if len(range_i) < 1:
+				if self.keep_empty_bins:
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				mjd += self.mjd_bin_size
+				continue
+			
+			# if no good measurements, average values anyway and flag
+			if len(range_good_i) < 1:
+				# average flux
+				lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_i, Nsigma=3.0, median_firstiteration=True)
+				fluxstatparams = deepcopy(lc.pdastro.statparams)
 
-	            # get average mjd
-	            # TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-	            lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
-	            avg_mjd = lc.pdastro.statparams['mean']
+				# get average mjd
+				# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
+				lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+				avg_mjd = lc.pdastro.statparams['mean']
 
-	            # add row and flag
-	            avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
-	                                                'uJy':fluxstatparams['mean'], 
-	                                                'duJy':fluxstatparams['mean_err'], 
-	                                                'stdev':fluxstatparams['stdev'],
-	                                                'x2':fluxstatparams['X2norm'],
-	                                                'Nclip':fluxstatparams['Nclip'],
-	                                                'Ngood':fluxstatparams['Ngood'],
-	                                                'Mask':0})
-	            lc.update_mask_col(self.flags['flag_badday'], range_i)
-	            avglc.update_mask_col(self.flags['flag_badday'], [avglc_index])
+				# add row and flag
+				avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
+													'uJy':fluxstatparams['mean'], 
+													'duJy':fluxstatparams['mean_err'], 
+													'stdev':fluxstatparams['stdev'],
+													'x2':fluxstatparams['X2norm'],
+													'Nclip':fluxstatparams['Nclip'],
+													'Ngood':fluxstatparams['Ngood'],
+													'Mask':0})
+				lc.update_mask_col(self.flags['avg_badday'], range_i)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
 
-	            mjd += self.mjd_bin_size
-	            continue
-	        
-	        # average good measurements
-	        lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
-	        fluxstatparams = deepcopy(lc.pdastro.statparams)
+				mjd += self.mjd_bin_size
+				continue
+			
+			# average good measurements
+			lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
+			fluxstatparams = deepcopy(lc.pdastro.statparams)
 
-	        if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
-	            lc.update_mask_col(self.flags['flag_badday'], range_i)
-	            avglc.update_mask_col(self.flags['flag_badday'], [avglc_index])
-	            mjd += self.mjd_bin_size
-	            continue
+			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
+				lc.update_mask_col(self.flags['avg_badday'], range_i)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				mjd += self.mjd_bin_size
+				continue
 
-	        # get average mjd
-	        # TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-	        lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
-	        avg_mjd = lc.pdastro.statparams['mean']
+			# get average mjd
+			# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
+			lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+			avg_mjd = lc.pdastro.statparams['mean']
 
-	        # add row to averaged light curve
-	        avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
-	                                            'uJy':fluxstatparams['mean'], 
-	                                            'duJy':fluxstatparams['mean_err'], 
-	                                            'stdev':fluxstatparams['stdev'],
-	                                            'x2':fluxstatparams['X2norm'],
-	                                            'Nclip':fluxstatparams['Nclip'],
-	                                            'Ngood':fluxstatparams['Ngood'],
-	                                            'Mask':0})
-	        
-	        # flag clipped measurements in lc
-	        if len(fluxstatparams['ix_clip']) > 0:
-	            lc.update_mask_col(self.flags['flag_ixclip'], fluxstatparams['ix_clip'])
-	        
-	        # if small number within this bin, flag measurements
-	        if len(range_good_i) < 3:
-	            lc.update_mask_col(self.flags['flag_smallnum'], range_good_i) # TO DO: CHANGE TO RANGE_I??
-	            avglc.update_mask_col(self.flags['flag_smallnum'], [avglc_index])
-	        # else check sigmacut bounds and flag
-	        else:
-	            is_bad = False
-	            if fluxstatparams['Ngood'] < self.Ngood_min:
-	                is_bad = True
-	            if fluxstatparams['Nclip'] > self.Nclip_max:
-	                is_bad = True
-	            if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.x2_max:
-	                is_bad = True
-	            if is_bad:
-	                lc.update_mask_col(self.flags['flag_badday'], range_i)
-	                avglc.update_mask_col(self.flags['flag_badday'], [avglc_index])
+			# add row to averaged light curve
+			avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
+												'uJy':fluxstatparams['mean'], 
+												'duJy':fluxstatparams['mean_err'], 
+												'stdev':fluxstatparams['stdev'],
+												'x2':fluxstatparams['X2norm'],
+												'Nclip':fluxstatparams['Nclip'],
+												'Ngood':fluxstatparams['Ngood'],
+												'Mask':0})
+			
+			# flag clipped measurements in lc
+			if len(fluxstatparams['ix_clip']) > 0:
+				lc.update_mask_col(self.flags['avg_ixclip'], fluxstatparams['ix_clip'])
+			
+			# if small number within this bin, flag measurements
+			if len(range_good_i) < 3:
+				lc.update_mask_col(self.flags['avg_smallnum'], range_good_i) # TO DO: CHANGE TO RANGE_I??
+				avglc.update_mask_col(self.flags['avg_smallnum'], [avglc_index])
+			# else check sigmacut bounds and flag
+			else:
+				is_bad = False
+				if fluxstatparams['Ngood'] < self.Ngood_min:
+					is_bad = True
+				if fluxstatparams['Nclip'] > self.Nclip_max:
+					is_bad = True
+				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.x2_max:
+					is_bad = True
+				if is_bad:
+					lc.update_mask_col(self.flags['avg_badday'], range_i)
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
 
-	        mjd += self.mjd_bin_size
-	    
-	    # convert flux to magnitude and dflux to dmagnitude
-	    avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigma_limit)
+			mjd += self.mjd_bin_size
+		
+		# convert flux to magnitude and dflux to dmagnitude
+		avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigma_limit)
 
-	    avglc = self.drop_extra_columns(avglc)
+		avglc = self.drop_extra_columns(avglc)
 
-	    for col in ['Nclip','Ngood','Nexcluded','Mask']: 
-	        avglc.pdastro.t[col] = avglc.pdastro.t[col].astype(np.int32)
+		for col in ['Nclip','Ngood','Nexcluded','Mask']: 
+			avglc.pdastro.t[col] = avglc.pdastro.t[col].astype(np.int32)
 
 		return lc, avglc
 

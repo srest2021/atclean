@@ -51,20 +51,20 @@ class plot_atlas_lc():
 	def plot_averaged_lc(self):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
-		self.plot_cut_lc(self.flags['flag_badday'])
+		self.plot_cut_lc(self.flags['avg_badday'])
 
 	def plot_chisquare_cut(self):
-		self.plot_cut_lc(self.flags['flag_chisquare'], add2title='chi-square cut')
+		self.plot_cut_lc(self.flags['chisquare'], add2title='chi-square cut')
 
 	def plot_uncertainty_cut(self):
-		self.plot_cut_lc(self.flags['flag_uncertainty'], add2title='uncertainty cut')
+		self.plot_cut_lc(self.flags['uncertainty'], add2title='uncertainty cut')
 
 	def plot_controls_cut(self):
 		self.plot_og_control_lcs()
-		self.plot_cut_lc(self.flags['flag_controls_bad'], add2title='control light curve cut')
+		self.plot_cut_lc(self.flags['controls_bad'], add2title='control light curve cut')
 
 	def plot_all_cuts(self):
-		self.plot_cut_lc(self.flags['flag_chisquare']|self.flags['flag_uncertainty']|self.flags['flag_controls_bad'], add2title='all cuts')
+		self.plot_cut_lc(self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'], add2title='all cuts')
 
 	def plot_og_lc(self, separate_baseline=True, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
