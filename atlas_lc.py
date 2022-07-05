@@ -24,6 +24,13 @@ class atlas_lc:
 		self.corrected_baseline_ix = None
 		self.during_sn_ix = None
 
+	def __str__(self):
+		res = f'SN {self.tnsname} light curve'
+		if self.is_averaged:
+			res += f' (averaged with MJD bin size {self.mjd_bin_size})'
+		res += f': RA: {self.ra}, Dec: {self.dec}, discovery date: {self.discdate}'
+		return res
+
 	# get RA, Dec, and discovery date information from TNS
 	def get_tns_data(self, api_key):
 		print('Obtaining RA, Dec, and discovery date from TNS...')
@@ -69,7 +76,7 @@ class atlas_lc:
 			filename += f'_i{control_index:03d}'
 		filename += f'.{filt}'
 		if self.is_averaged:
-			filename += f'.{self.mjdbinsize:0.2f}days'
+			filename += f'.{self.mjd_bin_size:0.2f}days'
 		filename += '.lc.txt'
 		
 		print(f'# Filename: {filename}')

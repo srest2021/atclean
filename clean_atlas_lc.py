@@ -643,7 +643,7 @@ class clean_atlas_lc():
 
 		return lc
 
-	def print_flag_stats(self, lc):
+	def print_control_flag_stats(self, lc):
 		print('# Control light curve cut results:')
 		print('## Length of SN light curve: %d' % len(lc.pdastro.t))
 		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_x2']))/len(lc.pdastro.t)))
@@ -651,7 +651,7 @@ class clean_atlas_lc():
 		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Nclip']))/len(lc.pdastro.t)))
 		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Ngood']))/len(lc.pdastro.t)))
 		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t)))
-		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['flag_controls_questionable']))/len(lc.pdastro.t)))
+		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.pdastro.t)))
 
 	def apply_control_cut(self, lc):
 		print('\nNow applying control light curve cut...')
@@ -668,20 +668,20 @@ class clean_atlas_lc():
 
 		# flag measurements according to given bounds
 		flag_x2_i = lc.pdastro.ix_inrange(colnames=['c2_X2norm'], lowlim=self.x2_max, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['flag_controls_x2'], flag_x2_i)
+		lc.update_mask_col(self.flags['controls_x2'], flag_x2_i)
 		flag_stn_i = lc.pdastro.ix_inrange(colnames=['c2_abs_stn'], lowlim=self.stn_max, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['flag_controls_stn'], flag_stn_i)
+		lc.update_mask_col(self.flags['controls_stn'], flag_stn_i)
 		flag_nclip_i = lc.pdastro.ix_inrange(colnames=['c2_Nclip'], lowlim=self.Nclip_max, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['flag_controls_Nclip'], flag_nclip_i)
+		lc.update_mask_col(self.flags['controls_Nclip'], flag_nclip_i)
 		flag_ngood_i = lc.pdastro.ix_inrange(colnames=['c2_Ngood'], uplim=self.Ngood_min, exclude_uplim=True)
-		lc.update_mask_col(self.flags['flag_controls_Ngood'], flag_ngood_i)
+		lc.update_mask_col(self.flags['controls_Ngood'], flag_ngood_i)
 
 		# update mask column with control light curve cut on any measurements flagged according to given bounds
 		zero_Nclip_i = lc.pdastro.ix_equal('c2_Nclip', 0)
 		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
 		lc.update_mask_col(self.flags['controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
 		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
-		self.print_flag_stats(lc)
+		self.print_control_flag_stats(lc)
 
 		return lc
 

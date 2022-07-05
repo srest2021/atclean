@@ -3,6 +3,7 @@
 @author: Sofia Rest
 """
 
+import sys
 import pandas as pd
 import numpy as np
 
@@ -30,12 +31,16 @@ plt.rcParams['font.size'] = 12
 #plt.style.use('bmh')
 
 class plot_atlas_lc():
-	def __init__(self, tnsname, output_dir, args, flags=None):
+	def __init__(self, tnsname, output_dir, args, add2filename=None, flags=None):
 		self.lc = None
 		self.filt = None
 		self.flags = flags
 		self.args = args
-		self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots.pdf')
+		if add2filename is None:
+			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots.pdf')
+		else:
+			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots_{add2filename}.pdf')
+
 
 		self.tchange1 = 58417
 		self.tchange2 = 58882
@@ -51,7 +56,7 @@ class plot_atlas_lc():
 	def plot_averaged_lc(self):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
-		self.plot_cut_lc(self.flags['avg_badday'])
+		self.plot_cut_lc(self.flags['avg_badday'], add2title=f'MJD bin size {self.lc.mjd_bin_size:0.1f} days')
 
 	def plot_chisquare_cut(self):
 		self.plot_cut_lc(self.flags['chisquare'], add2title='chi-square cut')
@@ -160,16 +165,16 @@ class plot_atlas_lc():
 		else:
 			title += f', {add2title}'
 		plt.suptitle(title, fontsize=19, y=1)
-		
+
 		# set x and y limits
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
 		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
 		cut.set_xlim(xlim_lower,xlim_upper)
 		clean.set_xlim(xlim_lower,xlim_upper)
-		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
-		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
-		cut.set_ylim(ylim_lower,ylim_upper)
-		clean.set_ylim(ylim_lower,ylim_upper)
+		#ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*np.percentile(self.lc.pdastro.t.loc[self.lc.during_sn_ix, 'uJy'], 1) #self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
+		#ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*np.percentile(self.lc.pdastro.t.loc[self.lc.during_sn_ix, 'uJy'], 99) #self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
+		#cut.set_ylim(ylim_lower,ylim_upper)
+		#clean.set_ylim(ylim_lower,ylim_upper)
 
 		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')

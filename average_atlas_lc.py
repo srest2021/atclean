@@ -3,10 +3,11 @@
 @author: Sofia Rest
 """
 
-import sys, argparse, configparser, re
+import sys, argparse, configparser, re, os
 from copy import deepcopy
 import pandas as pd
 import numpy as np
+import PyPDF2 
 
 import sigmacut
 from pdastro import pdastrostatsclass, AandB, AnotB
@@ -15,6 +16,9 @@ from plot_atlas_lc import plot_atlas_lc
 
 class average_atlas_lc():
 	def __init__(self):
+		# credentials
+		self.tns_api_key = None
+
 		# input/output
 		self.input_dir = None
 		self.output_dir = None
@@ -56,6 +60,7 @@ class average_atlas_lc():
 
 		parser.add_argument('-f','--cfg_filename', default='atlas_lc_settings.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
+		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 
 		return parser
 	
@@ -70,13 +75,15 @@ class average_atlas_lc():
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
+		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
+
 		self.input_dir = cfg['Input/output settings']['input_dir']
 		print(f'Light curve .txt files input directory: {self.input_dir}')
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
-		self.flux2mag_sigmalimit = cfg['Input/output settings']['flux2mag_sigmalimit']
+		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		print(f'Plotting: {args.plot}')
 
@@ -111,7 +118,85 @@ class average_atlas_lc():
 
 		return lc
 
+	# helper function for set_corrected_baseline_ix()
+	def get_Ndays(self, SN_region_index):
+		return 200 if SN_region_index == 2 else 40
+
+	def set_corrected_baseline_ix(self, avglc):
+		print('\nGetting region indices around SN... ')
+		Ndays_min = 6
+
+		baseline_ix = avglc.get_baseline_ix()
+		tchange1 = 58417
+		tchange2 = 58882
+
+		regions = {}
+		regions['t0'] = avglc.pdastro.ix_inrange(colnames=['MJD'], uplim=tchange1)
+		regions['t1'] = avglc.pdastro.ix_inrange(colnames=['MJD'], lowlim=tchange1, uplim=tchange2)
+		regions['t2'] = avglc.pdastro.ix_inrange(colnames=['MJD'], lowlim=tchange2)
+		regions['b_t0'] = AandB(regions['t0'], baseline_ix)
+		regions['b_t1'] = AandB(regions['t1'], baseline_ix)
+		regions['b_t2'] = AandB(regions['t2'], baseline_ix)
+
+		# find region SN starts in 
+		SN_region_index = None
+		if avglc.discdate <= tchange1:
+			SN_region_index = 0
+		elif avglc.discdate > tchange1 and avglc.discdate <= tchange2:
+			SN_region_index = 1
+		elif avglc.discdate > tchange2:
+			SN_region_index = 2
+		if SN_region_index is None:
+			raise RuntimeError('# ERROR: Something went wrong--could not find region with SN discovery date!')
+		else:
+			print('# SN discovery date located in template region t%d' % SN_region_index)
+
+		# for region with tail end of the SN, get last Ndays days and classify as baseline
+		adjust_region_index = SN_region_index
+		if adjust_region_index < 2 and len(regions['b_t%d'%adjust_region_index]) >= Ndays_min:
+			adjust_region_index += 1
+		if len(regions['b_t%d'%adjust_region_index]) < Ndays_min:
+			print('# Getting baseline flux for template region t%d by obtaining last %d days of region... ' % (adjust_region_index, self.get_Ndays(adjust_region_index)))
+			regions['b_t%d'%adjust_region_index] = avglc.pdastro.ix_inrange(colnames=['MJD'],
+																			lowlim=avglc.pdastro.t.loc[regions['t%d'%adjust_region_index][-1],'MJD'] - self.get_Ndays(adjust_region_index),
+																			uplim=avglc.pdastro.t.loc[regions['t%d'%adjust_region_index][-1],'MJD'])
+		if adjust_region_index < 1: regions['b_t1'] = regions['t1']
+		if adjust_region_index < 2: regions['b_t2'] = regions['t2']
+
+		avglc.corrected_baseline_ix = np.concatenate([regions['b_t0'], regions['b_t1'], regions['b_t2']])
+		avglc.during_sn_ix = AnotB(avglc.pdastro.getindices(), avglc.corrected_baseline_ix)
+
+		return avglc
+
+	# add averaged light curve plots to original plot file
+	# TO DO: does last plot in the original plot file need to be redone (all cuts plot)?
+	def plot_averaged_lc(self, args, avglc, filt):
+		plot = plot_atlas_lc(tnsname=avglc.tnsname, output_dir=self.output_dir, args=args, add2filename='avg', flags=self.flags)
+		plot.set(lc=avglc, filt=filt)
+		plot.plot_averaged_lc()
+		plot.save()
+
+		print('Merging original light curve plot PDF with averaged light curve plot PDF...')
+
+		og_filename = f'{self.output_dir}/{avglc.tnsname}/{avglc.tnsname}_plots.pdf'
+		avg_filename = f'{self.output_dir}/{avglc.tnsname}/{avglc.tnsname}_plots_avg.pdf'
+
+		merger = PyPDF2.PdfMerger()
+		try:
+			merger.append(PyPDF2.PdfFileReader(og_filename, 'rb'))
+		except Exception as e:
+			print('No original plots...') # delete me
+			pass
+		merger.append(PyPDF2.PdfFileReader(avg_filename, 'rb'))
+		merger.write(og_filename)
+		merger.close()
+
+		print('Removing averaged light curve plot PDF...')
+		os.remove(avg_filename)
+
 	def average_lc(self, lc, avglc):
+		print(f'Averaging SN light curve...')
+
 		mjd = int(np.amin(lc.pdastro.t['MJD']))
 		mjd_max = int(np.amax(lc.pdastro.t['MJD']))+1
 
@@ -208,7 +293,7 @@ class average_atlas_lc():
 			mjd += self.mjd_bin_size
 		
 		# convert flux to magnitude and dflux to dmagnitude
-		avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigma_limit)
+		avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
 		avglc = self.drop_extra_columns(avglc)
 
@@ -228,13 +313,22 @@ class average_atlas_lc():
 				print(f'\nFILTER SET: {filt}')
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.input_dir)
+				lc.get_tns_data(self.tns_api_key)
 
 				avglc = atlas_lc(tnsname=lc.tnsname,is_averaged=True,mjd_bin_size=self.mjd_bin_size)
+				avglc.discdate = lc.discdate
 
-				lc, avglc = average_lc(lc, avglc)
+				lc, avglc = self.average_lc(lc, avglc)
+
+				avglc = self.set_corrected_baseline_ix(avglc)
+				#print(avglc.corrected_baseline_ix)
+				#print(avglc.during_sn_ix)
 
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 				avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+
+				if args.plot:
+					self.plot_averaged_lc(args, avglc, filt)
 
 if __name__ == "__main__":
 	average_atlas_lc = average_atlas_lc()
