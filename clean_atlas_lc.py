@@ -177,7 +177,7 @@ class clean_atlas_lc():
 			print(f'## Maximum chi-square (x2_max): {self.x2_max}')
 
 		self.plot = args.plot
-		print(f'Plotting: {self.plot}')
+		print(f'\nPlotting: {self.plot}')
 
 	# helper function for get_baseline_regions()
 	def get_Ndays(self, SN_region_index):
@@ -834,7 +834,7 @@ class clean_atlas_lc():
 		self.load_settings(args)
 
 		for obj_index in range(0,len(args.tnsnames)):
-			print(f'\nCOMMENCING CUT LOOP FOR SN {args.tnsnames[obj_index]}')
+			print(f'\nCOMMENCING LOOP FOR SN {args.tnsnames[obj_index]}')
 
 			if args.plot:
 				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)

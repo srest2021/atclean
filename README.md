@@ -69,5 +69,5 @@ Arguments (will override default config file settings if specified):
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 
 Example commands:
-- `clean_atlas_lc.py 2019vxm -x -u -c -p` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm, then saves plots of these cuts into PDF
+- `clean_atlas_lc.py 2019vxm -x -u -c -a -p` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
 - `clean_atlas_lc.py 2019vxm -x` - applies ONLY chi-square cut to SN 2019vxm
