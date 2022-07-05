@@ -45,13 +45,27 @@ class plot_atlas_lc():
 		self.tchange1 = 58417
 		self.tchange2 = 58882
 
+		self.xlim_lower = None
+		self.xlim_upper = None
+		self.ylim_lower = None
+		self.ylim_upper = None
+
 	def set(self, lc, filt):
 		self.lc = lc 
 		self.filt = filt
 
+		if not self.lc.is_averaged:
+			self.set_plot_lims()
+
 	def save(self):
 		print('\nSaving PDF of plots...')
 		self.pdf.close()
+
+	def set_plot_lims(self):
+		self.xlim_lower = self.lc.discdate-100
+		self.xlim_upper = self.lc.discdate+800
+		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
+		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)
 
 	def plot_averaged_lc(self):
 		if not self.lc.is_averaged:
@@ -99,13 +113,12 @@ class plot_atlas_lc():
 			plt.errorbar(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], self.lc.pdastro.t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 			plt.scatter(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], s=45,color=color,marker='o')
 
-		# set x and y limits
-		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
-		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
-		plt.xlim(xlim_lower,xlim_upper)
-		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
-		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
-		plt.ylim(ylim_lower,ylim_upper)
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		plt.xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		plt.ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig)
 
@@ -140,13 +153,12 @@ class plot_atlas_lc():
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
-		# set x and y limits
-		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
-		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
-		plt.xlim(xlim_lower,xlim_upper)
-		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
-		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
-		plt.ylim(ylim_lower,ylim_upper)
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		plt.xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		plt.ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig)
 
@@ -167,14 +179,14 @@ class plot_atlas_lc():
 		plt.suptitle(title, fontsize=19, y=1)
 
 		# set x and y limits
-		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.lc.discdate-100
-		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.lc.discdate+800
-		cut.set_xlim(xlim_lower,xlim_upper)
-		clean.set_xlim(xlim_lower,xlim_upper)
-		#ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else 3*np.percentile(self.lc.pdastro.t.loc[self.lc.during_sn_ix, 'uJy'], 1) #self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
-		#ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else 3*np.percentile(self.lc.pdastro.t.loc[self.lc.during_sn_ix, 'uJy'], 99) #self.lc.get_xth_percentile_flux(99, indices=self.lc.during_sn_ix)
-		#cut.set_ylim(ylim_lower,ylim_upper)
-		#clean.set_ylim(ylim_lower,ylim_upper)
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		cut.set_xlim(xlim_lower, xlim_upper)
+		clean.set_xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		cut.set_ylim(ylim_lower, ylim_upper)
+		clean.set_ylim(ylim_lower, ylim_upper)
 
 		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
