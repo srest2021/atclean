@@ -62,7 +62,7 @@ class plot_atlas_lc():
 		self.pdf.close()
 
 	def set_plot_lims(self):
-		self.xlim_lower = self.lc.discdate-100
+		self.xlim_lower = self.lc.discdate-200
 		self.xlim_upper = self.lc.discdate+800
 		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
 		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)

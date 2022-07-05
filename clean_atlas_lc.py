@@ -23,7 +23,7 @@ class clean_atlas_lc():
 		self.output_dir = None
 		self.overwrite = True
 
-		# flags
+		# flags for each cut
 		self.flags = {'chisquare':0x1,
 
 					  'uncertainty':0x2,
@@ -57,18 +57,18 @@ class clean_atlas_lc():
 		# control light curve cut
 		self.controls = False
 		self.num_controls = None
-		self.x2_max = None
+		self.c_x2_max = None
 		self.stn_max = None
-		self.Nclip_max = None
-		self.Ngood_min = None
+		self.c_Nclip_max = None
+		self.c_Ngood_min = None
 
 		# averaging
 		self.mjd_bin_size = None
 		self.keep_empty_bins = False
 		self.flux2mag_sigmalimit = None
-		self.Nclip_max = None
-		self.Ngood_min = None 
-		self.x2_max = None
+		self.g_Nclip_max = None
+		self.g_Ngood_min = None 
+		self.g_x2_max = None
 	
 	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
@@ -149,14 +149,14 @@ class clean_atlas_lc():
 		if self.controls:
 			print(f'\nControl light curve cut: {self.controls}')
 			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
-			self.x2_max = float(cfg['Control light curve cut settings']['x2_max'])
+			self.c_x2_max = float(cfg['Control light curve cut settings']['x2_max'])
 			self.stn_max = float(cfg['Control light curve cut settings']['stn_max'])
-			self.Nclip_max = int(cfg['Control light curve cut settings']['Nclip_max'])
-			self.Ngood_min = int(cfg['Control light curve cut settings']['Ngood_min'])
-			print(f'# Bound for an epoch\'s maximum chi-square: {self.x2_max}')
+			self.c_Nclip_max = int(cfg['Control light curve cut settings']['Nclip_max'])
+			self.c_Ngood_min = int(cfg['Control light curve cut settings']['Ngood_min'])
+			print(f'# Bound for an epoch\'s maximum chi-square: {self.c_x2_max}')
 			print(f'# Bound for an epoch\'s maximum abs(flux/dflux) ratio: {self.stn_max}')
-			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.Nclip_max}')
-			print(f'# Bound for an epoch\'s minimum number of good control measurements: {self.Ngood_min}')
+			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.c_Nclip_max}')
+			print(f'# Bound for an epoch\'s minimum number of good control measurements: {self.c_Ngood_min}')
 
 		self.averaging = args.average 
 		if self.averaging:
@@ -168,13 +168,13 @@ class clean_atlas_lc():
 			self.keep_empty_bins = bool(cfg['Averaging settings']['keep_empty_bins'])
 			print(f'# Keep empty bins and store as NaN in averaged light curve: {self.keep_empty_bins}')
 			
-			self.Nclip_max = int(cfg['Averaging settings']['Nclip_max'])
-			self.Ngood_min = int(cfg['Averaging settings']['Ngood_min'])
-			self.x2_max = float(cfg['Averaging settings']['x2_max'])
+			self.g_Nclip_max = int(cfg['Averaging settings']['Nclip_max'])
+			self.g_Ngood_min = int(cfg['Averaging settings']['Ngood_min'])
+			self.g_x2_max = float(cfg['Averaging settings']['x2_max'])
 			print(f'# MJD bin bounds for not flagging as bad day: ')
-			print(f'## Maximum number of clipped measurements (Nclip_max): {self.Nclip_max}')
-			print(f'## Minimum number of good measurements (Ngood_min): {self.Ngood_min}')
-			print(f'## Maximum chi-square (x2_max): {self.x2_max}')
+			print(f'## Maximum number of clipped measurements (Nclip_max): {self.g_Nclip_max}')
+			print(f'## Minimum number of good measurements (Ngood_min): {self.g_Ngood_min}')
+			print(f'## Maximum chi-square (x2_max): {self.g_x2_max}')
 
 		self.plot = args.plot
 		print(f'\nPlotting: {self.plot}')
@@ -518,20 +518,20 @@ class clean_atlas_lc():
 		elif case1: # 1
 			if case2: # and 2
 				if loss_case == 'above lim':
-					print(f'# WARNING: contam_cut <= {contam_cut:0.2f} falls below limit {contam_lim:0.2f}%, but loss_cut >= {loss_cut:0.2f} falls above limit {loss_lim:0.2f}%! Setting to {loss_cut:0.2f}...')
+					print(f'# WARNING: contam_cut <= {contam_cut:0.2f} falls below limit {self.contam_lim:0.2f}%, but loss_cut >= {loss_cut:0.2f} falls above limit {self.loss_lim:0.2f}%! Setting to {loss_cut:0.2f}...')
 					final_cut = loss_cut
 				else:
-					print(f'# WARNING: loss_cut <= {loss_cut:0.2f} falls below limit {loss_lim:0.2f}%, but contam_cut >= {contam_cut:0.2f} falls above limit {contam_lim:0.2f}%! Setting to {contam_cut:0.2f}...')
+					print(f'# WARNING: loss_cut <= {loss_cut:0.2f} falls below limit {self.loss_lim:0.2f}%, but contam_cut >= {contam_cut:0.2f} falls above limit {self.contam_lim:0.2f}%! Setting to {contam_cut:0.2f}...')
 					final_cut = contam_cut
 			else: # and 3
 				if loss_case == 'crosses lim':
-					print(f'# contam_cut <= {contam_cut:0.2f} falls below limit {contam_lim:0.2f}% and loss_cut >= {loss_cut:0.2f} crosses limit {loss_lim:0.2f}%, setting to {loss_cut:0.2f}...')
+					print(f'# contam_cut <= {contam_cut:0.2f} falls below limit {self.contam_lim:0.2f}% and loss_cut >= {loss_cut:0.2f} crosses limit {self.loss_lim:0.2f}%, setting to {loss_cut:0.2f}...')
 					final_cut = loss_cut
 				else:
-					print(f'# loss_cut <= {loss_cut:0.2f} falls below limit {loss_lim:0.2f}% and contam_cut >= {contam_cut:0.2f} crosses limit {contam_lim:0.2f}%, setting to {contam_cut:0.2f}...')
+					print(f'# loss_cut <= {loss_cut:0.2f} falls below limit {self.loss_lim:0.2f}% and contam_cut >= {contam_cut:0.2f} crosses limit {self.contam_lim:0.2f}%, setting to {contam_cut:0.2f}...')
 					final_cut = contam_cut
 		elif case2 and not case3: # 2 and 2
-			print(f'# ERROR: chi-square loss_cut >= {loss_cut:0.2f} and contam_cut <= {contam_cut:0.2f} both fall above respective limits {loss_lim:0.2f}% and {contam_lim:0.2f}%! Try setting less strict limits. Setting final cut to nan.')
+			print(f'# ERROR: chi-square loss_cut >= {loss_cut:0.2f} and contam_cut <= {contam_cut:0.2f} both fall above respective limits {self.loss_lim:0.2f}% and {self.contam_lim:0.2f}%! Try setting less strict limits. Setting final cut to nan.')
 			final_cut = np.nan
 		else: # 2 and 3 or 3 and 3
 			if loss_cut > contam_cut:
@@ -605,6 +605,8 @@ class clean_atlas_lc():
 
 		return lc
 
+	# make sure that for every SN measurement, we have corresponding control light curve 
+	# measurements at that MJD
 	def verify_mjds(self, lc):
 		print('# Making sure SN and control light curve MJDs match up exactly...')
 		# sort SN lc by MJD
@@ -687,6 +689,7 @@ class clean_atlas_lc():
 		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t)))
 		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.pdastro.t)))
 
+	# apply control light curve cut to SN light curve and update mask column with flag
 	def apply_control_cut(self, lc):
 		print('\nNow applying control light curve cut...')
 
@@ -701,13 +704,13 @@ class clean_atlas_lc():
 		lc.pdastro.t['c2_abs_stn'] = lc.pdastro.t['c2_mean']/lc.pdastro.t['c2_mean_err']
 
 		# flag measurements according to given bounds
-		flag_x2_i = lc.pdastro.ix_inrange(colnames=['c2_X2norm'], lowlim=self.x2_max, exclude_lowlim=True)
+		flag_x2_i = lc.pdastro.ix_inrange(colnames=['c2_X2norm'], lowlim=self.c_x2_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_x2'], flag_x2_i)
 		flag_stn_i = lc.pdastro.ix_inrange(colnames=['c2_abs_stn'], lowlim=self.stn_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_stn'], flag_stn_i)
-		flag_nclip_i = lc.pdastro.ix_inrange(colnames=['c2_Nclip'], lowlim=self.Nclip_max, exclude_lowlim=True)
+		flag_nclip_i = lc.pdastro.ix_inrange(colnames=['c2_Nclip'], lowlim=self.c_Nclip_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_Nclip'], flag_nclip_i)
-		flag_ngood_i = lc.pdastro.ix_inrange(colnames=['c2_Ngood'], uplim=self.Ngood_min, exclude_uplim=True)
+		flag_ngood_i = lc.pdastro.ix_inrange(colnames=['c2_Ngood'], uplim=self.c_Ngood_min, exclude_uplim=True)
 		lc.update_mask_col(self.flags['controls_Ngood'], flag_ngood_i)
 
 		# update mask column with control light curve cut on any measurements flagged according to given bounds
@@ -719,6 +722,7 @@ class clean_atlas_lc():
 
 		return lc
 
+	# average the SN light curve
 	def average_lc(self, lc, avglc):
 		print(f'\nNow averaging SN light curve...')
 
@@ -805,11 +809,11 @@ class clean_atlas_lc():
 			# else check sigmacut bounds and flag
 			else:
 				is_bad = False
-				if fluxstatparams['Ngood'] < self.Ngood_min:
+				if fluxstatparams['Ngood'] < self.g_Ngood_min:
 					is_bad = True
-				if fluxstatparams['Nclip'] > self.Nclip_max:
+				if fluxstatparams['Nclip'] > self.g_Nclip_max:
 					is_bad = True
-				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.x2_max:
+				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.g_x2_max:
 					is_bad = True
 				if is_bad:
 					lc.update_mask_col(self.flags['avg_badday'], range_i)
@@ -829,12 +833,46 @@ class clean_atlas_lc():
 
 		return lc, avglc
 
+	# output text file with information on cuts and flags
+	def add_to_readme(self, f, lc, filt):
+		f.write(f'\n\n## FILTER: {filt}')
+
+		if self.chisquares:
+			f.write(f'\n### Chi-square cut')
+			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {self.chisquare_cut} with hex value {hex(self.flags["chisquare"])}.')
+
+		if self.uncertainties:
+			f.write(f'\n### Uncertainty cut')
+			f.write(f'\nWe flag meaurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut} with hex value {hex(self.flags["uncertainty"])}.')
+		
+		if self.controls:
+			f.write(f'\n### Control light curve cut')
+			f.write(f'\nThe control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics.')
+			f.write(f'\nFor the given epoch, we flag the SN measurement for which the returned control statistics fulfill any of the following criteria with the hex value {hex(self.flags["controls_bad"])}: ')
+			f.write(f'\n\t- A returned chi-square > {self.c_x2_max}')
+			f.write(f'\n\t- A returned abs(flux/dflux) > {self.stn_max}')
+			f.write(f'\n\t- Number of clipped/"bad" measurements in the 3σ-clipped average > {self.c_Nclip_max}')
+			f.write(f'\n\t- Number of used/"good" measurements in the 3σ-clipped average < {self.c_Ngood_min}')
+
+		if self.averaging:
+			f.write(f'\n### Averaging light curves and cutting bad days')
+			f.write(f'\nFor each MJD bin of size {self.mjd_bin_size} day(s), we calculate the 3σ-clipped average of any SN measurements falling within that bin and use that average as our flux for that bin. However, out of all exposures within this MJD bin, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad bin.')
+			f.write(f'\nThen we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria with the hex value {hex(self.flags["avg_badday"])}: ') 
+			f.write(f'\n\t- A returned chi-square > {self.g_x2_max}')
+			f.write(f'\n\t- Number of measurements averaged < {self.g_Ngood_min}')
+			f.write(f'\n\t- Number of measurements clipped > {self.g_Nclip_max}')
+
+		return f
+
 	def cut_loop(self):
 		args = self.define_args().parse_args()
 		self.load_settings(args)
 
 		for obj_index in range(0,len(args.tnsnames)):
 			print(f'\nCOMMENCING LOOP FOR SN {args.tnsnames[obj_index]}')
+
+			f = open(f'{self.output_dir}/{args.tnsnames[obj_index]}/README.md','w+')
+			f.write(f"# SN {args.tnsnames[obj_index]} Light Curve Cleaning and Averaging")
 
 			if args.plot:
 				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
@@ -895,6 +933,10 @@ class clean_atlas_lc():
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+
+				f = self.add_to_readme(f, lc, filt)
+
+			f.close()
 
 			if args.plot:
 				plot.save()
