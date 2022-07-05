@@ -84,7 +84,10 @@ class atlas_lc:
 
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
-		print('\nSaving SN light curve...')
+		if self.is_averaged:
+			print('\nSaving SN averaged light curve...')
+		else:
+			print('\nSaving SN light curve...')
 
 		if filt is None:
 			o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')

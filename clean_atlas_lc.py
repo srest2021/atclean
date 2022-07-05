@@ -33,7 +33,11 @@ class clean_atlas_lc():
 					  'controls_x2':0x100,
 					  'controls_stn':0x200,
 					  'controls_Nclip':0x400,
-					  'controls_Ngood':0x800}
+					  'controls_Ngood':0x800,
+
+					  'avg_badday':0x800000,
+					  'avg_ixclip':0x1000,
+					  'avg_smallnum':0x2000}
 
 		# chi-square cut
 		self.chisquares = False
@@ -57,6 +61,14 @@ class clean_atlas_lc():
 		self.stn_max = None
 		self.Nclip_max = None
 		self.Ngood_min = None
+
+		# averaging
+		self.mjd_bin_size = None
+		self.keep_empty_bins = False
+		self.flux2mag_sigmalimit = None
+		self.Nclip_max = None
+		self.Ngood_min = None 
+		self.x2_max = None
 	
 	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
@@ -69,6 +81,9 @@ class clean_atlas_lc():
 		parser.add_argument('-u', '--uncertainties', default=False, action='store_true', help='apply uncertainty cut')
 		parser.add_argument('-c', '--controls', default=False, action='store_true', help='apply control light curve cut')
 		
+		parser.add_argument('-g', '--average', default=False, action='store_true', help='average light curves and cut bad days')
+		parser.add_argument('-m', '--mjd_bin_size', type=float, default=None, help='MJD bin size in days for averaging')
+
 		parser.add_argument('-p', '--plot', default=False, action='store_true', help='plot each cut and save into PDF file')
 		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
 		parser.add_argument('--xlim_upper', type=float, default=None, help='if plotting, manually set upper x axis limit to a certain MJD')
@@ -143,7 +158,26 @@ class clean_atlas_lc():
 			print(f'# Bound for an epoch\'s maximum number of clipped control measurements: {self.Nclip_max}')
 			print(f'# Bound for an epoch\'s minimum number of good control measurements: {self.Ngood_min}')
 
+		self.averaging = args.average 
+		if self.averaging:
+			print(f'\nAveraging and cutting bad days: {self.averaging}')
+			self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
+			print(f'# Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
+			self.mjd_bin_size = args.mjd_bin_size if not(args.mjd_bin_size is None) else float(cfg['Averaging settings']['mjd_bin_size'])
+			print(f'# MJD bin size: {self.mjd_bin_size} days')
+			self.keep_empty_bins = bool(cfg['Averaging settings']['keep_empty_bins'])
+			print(f'# Keep empty bins and store as NaN in averaged light curve: {self.keep_empty_bins}')
+			
+			self.Nclip_max = int(cfg['Averaging settings']['Nclip_max'])
+			self.Ngood_min = int(cfg['Averaging settings']['Ngood_min'])
+			self.x2_max = float(cfg['Averaging settings']['x2_max'])
+			print(f'# MJD bin bounds for not flagging as bad day: ')
+			print(f'## Maximum number of clipped measurements (Nclip_max): {self.Nclip_max}')
+			print(f'## Minimum number of good measurements (Ngood_min): {self.Ngood_min}')
+			print(f'## Maximum chi-square (x2_max): {self.x2_max}')
+
 		self.plot = args.plot
+		print(f'Plotting: {self.plot}')
 
 	# helper function for get_baseline_regions()
 	def get_Ndays(self, SN_region_index):
@@ -296,7 +330,7 @@ class clean_atlas_lc():
 
 		# drop any extra columns
 		if len(dropcols)>0: 
-			print('Dropping extra columns: ',dropcols)
+			#print('Dropping extra columns: ',dropcols)
 			lc.pdastro.t.drop(columns=dropcols,inplace=True)
 
 		return lc
@@ -685,6 +719,116 @@ class clean_atlas_lc():
 
 		return lc
 
+	def average_lc(self, lc, avglc):
+		print(f'\nNow averaging SN light curve...')
+
+		mjd = int(np.amin(lc.pdastro.t['MJD']))
+		mjd_max = int(np.amax(lc.pdastro.t['MJD']))+1
+
+		good_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'])
+
+		while mjd <= mjd_max:
+			range_i = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+self.mjd_bin_size, exclude_uplim=True)
+			range_good_i = AandB(range_i,good_i)
+
+			# add new row to averaged light curve if keep_empty_bins or any measurements present
+			if self.keep_empty_bins or len(range_i) >= 1:
+				new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
+				avglc_index = avglc.pdastro.newrow(new_row)
+			
+			# if no measurements present, flag or skip over day
+			if len(range_i) < 1:
+				if self.keep_empty_bins:
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				mjd += self.mjd_bin_size
+				continue
+			
+			# if no good measurements, average values anyway and flag
+			if len(range_good_i) < 1:
+				# average flux
+				lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_i, Nsigma=3.0, median_firstiteration=True)
+				fluxstatparams = deepcopy(lc.pdastro.statparams)
+
+				# get average mjd
+				# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
+				lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+				avg_mjd = lc.pdastro.statparams['mean']
+
+				# add row and flag
+				avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
+													'uJy':fluxstatparams['mean'], 
+													'duJy':fluxstatparams['mean_err'], 
+													'stdev':fluxstatparams['stdev'],
+													'x2':fluxstatparams['X2norm'],
+													'Nclip':fluxstatparams['Nclip'],
+													'Ngood':fluxstatparams['Ngood'],
+													'Mask':0})
+				lc.update_mask_col(self.flags['avg_badday'], range_i)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+
+				mjd += self.mjd_bin_size
+				continue
+			
+			# average good measurements
+			lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
+			fluxstatparams = deepcopy(lc.pdastro.statparams)
+
+			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
+				lc.update_mask_col(self.flags['avg_badday'], range_i)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				mjd += self.mjd_bin_size
+				continue
+
+			# get average mjd
+			# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
+			lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+			avg_mjd = lc.pdastro.statparams['mean']
+
+			# add row to averaged light curve
+			avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
+												'uJy':fluxstatparams['mean'], 
+												'duJy':fluxstatparams['mean_err'], 
+												'stdev':fluxstatparams['stdev'],
+												'x2':fluxstatparams['X2norm'],
+												'Nclip':fluxstatparams['Nclip'],
+												'Ngood':fluxstatparams['Ngood'],
+												'Mask':0})
+			
+			# flag clipped measurements in lc
+			if len(fluxstatparams['ix_clip']) > 0:
+				lc.update_mask_col(self.flags['avg_ixclip'], fluxstatparams['ix_clip'])
+			
+			# if small number within this bin, flag measurements
+			if len(range_good_i) < 3:
+				lc.update_mask_col(self.flags['avg_smallnum'], range_good_i) # TO DO: CHANGE TO RANGE_I??
+				avglc.update_mask_col(self.flags['avg_smallnum'], [avglc_index])
+			# else check sigmacut bounds and flag
+			else:
+				is_bad = False
+				if fluxstatparams['Ngood'] < self.Ngood_min:
+					is_bad = True
+				if fluxstatparams['Nclip'] > self.Nclip_max:
+					is_bad = True
+				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.x2_max:
+					is_bad = True
+				if is_bad:
+					lc.update_mask_col(self.flags['avg_badday'], range_i)
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+
+			mjd += self.mjd_bin_size
+		
+		# convert flux to magnitude and dflux to dmagnitude
+		avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
+
+		avglc = self.drop_extra_columns(avglc)
+
+		for col in ['Nclip','Ngood','Nexcluded','Mask']: 
+			avglc.pdastro.t[col] = avglc.pdastro.t[col].astype(np.int32)
+
+		print('# Total percent of data flagged: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.pdastro.t)))
+
+		return lc, avglc
+
 	def cut_loop(self):
 		args = self.define_args().parse_args()
 		self.load_settings(args)
@@ -731,12 +875,26 @@ class clean_atlas_lc():
 					if args.plot:
 						plot.plot_controls_cut()
 
+				if args.plot and (self.chisquares or self.uncertainties or self.controls):
+					plot.plot_all_cuts()
+
+				if self.averaging:
+					avglc = atlas_lc(tnsname=lc.tnsname, is_averaged=True, mjd_bin_size=self.mjd_bin_size)
+					avglc.discdate = lc.discdate
+
+					lc, avglc = self.average_lc(lc, avglc)
+
+					# save averaged light curve
+					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+
+					# plot averaged light curve
+					if args.plot:
+						plot.set(lc=avglc, filt=filt)
+						plot.plot_averaged_lc()
+
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
-
-				if args.plot:
-					plot.plot_all_cuts()
 
 			if args.plot:
 				plot.save()
