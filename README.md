@@ -1,11 +1,5 @@
 # Interactive Jupyter Notebooks and Python Scripts for Cleaning ATLAS Light Curves
 
-## Quick Setup
-Open the config file `atlas_lc_settings.ini` and replace the following fields with your information.
-1. Replace `[ATLAS credentials]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
-2. Replace `[TNS credentials]` `api_key` with your TNS API key (or ask Sofia to send you hers).
-3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files will be stored.
-
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.ipynb`
@@ -15,6 +9,12 @@ Using an already downloaded light curve, determine the best chi-square cut, appl
 Control light curve cut currently in progress of being implemented and added to this notebook (this cut also requires pre-downloaded control light curves). To easily download control light curves in order to load them into this notebook, see the **`download_atlas_lc.py`** section to run this script.
 
 ## Python Scripts
+
+### Quick setup in `atlas_lc_settings.ini`
+Open the config file `atlas_lc_settings.ini` and replace the following fields with your information.
+1. Replace `[ATLAS credentials]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
+2. Replace `[TNS credentials]` `api_key` with your TNS API key (or ask Sofia to send you hers).
+3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files will be stored.
 
 ### `download_atlas_lc.py` 
 #### (downloads SN light curve and, optionally, control light curves)
