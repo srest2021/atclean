@@ -28,8 +28,6 @@ Arguments (will override default config file settings if specified):
 - `-b` or `--closebright`: RA and Dec coordinates separated by comma of a close bright object interfering with the target object's light curve
 	- These coordinates will become the center of the circle of control light curves.
 	- Note that you may only specify these for 1 object, so it is recommended to only download 1 object's group of light curves when using this command.
-- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
-	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `-ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
 - `-u` or `--username`: override default username given in `atlas_lc_settings.ini` config file
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)

@@ -3,25 +3,26 @@
 Code adapted from Qinan Wang and Armin Rest by Sofia Rest
 '''
 
-import configparser, sys, argparse, requests, re, time, json, io
+import configparser, sys, argparse, requests, re, time, json, io, math
 import pandas as pd
+import numpy as np
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import Angle, SkyCoord
 from collections import OrderedDict
 from getpass import getpass
-from pdastro import pdastrostatsclass, AorB
+from pdastro import pdastrostatsclass, AorB, AnotB
 from atlas_lc import atlas_lc
 from plot_atlas_lc import plot_atlas_lc
 
 def RaInDeg(ra):
 	s = re.compile('\:')
 	if isinstance(ra,str) and s.search(ra):
-	    A = Angle(ra, u.hour)
+		A = Angle(ra, u.hour)
 	else:
-	    A = Angle(ra, u.degree)
+		A = Angle(ra, u.degree)
 	return(A.degree)
-	       
+		   
 def DecInDeg(dec):
 	A = Angle(dec, u.degree)
 	return(A.degree)
@@ -57,11 +58,13 @@ class download_atlas_lc:
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
 		
+		"""
 		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
 		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
 		parser.add_argument('--xlim_upper', type=float, default=None, help='if plotting, manually set upper x axis limit to a certain MJD')
 		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
 		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
+		"""
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
@@ -96,7 +99,7 @@ class download_atlas_lc:
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
-		print(f'Plotting: {args.plot}')
+		#print(f'Plotting: {args.plot}')
 		
 		self.lookbacktime_days = args.lookbacktime_days
 		if not(self.lookbacktime_days is None): 
@@ -211,7 +214,7 @@ class download_atlas_lc:
 			dec_center = Angle(sn_dec.degree, u.degree)
 
 			# add SN coordinates as first row
-			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
+			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_ra.degree,'dec':sn_dec.degree,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 		else:
 			# coordinates of close bright object
 			cb_ra = Angle(RaInDeg(closebright_coords[0]), u.degree)
@@ -228,14 +231,14 @@ class download_atlas_lc:
 			dec_center = Angle(cb_dec.degree, u.degree)
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
-			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_lc.ra,'dec':sn_lc.dec,'ra_offset':np.nan,'dec_offset':np.nan,'radius':np.nan,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
+			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_ra.degree,'dec':sn_dec.degree,'ra_offset':np.nan,'dec_offset':np.nan,'radius':np.nan,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
 		for i in range(self.num_controls):
 			angle = Angle(i*360.0/self.num_controls, u.degree)
 			
 			ra_distance = Angle(r.degree*math.cos(angle.radian), u.degree)
 			ra_offset = Angle(ra_distance.degree*(1.0/math.cos(dec_center.radian)), u.degree)
-			ra = Angle(ra_cecter.degree + ra_offset.degree, u.degree)
+			ra = Angle(ra_center.degree + ra_offset.degree, u.degree)
 
 			dec_offset = Angle(r.degree*math.sin(angle.radian), u.degree)
 			dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
@@ -250,7 +253,7 @@ class download_atlas_lc:
 					continue
 
 			# add RA and Dec coordinates to control_coords table
-			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,'ra':ra,'dec':dec,'ra_offset':ra_offset,'dec_offset':dec_offset,'radius':r,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
+			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,'ra':ra.degree,'dec':dec.degree,'ra_offset':ra_offset.degree,'dec_offset':dec_offset.degree,'radius':r,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
 	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, control_lc, control_index):
@@ -289,10 +292,12 @@ class download_atlas_lc:
 		#lc.load('c', self.output_dir)
 		#lc.load('o', self.output_dir)
 
+		"""
 		if args.plot:
 			plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args)
 			plot.set(lc=lc, filt=filt)
 			plot.plot_og_lc(separate_baseline=False)
+		"""
 
 		if args.controls:
 			print('Control light curve downloading set to True')
@@ -302,17 +307,19 @@ class download_atlas_lc:
 
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):
-				print(f'Control light curve {control_index:03d}:\n',self.control_coords.t.loc[control_index,['ra','dec','ra_offset','dec_offset','radius']])
+				print(f'\nControl light curve {control_index:03d}:\n',self.control_coords.t.loc[control_index,['ra','dec','ra_offset','dec_offset','radius']].T)
 				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
-				control_lc = download_lc(args, control_lc, token)
+				control_lc = self.download_lc(args, control_lc, token)
 				self.update_control_coords(control_lc, control_index)
 				lc.add_control_lc(control_lc.pdastro)
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 
+			"""
 			if args.plot:
 				plot.plot_og_control_lcs()
+			"""
 		
 		lc.save(self.output_dir)
 
