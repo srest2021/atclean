@@ -19,7 +19,6 @@ class clean_atlas_lc():
 		self.tns_api_key = None
 
 		# input/output
-		self.input_dir = None
 		self.output_dir = None
 		self.overwrite = True
 
@@ -108,9 +107,6 @@ class clean_atlas_lc():
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
-
-		self.input_dir = cfg['Input/output settings']['input_dir']
-		print(f'Light curve .txt files input directory: {self.input_dir}')
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 		self.overwrite = not args.dont_overwrite
@@ -880,7 +876,7 @@ class clean_atlas_lc():
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
-				lc.load(filt, self.input_dir, num_controls=self.num_controls)
+				lc.load(filt, self.output_dir, num_controls=self.num_controls)
 				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT THIS FOR EACH FILTER--ADD SNLIST.TXT?
 
 				lc = self.drop_extra_columns(lc)

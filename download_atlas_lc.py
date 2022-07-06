@@ -93,7 +93,7 @@ class download_atlas_lc:
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
-		self.flux2mag_sigmalimit = cfg['Input/output settings']['flux2mag_sigmalimit']
+		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		print(f'Plotting: {args.plot}')
 		
@@ -106,14 +106,14 @@ class download_atlas_lc:
 		self.controls = args.controls 
 		print(f'Control light curve status: {self.controls}')
 		if self.controls:
-			self.radius = cfg['Control light curve settings']['radius']
-			self.num_controls = cfg['Control light curve settings']['num_controls']
+			self.radius = float(cfg['Control light curve settings']['radius'])
+			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
 			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
 			if not(args.closebright is None):
 				self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
 				if len(self.closebright_coords > 2):
 					raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
-				self.closebright_min_dist = cfg['Control light curve settings']['closebright_min_dist']
+				self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
 				print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
 				print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
 

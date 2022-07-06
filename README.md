@@ -1,5 +1,11 @@
 # Interactive Jupyter Notebooks and Python Scripts for Cleaning ATLAS Light Curves
 
+## Quick Setup
+Open the config file `atlas_lc_settings.ini` and replace the following fields with your information.
+1. Replace `[ATLAS credentials]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
+2. Replace `[TNS credentials]` `api_key` with your TNS API key (or ask Sofia to send you hers).
+3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files will be stored.
+
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.ipynb`
