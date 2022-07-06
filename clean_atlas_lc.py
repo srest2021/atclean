@@ -567,28 +567,28 @@ class clean_atlas_lc():
 			if loss_cut_data['case'] == 'above lim':
 				print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
 
-			final_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
+			self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
-			if np.isnan(final_cut):
-				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlaslc.ini.')
+			if np.isnan(self.chisquare_cut):
+				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlas_lc_settings.ini.')
 			else:
-				if final_cut == contam_cut_data['cut']:
+				if self.chisquare_cut == contam_cut_data['cut']:
 					Pcontamination = contam_cut_data['Pcontamination']
 					Ploss = contam_cut_data['Ploss']
 				else:
 					Pcontamination = loss_cut_data['Pcontamination']
 					Ploss = loss_cut_data['Ploss']
-				print(f'# Final suggested chi-square cut is {final_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
+				print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
 				if (Pcontamination > self.contam_lim):
 					print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {self.contam_lim:0.2f}%!')
 				if (Ploss > self.loss_lim):
 					print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {self.loss_lim:0.2f}%!')
 		else:
-			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
+			print(f'Chi-square cut set to {self.chisquare_cut} manually by user, overriding dynamic chi-square cut')
 
 
 		# update mask column with final chi-square cut
-		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
+		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['chisquare'], cut_ix)
 		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
@@ -839,24 +839,24 @@ class clean_atlas_lc():
 
 		if self.chisquares:
 			f.write(f'\n### Chi-square cut')
-			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {self.chisquare_cut} with hex value {hex(self.flags["chisquare"])}.')
+			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {self.chisquare_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
 
 		if self.uncertainties:
 			f.write(f'\n### Uncertainty cut')
-			f.write(f'\nWe flag meaurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut} with hex value {hex(self.flags["uncertainty"])}.')
+			f.write(f'\nWe flag meaurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut:0.2f} with hex value {hex(self.flags["uncertainty"])}.')
 		
 		if self.controls:
 			f.write(f'\n### Control light curve cut')
 			f.write(f'\nThe control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics.')
 			f.write(f'\nFor the given epoch, we flag the SN measurement for which the returned control statistics fulfill any of the following criteria with the hex value {hex(self.flags["controls_bad"])}: ')
-			f.write(f'\n\t- A returned chi-square > {self.c_x2_max}')
-			f.write(f'\n\t- A returned abs(flux/dflux) > {self.stn_max}')
+			f.write(f'\n\t- A returned chi-square > {self.c_x2_max:0.2f}')
+			f.write(f'\n\t- A returned abs(flux/dflux) > {self.stn_max:0.2f}')
 			f.write(f'\n\t- Number of clipped/"bad" measurements in the 3σ-clipped average > {self.c_Nclip_max}')
 			f.write(f'\n\t- Number of used/"good" measurements in the 3σ-clipped average < {self.c_Ngood_min}')
 
 		if self.averaging:
 			f.write(f'\n### Averaging light curves and cutting bad days')
-			f.write(f'\nFor each MJD bin of size {self.mjd_bin_size} day(s), we calculate the 3σ-clipped average of any SN measurements falling within that bin and use that average as our flux for that bin. However, out of all exposures within this MJD bin, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad bin.')
+			f.write(f'\nFor each MJD bin of size {self.mjd_bin_size:0.2f} day(s), we calculate the 3σ-clipped average of any SN measurements falling within that bin and use that average as our flux for that bin. However, out of all exposures within this MJD bin, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad bin.')
 			f.write(f'\nThen we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria with the hex value {hex(self.flags["avg_badday"])}: ') 
 			f.write(f'\n\t- A returned chi-square > {self.g_x2_max}')
 			f.write(f'\n\t- Number of measurements averaged < {self.g_Ngood_min}')

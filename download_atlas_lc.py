@@ -245,7 +245,7 @@ class download_atlas_lc:
 				c2 = SkyCoord(ra, dec, frame='fk5')
 				offset_sep = c1.separation(c2).arcsecond
 				if offset_sep < self.closebright_min_dist:
-					print(f'Control light curve i{i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
+					print(f'Control light curve {i+1:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
 					continue
 
 			# add RA and Dec coordinates to control_coords table
@@ -275,7 +275,7 @@ class download_atlas_lc:
 		flux_nan_ix = lc.pdastro.ix_remove_null(colnames='uJy')
 		lc.pdastro.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
 
-		lc.pdastro.flux2mag('uJy', 'duJy' 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
+		lc.pdastro.flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
 		return lc
 
@@ -298,11 +298,12 @@ class download_atlas_lc:
 			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
-			for i in range(1,len(self.control_coords.t)):
-				control_lc = atlas_lc(ra=self.control_coords.t.loc[i,'ra'], dec=self.control_coords.t.loc[i,'dec'])
+			for control_index in range(1,len(self.control_coords.t)):
+				print(f'Control light curve {control_index:03d}:\n',self.control_coords.t.loc[control_index,['ra','dec','ra_offset','dec_offset','radius']])
+				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
 				control_lc = download_lc(args, control_lc, token)
-				self.update_control_coords(control_lc, i)
-				lc.add_control_lc(control_lc)
+				self.update_control_coords(control_lc, control_index)
+				lc.add_control_lc(control_lc.pdastro)
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
