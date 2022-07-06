@@ -307,7 +307,7 @@ class download_atlas_lc:
 
 			# download control light curves
 			for control_index in range(args.start_from,len(self.control_coords.t)):
-				print(f'\nControl light curve {control_index:03d}:\n',self.control_coords.t.loc[control_index,['ra','dec','ra_offset','dec_offset','radius']].T)
+				print(f'\nDownloading control light curve {control_index:03d}...')
 				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
 				control_lc = self.download_lc(args, control_lc, token)
 				self.update_control_coords(control_lc, control_index)

@@ -836,15 +836,15 @@ class clean_atlas_lc():
 		f.write(f'\n\n## FILTER: {filt}')
 
 		if self.chisquares:
-			f.write(f'\n### Chi-square cut')
-			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {final_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
+			f.write(f'\n\n### Chi-square cut')
+			f.write(f'\nWe flag measurements with a chi-square (column name "chi/N") value above {final_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
 
 		if self.uncertainties:
-			f.write(f'\n### Uncertainty cut')
-			f.write(f'\nWe flag meaurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut:0.2f} with hex value {hex(self.flags["uncertainty"])}.')
+			f.write(f'\n\n### Uncertainty cut')
+			f.write(f'\nWe flag measurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut:0.2f} with hex value {hex(self.flags["uncertainty"])}.')
 		
 		if self.controls:
-			f.write(f'\n### Control light curve cut')
+			f.write(f'\n\n### Control light curve cut')
 			f.write(f'\nThe control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics.')
 			f.write(f'\n\nFor the given epoch, we flag the SN measurement for which the returned control statistics fulfill any of the following criteria with the hex value {hex(self.flags["controls_bad"])}: ')
 			f.write(f'\n\t- A returned chi-square > {self.c_x2_max:0.2f}')
@@ -855,7 +855,7 @@ class clean_atlas_lc():
 		f.write(f'\n\nAfter any or all of these three cuts are applied, the light curves are saved with the new Mask column.')
 
 		if self.averaging:
-			f.write(f'\n### Averaging light curves and cutting bad days')
+			f.write(f'\n\n### Averaging light curves and cutting bad days')
 			f.write(f'\nFor each MJD bin of size {self.mjd_bin_size:0.2f} day(s), we calculate the 3σ-clipped average of any SN measurements falling within that bin and use that average as our flux for that bin. However, out of all exposures within this MJD bin, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad bin.')
 			f.write(f'\n\nThen we flag any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria with the hex value {hex(self.flags["avg_badday"])}: ') 
 			f.write(f'\n\t- A returned chi-square > {self.g_x2_max}')
