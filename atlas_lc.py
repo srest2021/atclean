@@ -82,8 +82,8 @@ class atlas_lc:
 		print(f'# Filename: {filename}')
 		return filename
 
-	# save SN light curve and, if necessary, control light curves
-	def save(self, output_dir, filt=None, overwrite=True):
+	# save only SN light curve 
+	def save_lc(self, output_dir, filt=None, overwrite=True):
 		if self.is_averaged:
 			print('\nSaving SN averaged light curve...')
 		else:
@@ -96,15 +96,24 @@ class atlas_lc:
 		else:
 			self.pdastro.write(filename=self.get_filename(filt,0,output_dir), overwrite=overwrite)
 
+	# save only a single control light curve
+	def save_control_lc(self, output_dir, control_index, filt=None, overwrite=True):
+		#print(f'# Saving control light curve {control_index:03d}')
+		if filt is None:
+			for filt_ in ['c','o']:
+				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
+				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+		else:
+			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
+
+	# save SN light curve and, if necessary, control light curves
+	def save(self, output_dir, filt=None, overwrite=True):
+		self.save_lc(output_dir, filt=filt, overwrite=overwrite)
+
 		if len(self.lcs) > 0:
 			print('Saving control light curves...')
 			for control_index in range(1,len(self.lcs)+1):
-				if filt is None:
-					for filt_ in ['c','o']:
-						filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
-						self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
-				else:
-					self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
+				self.save_control_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def load(self, filt, input_dir, num_controls=None):

@@ -57,7 +57,8 @@ class download_atlas_lc:
 		
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
-		
+		parser.add_argument('--start_from', type=int, default=1, help='start from a specific control light curve index (useful when program raised error and you don\'t want to have to redownload certain light curves)')')
+
 		"""
 		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
 		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
@@ -286,11 +287,10 @@ class download_atlas_lc:
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token):
 		lc = atlas_lc(tnsname=tnsname)
-		print(f'\nCommencing download loop for SN {lc.tnsname}')
+		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		lc.get_tns_data(self.tns_api_key)
 		lc = self.download_lc(args, lc, token)
-		#lc.load('c', self.output_dir)
-		#lc.load('o', self.output_dir)
+		lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
 		"""
 		if args.plot:
@@ -306,12 +306,13 @@ class download_atlas_lc:
 			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
-			for control_index in range(1,len(self.control_coords.t)):
+			for control_index in range(args.start_from,len(self.control_coords.t)):
 				print(f'\nControl light curve {control_index:03d}:\n',self.control_coords.t.loc[control_index,['ra','dec','ra_offset','dec_offset','radius']].T)
 				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
 				control_lc = self.download_lc(args, control_lc, token)
 				self.update_control_coords(control_lc, control_index)
 				lc.add_control_lc(control_lc.pdastro)
+				lc.save_control_lc(self.output_dir, control_index, overwrite=self.overwrite)
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
@@ -321,7 +322,7 @@ class download_atlas_lc:
 				plot.plot_og_control_lcs()
 			"""
 		
-		lc.save(self.output_dir)
+		#lc.save(self.output_dir, overwrite=self.overwrite)
 
 	# loop through each SN given and download light curves
 	def download_loop(self):
