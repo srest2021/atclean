@@ -265,7 +265,7 @@ class download_atlas_lc:
 
 	# download a single light curve
 	def download_lc(self, args, lc, token):	
-		print(f'Downloading forced photometry light curve at {RaInDeg(lc.ra)}, {DecInDeg(lc.dec)} from ATLAS')
+		print(f'Downloading forced photometry light curve at {RaInDeg(lc.ra):0.8f}, {DecInDeg(lc.dec):0.8f} from ATLAS')
 
 		try:
 			lc.pdastro.t = self.get_result(RaInDeg(lc.ra), DecInDeg(lc.dec), token, lookbacktime_days=self.lookbacktime_days)
@@ -315,7 +315,7 @@ class download_atlas_lc:
 				lc.save_control_lc(self.output_dir, control_index, overwrite=self.overwrite)
 
 			# save control_coords table
-			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
+			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 
 			"""
 			if args.plot:
