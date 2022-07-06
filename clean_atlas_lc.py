@@ -563,32 +563,34 @@ class clean_atlas_lc():
 			if loss_cut_data['case'] == 'above lim':
 				print(f'## WARNING: Loss cut not possible with loss <= loss_lim {self.loss_lim:0.2f}%!')
 
-			self.chisquare_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
+			final_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
-			if np.isnan(self.chisquare_cut):
+			if np.isnan(final_cut):
 				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlas_lc_settings.ini.')
 			else:
-				if self.chisquare_cut == contam_cut_data['cut']:
+				if final_cut == contam_cut_data['cut']:
 					Pcontamination = contam_cut_data['Pcontamination']
 					Ploss = contam_cut_data['Ploss']
 				else:
 					Pcontamination = loss_cut_data['Pcontamination']
 					Ploss = loss_cut_data['Ploss']
-				print(f'# Final suggested chi-square cut is {self.chisquare_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
+				print(f'# Final suggested chi-square cut is {final_cut:0.2f}, with {Pcontamination:0.2f}% contamination and {Ploss:0.2f}% loss.')
 				if (Pcontamination > self.contam_lim):
 					print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {self.contam_lim:0.2f}%!')
 				if (Ploss > self.loss_lim):
 					print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {self.loss_lim:0.2f}%!')
 		else:
-			print(f'Chi-square cut set to {self.chisquare_cut} manually by user, overriding dynamic chi-square cut')
+			final_cut = self.chisquare_cut
+			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
+
 
 
 		# update mask column with final chi-square cut
-		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=self.chisquare_cut, exclude_lowlim=True)
+		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['chisquare'], cut_ix)
 		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
-		return lc
+		return lc, final_cut
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
@@ -830,12 +832,12 @@ class clean_atlas_lc():
 		return lc, avglc
 
 	# output text file with information on cuts and flags
-	def add_to_readme(self, f, lc, filt):
+	def add_to_readme(self, f, lc, filt, final_cut):
 		f.write(f'\n\n## FILTER: {filt}')
 
 		if self.chisquares:
 			f.write(f'\n### Chi-square cut')
-			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {self.chisquare_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
+			f.write(f'\nWe flag meaurements with a chi-square (column name "chi/N") value above {final_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
 
 		if self.uncertainties:
 			f.write(f'\n### Uncertainty cut')
@@ -895,7 +897,7 @@ class clean_atlas_lc():
 					plot.plot_og_lc()
 
 				if self.chisquares:
-					lc = self.apply_chisquare_cut(lc)
+					lc, final_cut = self.apply_chisquare_cut(lc)
 					if args.plot:
 						plot.plot_chisquare_cut()
 
@@ -930,7 +932,7 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
-				f = self.add_to_readme(f, lc, filt)
+				f = self.add_to_readme(f, lc, filt, final_cut)
 
 			f.close()
 

@@ -12,6 +12,7 @@ from collections import OrderedDict
 from getpass import getpass
 from pdastro import pdastrostatsclass, AorB
 from atlas_lc import atlas_lc
+from plot_atlas_lc import plot_atlas_lc
 
 def RaInDeg(ra):
 	s = re.compile('\:')
@@ -285,9 +286,11 @@ class download_atlas_lc:
 		print(f'\nCommencing download loop for SN {lc.tnsname}')
 		lc.get_tns_data(self.tns_api_key)
 		lc = self.download_lc(args, lc, token)
+		#lc.load('c', self.output_dir)
+		#lc.load('o', self.output_dir)
 
 		if args.plot:
-			plot = plot_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args)
+			plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args)
 			plot.set(lc=lc, filt=filt)
 			plot.plot_og_lc(separate_baseline=False)
 
