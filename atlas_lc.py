@@ -41,13 +41,14 @@ class atlas_lc:
 			data = {'api_key':api_key,'data':json.dumps(json_file)}
 			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
+			
+			self.ra = json_data['data']['reply']['ra']
+			self.dec = json_data['data']['reply']['dec']
+			discoverydate = json_data['data']['reply']['discoverydate']
 		except Exception as e:
+			print(json_data['data']['reply'])
 			raise RuntimeError('# ERROR in get_tns_data(): '+str(e))
 
-		self.ra = json_data['data']['reply']['ra']
-		self.dec = json_data['data']['reply']['dec']
-
-		discoverydate = json_data['data']['reply']['discoverydate']
 		date = list(discoverydate.partition(' '))[0]
 		time = list(discoverydate.partition(' '))[2]
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')

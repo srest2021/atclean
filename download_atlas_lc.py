@@ -57,7 +57,7 @@ class download_atlas_lc:
 		
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
-		parser.add_argument('--start_from', type=int, default=1, help='start from a specific control light curve index (useful when program raised error and you don\'t want to have to redownload certain light curves)')')
+		parser.add_argument('--start_from', type=int, default=0, help='start from a specific control light curve index (useful when program raised error and you don\'t want to have to redownload certain light curves)')
 
 		"""
 		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
@@ -289,8 +289,10 @@ class download_atlas_lc:
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		lc.get_tns_data(self.tns_api_key)
-		lc = self.download_lc(args, lc, token)
-		lc.save_lc(self.output_dir, overwrite=self.overwrite)
+
+		if args.start_from == 0:
+			lc = self.download_lc(args, lc, token)
+			lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
 		"""
 		if args.plot:
@@ -334,7 +336,7 @@ class download_atlas_lc:
 		if token is None: 
 			raise RuntimeError('ERROR in connect_atlas(): No token header!')
 
-		for obj_index in range(0,len(args.tnsnames)):
+		for obj_index in range(len(args.tnsnames)):
 			self.download_lcs(args, args.tnsnames[obj_index], token)
 
 if __name__ == "__main__":
