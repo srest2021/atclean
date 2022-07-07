@@ -218,8 +218,8 @@ class download_atlas_lc:
 			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,'ra':sn_ra.degree,'dec':sn_dec.degree,'ra_offset':0,'dec_offset':0,'radius':0,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 		else:
 			# coordinates of close bright object
-			cb_ra = Angle(RaInDeg(closebright_coords[0]), u.degree)
-			cb_dec = Angle(DecInDeg(closebright_coords[1]), u.degree)
+			cb_ra = Angle(RaInDeg(self.closebright_coords[0]), u.degree)
+			cb_dec = Angle(DecInDeg(self.closebright_coords[1]), u.degree)
 
 			# circle pattern radius is distance between SN and bright object
 			c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
@@ -285,12 +285,12 @@ class download_atlas_lc:
 		return lc
 
 	# download SN light curve and, if necessary, control light curves, then save
-	def download_lcs(self, args, tnsname, token):
+	def download_lcs(self, args, tnsname, token, start_from):
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		lc.get_tns_data(self.tns_api_key)
 
-		if args.start_from == 0:
+		if start_from == 0:
 			lc = self.download_lc(args, lc, token)
 			lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
@@ -308,7 +308,7 @@ class download_atlas_lc:
 			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
-			for control_index in range(args.start_from,len(self.control_coords.t)):
+			for control_index in range(start_from,len(self.control_coords.t)):
 				print(f'\nDownloading control light curve {control_index:03d}...')
 				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
 				control_lc = self.download_lc(args, control_lc, token)
@@ -337,7 +337,13 @@ class download_atlas_lc:
 			raise RuntimeError('ERROR in connect_atlas(): No token header!')
 
 		for obj_index in range(len(args.tnsnames)):
-			self.download_lcs(args, args.tnsnames[obj_index], token)
+			# only start from the specified index if the SN is first object to be downloaded
+			if obj_index == 0:
+				start_from = args.start_from
+			else:
+				start_from = 0
+			
+			self.download_lcs(args, args.tnsnames[obj_index], token, start_from)
 
 if __name__ == "__main__":
 	download_atlas_lc = download_atlas_lc()
