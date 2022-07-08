@@ -99,11 +99,12 @@ class download_atlas_lc:
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 
-		# attempt loading snlist.txt; if does not exist, create new snlist table
-		self.snlist_filename = cfg['Input/output settings']['snlist_filename']
+		# attempt to load snlist.txt; if does not exist, create new snlist table
+		self.snlist_filename = f'{self.output_dir}/{cfg["Input/output settings"]["snlist_filename"]}'
 		if os.path.exists(self.snlist_filename):
 			self.snlist = pdastrostatsclass()
-			self.snlist.load_spacesep(f'{self.output_dir}/{self.snlist_filename}', delim_whitespace=True)
+			print(f'Loading SN list at {self.snlist_filename}')
+			self.snlist.load_spacesep(self.snlist_filename, delim_whitespace=True)
 		else:
 			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
 
@@ -377,6 +378,7 @@ class download_atlas_lc:
 			self.download_lcs(args, args.tnsnames[obj_index], token, snlist_index)
 
 		# save snlist.txt with any new rows
+		print(f'Saving SN list at {self.snlist_filename}')
 		self.snlist.write(self.snlist_filename)
 
 if __name__ == "__main__":

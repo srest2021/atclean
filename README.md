@@ -26,7 +26,7 @@ Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
 - `-c` or `--controls`: download control light curves in addition to SN light curve
 - `-b` or `--closebright`: use RA and Dec coordinates of a close bright object interfering with the target object's light curve as the center of the circle of control light curves.
-	- These RA and Dec coordinates must be manually input by the user in the SN list text file. (The default file name is 'snlist.txt' and is automatically generated in the given output directory once script is run at least once. Simply open the file and add in the desired RA and Dec.)
+	- These RA and Dec coordinates must be manually input by the user in the SN list text file. (The default file name is 'snlist.txt' and is automatically generated in the given output directory once script is run at least once. Simply open the file and add in the desired RA and Dec in the corresponding SN's row.)
 - `-u` or `--username`: override default username given in `atlas_lc_settings.ini` config file
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)

@@ -3,7 +3,7 @@
 @author: Sofia Rest
 """
 
-import sys, argparse, configparser, re
+import sys, argparse, configparser, re, os
 from copy import deepcopy
 import pandas as pd
 import numpy as np
@@ -20,6 +20,8 @@ class clean_atlas_lc():
 
 		# input/output
 		self.output_dir = None
+		self.snlist_filename = None
+		self.snlist = None
 		self.overwrite = True
 
 		# flags for each cut
@@ -109,6 +111,15 @@ class clean_atlas_lc():
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
+
+		# attempt to load snlist.txt; if does not exist, create new snlist table
+		self.snlist_filename = cfg['Input/output settings']['snlist_filename']
+		if os.path.exists(self.snlist_filename):
+			self.snlist = pdastrostatsclass()
+			self.snlist.load_spacesep(f'{self.output_dir}/{self.snlist_filename}', delim_whitespace=True)
+		else:
+			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		print(f'Plotting: {args.plot}')
@@ -865,6 +876,27 @@ class clean_atlas_lc():
 
 		return f
 
+	def get_lc_data(self, lc, snlist_index):
+		if snlist_index == -1:
+			lc.get_tns_data(self.tns_api_key)
+
+			# add row to self.snlist
+			self.snlist.newrow({'tnsname':lc.tnsname, 
+								'ra':lc.ra, 
+								'dec':lc.dec, 
+								'discovery_date':lc.discdate, 
+								'closebright_ra':np.nan, 
+								'closebright_dec':np.nan})
+			
+			snlist_index = len(self.snlist.t) - 1
+		
+		lc.ra = self.snlist.t.loc[snlist_index,'ra']
+		lc.dec = self.snlist.t.loc[snlist_index,'dec']
+		lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
+		print(f'# RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}')
+
+		return lc, snlist_index
+
 	def cut_loop(self):
 		args = self.define_args().parse_args()
 		self.load_settings(args)
@@ -878,11 +910,20 @@ class clean_atlas_lc():
 			if args.plot:
 				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
 
+			snlist_index = -1
+			snlist_ix = self.snlist.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
+			# check if SN information exists in snlist.txt
+			if len(snlist_ix) > 0:
+				if len(snlist_ix > 1):
+					# drop duplicate rows
+					self.snlist.t.drop(snlist_ix[1:])
+				snlist_index = snlist_ix[0]
+
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
 				lc.load(filt, self.output_dir, num_controls=self.num_controls)
-				lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT THIS FOR EACH FILTER--ADD SNLIST.TXT?
+				lc, snlist_index = self.get_lc_data(lc, snlist_index) #lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT THIS FOR EACH FILTER--ADD SNLIST.TXT?
 
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
