@@ -982,6 +982,10 @@ class clean_atlas_lc():
 
 			if args.plot:
 				plot.save()
+				
+		# save snlist.txt with any new rows
+		print(f'Saving SN list at {self.snlist_filename}')
+		self.snlist.write(self.snlist_filename)
 
 if __name__ == "__main__":
 	clean_atlas_lc = clean_atlas_lc()
