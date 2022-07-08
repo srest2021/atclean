@@ -3,7 +3,7 @@
 Code adapted from Qinan Wang and Armin Rest by Sofia Rest
 '''
 
-import configparser, sys, argparse, requests, re, time, json, io, math
+import configparser, sys, argparse, requests, re, time, json, io, math, os
 import pandas as pd
 import numpy as np
 from astropy import units as u
@@ -36,6 +36,8 @@ class download_atlas_lc:
 
 		# input/output
 		self.output_dir = None
+		self.snlist_filename = None
+		self.snlist = None
 		self.overwrite = True
 		self.flux2mag_sigmalimit = None
 
@@ -45,6 +47,7 @@ class download_atlas_lc:
 		self.control_coords = pdastrostatsclass()
 		self.radius = None
 		self.num_controls = None
+		self.closebright = False
 		self.closebright_coords = None
 		self.closebright_min_dist = None
 
@@ -57,8 +60,7 @@ class download_atlas_lc:
 		
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
-		parser.add_argument('--start_from', type=int, default=0, help='start from a specific control light curve index (useful when program raised error and you don\'t want to have to redownload certain light curves)')
-
+		
 		"""
 		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
 		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
@@ -96,11 +98,19 @@ class download_atlas_lc:
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
+
+		# attempt loading snlist.txt; if does not exist, create new snlist table
+		self.snlist_filename = cfg['Input/output settings']['snlist_filename']
+		if os.path.exists(self.snlist_filename):
+			self.snlist = pdastrostatsclass()
+			self.snlist.load_spacesep(f'{self.output_dir}/{self.snlist_filename}', delim_whitespace=True)
+		else:
+			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
-		#print(f'Plotting: {args.plot}')
 		
 		self.lookbacktime_days = args.lookbacktime_days
 		if not(self.lookbacktime_days is None): 
@@ -114,14 +124,15 @@ class download_atlas_lc:
 			self.radius = float(cfg['Control light curve settings']['radius'])
 			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
 			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
-			if not(args.closebright is None):
-				self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
-				if len(self.closebright_coords > 2):
-					raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+			if args.closebright:
+				self.closebright = True
+				#self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
+				#if len(self.closebright_coords > 2):
+					#raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
 				self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
-				print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+				#print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
 				print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
-
+			
 	def connect_atlas(self):
 		baseurl = 'https://fallingstar-data.com/forcedphot'
 		resp = requests.post(url=f"{baseurl}/api-token-auth/",data={'username':self.username,'password':self.password})
@@ -207,7 +218,7 @@ class download_atlas_lc:
 		sn_ra = Angle(RaInDeg(sn_lc.ra), u.degree)
 		sn_dec = Angle(DecInDeg(sn_lc.dec), u.degree)
 
-		if self.closebright_coords is None:
+		if not self.closebright:
 			r = Angle(self.radius, u.arcsec)
 
 			# circle pattern center is SN location
@@ -244,7 +255,7 @@ class download_atlas_lc:
 			dec_offset = Angle(r.degree*math.sin(angle.radian), u.degree)
 			dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
 
-			if not(self.closebright_coords is None):
+			if self.closebright:
 				# check to see if control light curve location is within minimum distance from SN location
 				c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
 				c2 = SkyCoord(ra, dec, frame='fk5')
@@ -284,22 +295,46 @@ class download_atlas_lc:
 
 		return lc
 
+	def get_lc_data(self, lc, snlist_index):
+		if snlist_index == -1:
+			lc.get_tns_data(self.tns_api_key)
+
+			# add row to self.snlist
+			self.snlist.newrow({'tnsname':lc.tnsname, 
+								'ra':lc.ra, 
+								'dec':lc.dec, 
+								'discovery_date':lc.discdate, 
+								'closebright_ra':np.nan, 
+								'closebright_dec':np.nan})
+			
+			snlist_index = len(self.snlist.t) - 1
+		
+		lc.ra = self.snlist.t.loc[snlist_index,'ra']
+		lc.dec = self.snlist.t.loc[snlist_index,'dec']
+		lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
+
+		if self.closebright:
+			if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
+				self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
+				self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
+			else:
+				raise RuntimeError(f'ERROR: Closebright coordinates given in SN list file at {self.snlist_filename} are not valid!')
+		
+		output = f'# RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}'
+		if self.closebright: 
+			output += f', closebright RA: {self.closebright_coords[0]}, closebright Dec: {self.closebright_coords[1]}'
+		print(output)
+
+		return lc
+
 	# download SN light curve and, if necessary, control light curves, then save
-	def download_lcs(self, args, tnsname, token, start_from):
+	def download_lcs(self, args, tnsname, token, snlist_index):
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
-		lc.get_tns_data(self.tns_api_key)
-
-		if start_from == 0:
-			lc = self.download_lc(args, lc, token)
-			lc.save_lc(self.output_dir, overwrite=self.overwrite)
-
-		"""
-		if args.plot:
-			plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args)
-			plot.set(lc=lc, filt=filt)
-			plot.plot_og_lc(separate_baseline=False)
-		"""
+		
+		lc = self.get_lc_data(lc, snlist_index)
+		lc = self.download_lc(args, lc, token)
+		lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
 		if args.controls:
 			print('Control light curve downloading set to True')
@@ -308,23 +343,16 @@ class download_atlas_lc:
 			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
-			for control_index in range(start_from,len(self.control_coords.t)):
+			for control_index in range(1,len(self.control_coords.t)):
 				print(f'\nDownloading control light curve {control_index:03d}...')
 				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
 				control_lc = self.download_lc(args, control_lc, token)
 				self.update_control_coords(control_lc, control_index)
-				lc.add_control_lc(control_lc.pdastro)
+				lc.add_control_lc(control_lc.pdastro, control_index)
 				lc.save_control_lc(self.output_dir, control_index, overwrite=self.overwrite)
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
-
-			"""
-			if args.plot:
-				plot.plot_og_control_lcs()
-			"""
-		
-		#lc.save(self.output_dir, overwrite=self.overwrite)
 
 	# loop through each SN given and download light curves
 	def download_loop(self):
@@ -337,13 +365,19 @@ class download_atlas_lc:
 			raise RuntimeError('ERROR in connect_atlas(): No token header!')
 
 		for obj_index in range(len(args.tnsnames)):
-			# only start from the specified index if the SN is first object to be downloaded
-			if obj_index == 0:
-				start_from = args.start_from
-			else:
-				start_from = 0
-			
-			self.download_lcs(args, args.tnsnames[obj_index], token, start_from)
+			snlist_index = -1
+			snlist_ix = self.snlist.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
+			# check if SN information exists in snlist.txt
+			if len(snlist_ix) > 0:
+				if len(snlist_ix > 1):
+					# drop duplicate rows
+					self.snlist.t.drop(snlist_ix[1:])
+				snlist_index = snlist_ix[0]
+
+			self.download_lcs(args, args.tnsnames[obj_index], token, snlist_index)
+
+		# save snlist.txt with any new rows
+		self.snlist.write(self.snlist_filename)
 
 if __name__ == "__main__":
 	download_atlas_lc = download_atlas_lc()

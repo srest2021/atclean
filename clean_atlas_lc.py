@@ -305,7 +305,7 @@ class clean_atlas_lc():
 
 				if self.controls:
 					print(f'## Correcting control light curves for potential flux in template...')
-					for control_index in range(1,self.num_controls+1):
+					for control_index in lc.lcs: #range(1,self.num_controls+1):
 						#print(f'### Control index: {control_index}')
 						lc = self.controls_correct_for_template(lc, control_index, regions, region_index)
 			else:
@@ -612,7 +612,7 @@ class clean_atlas_lc():
 		lc.pdastro.t = lc.pdastro.t.loc[mjd_sorted_i]
 		sn_sorted = lc.pdastro.t.loc[mjd_sorted_i,'MJD'].to_numpy()
 
-		for control_index in range(1,self.num_controls+1):
+		for control_index in lc.lcs: #range(1,self.num_controls+1):
 			# sort control light curves by MJD
 			mjd_sorted_i = lc.lcs[control_index].ix_sort_by_cols('MJD')
 			control_sorted = lc.lcs[control_index].t.loc[mjd_sorted_i,'MJD'].to_numpy()
@@ -656,7 +656,7 @@ class clean_atlas_lc():
 		duJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
 		Mask = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), 0, dtype=np.int32)
 		
-		for control_index in range(1,self.num_controls+1):
+		for control_index in lc.lcs: #range(1,self.num_controls+1):
 			if (len(lc.lcs[control_index].t) != len(lc.pdastro.t['MJD'])) or (np.array_equal(lc.pdastro.t['MJD'], lc.lcs[control_index].t['MJD']) is False):
 				raise RuntimeError(f'## sERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds().')
 			else:
@@ -692,7 +692,7 @@ class clean_atlas_lc():
 		print('\nNow applying control light curve cut...')
 
 		# clear any previous flags in control light curves' 'Mask' columns
-		for control_index in range(1,self.num_controls+1):
+		for control_index in lc.lcs: #range(1,self.num_controls+1):
 			lc.lcs[control_index].t['Mask'] = 0
 
 		lc = self.verify_mjds(lc)

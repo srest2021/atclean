@@ -25,10 +25,8 @@ Configure default settings for downloading and saving light curves in **`atlas_l
 Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
 - `-c` or `--controls`: download control light curves in addition to SN light curve
-- `-b` or `--closebright`: RA and Dec coordinates separated by comma of a close bright object interfering with the target object's light curve
-	- These coordinates will become the center of the circle of control light curves.
-	- Note that you may only specify these for 1 object, so it is recommended to only download 1 object's group of light curves when using this command.
-	- If the script crashes in the middle of downloading control light curves, you can use the `--start_from` argument to specify a certain control index to start downloading from. For example, if you've already downloaded 3 control light curves and you get an error downloading control light curve 004, you can simply rerun the script with the argument `--start_from 4`.
+- `-b` or `--closebright`: use RA and Dec coordinates of a close bright object interfering with the target object's light curve as the center of the circle of control light curves.
+	- These RA and Dec coordinates must be manually input by the user in the SN list text file. (The default file name is 'snlist.txt' and is automatically generated in the given output directory once script is run at least once. Simply open the file and add in the desired RA and Dec.)
 - `-u` or `--username`: override default username given in `atlas_lc_settings.ini` config file
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)

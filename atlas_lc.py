@@ -54,8 +54,6 @@ class atlas_lc:
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices
 
-		print(f'# RA: {self.ra}, Dec: {self.dec}, discovery date: {self.discdate}')
-
 	# get baseline indices (any indices before the SN discovery date)
 	def get_baseline_ix(self):
 		if self.discdate is None:
@@ -113,7 +111,7 @@ class atlas_lc:
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves...')
-			for control_index in range(1,len(self.lcs)+1):
+			for control_index in lcs:
 				self.save_control_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
@@ -123,13 +121,13 @@ class atlas_lc:
 
 		if not(num_controls is None):
 			print(f'Loading {num_controls} control light curves...')
-			for control_index in range(1,num_controls+1):
+			for control_index in lcs:
 				self.lcs[control_index] = pdastrostatsclass()
 				self.lcs[control_index].load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
 
 	# add downloaded control light curve to control light curve dictionary
-	def add_control_lc(self, control_lc):
-		self.lcs[len(self.lcs)+1] = control_lc
+	def add_control_lc(self, control_lc, control_index):
+		self.lcs[control_index] = control_lc
 
 	# update given indices of 'Mask' column in the SN light curve with given flag(s)
 	def update_mask_col(self, flag, indices):
