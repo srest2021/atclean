@@ -111,7 +111,7 @@ class atlas_lc:
 
 		if len(self.lcs) > 0:
 			print('Saving control light curves...')
-			for control_index in lcs:
+			for control_index in range(1,len(self.lcs)+1):
 				self.save_control_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
@@ -121,7 +121,7 @@ class atlas_lc:
 
 		if not(num_controls is None):
 			print(f'Loading {num_controls} control light curves...')
-			for control_index in self.lcs:
+			for control_index in range(1,num_controls+1):
 				self.lcs[control_index] = pdastrostatsclass()
 				self.lcs[control_index].load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
 

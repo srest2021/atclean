@@ -683,7 +683,7 @@ class clean_atlas_lc():
 		duJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
 		Mask = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), 0, dtype=np.int32)
 		
-		for control_index in lc.lcs: #range(1,self.num_controls+1):
+		for control_index in range(1,self.num_controls+1):
 			if (len(lc.lcs[control_index].t) != len(lc.pdastro.t['MJD'])) or (np.array_equal(lc.pdastro.t['MJD'], lc.lcs[control_index].t['MJD']) is False):
 				raise RuntimeError(f'## sERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds().')
 			else:
@@ -726,7 +726,7 @@ class clean_atlas_lc():
 		print('\nNow applying control light curve cut...')
 
 		# clear any previous flags in control light curves' 'Mask' columns
-		for control_index in lc.lcs: #range(1,self.num_controls+1):
+		for control_index in range(1,self.num_controls+1):
 			lc.lcs[control_index].t['Mask'] = 0
 
 		lc = self.verify_mjds(lc)
@@ -750,6 +750,7 @@ class clean_atlas_lc():
 		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
 		lc.update_mask_col(self.flags['controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
 		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
+		
 		output = self.print_control_flag_stats(lc)
 
 		return lc, output
