@@ -503,7 +503,7 @@ class clean_atlas_lc():
 		loss_cut_data = self.get_limcuts_data(lc, 'loss_cut', loss_cut, loss_case)
 		contam_cut_data = self.get_limcuts_data(lc, 'contam_cut', contam_cut, contam_case)
 
-		return loss_cut_data, contam_cut_data
+		return contam_cut_data, loss_cut_data
 
 	# choose between contamination cut and loss cut
 	def get_final_chisquare_cut(self, contam_cut, loss_cut, contam_case, loss_case):
@@ -560,12 +560,17 @@ class clean_atlas_lc():
 		return final_cut
 
 	# apply chi-square cut to SN light curve and update mask column with flag
-	def apply_chisquare_cut(self, lc):
+	def apply_chisquare_cut(self, args, lc, plot=None):
 		print('\nNow applying dynamic chi-square cut...')
 
 		if self.chisquare_cut is None:
 			limcuts = self.get_limcuts_table(lc)
-			loss_cut_data, contam_cut_data = self.get_limcuts(lc, limcuts)
+			contam_cut_data, loss_cut_data = self.get_limcuts(lc, limcuts)
+
+			if args.plot:
+				if plot is None:
+					raise RuntimeError('Plot object not passed to apply_chisquare_cut()!')
+				plot.plot_limcuts(limcuts, contam_cut_data['cut'], loss_cut_data['cut'], self.min_cut, self.max_cut)
 
 			print(f'# Contamination cut according to given contam_limit, with {contam_cut_data["Pcontamination"]:0.2f}% contamination and {contam_cut_data["Ploss"]:0.2f}% loss: {contam_cut_data["cut"]:0.2f}')
 			if contam_cut_data['case'] == 'above lim':
@@ -594,14 +599,15 @@ class clean_atlas_lc():
 			final_cut = self.chisquare_cut
 			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
 
-
-
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['chisquare'], cut_ix)
 		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
-		return lc, final_cut
+		if args.plot:
+			return lc, final_cut, plot
+		else:
+			return lc, final_cut
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
@@ -941,9 +947,11 @@ class clean_atlas_lc():
 					plot.plot_og_lc()
 
 				if self.chisquares:
-					lc, final_cut = self.apply_chisquare_cut(lc)
 					if args.plot:
+						lc, final_cut, plot = self.apply_chisquare_cut(args, lc, plot)
 						plot.plot_chisquare_cut()
+					else:
+						lc, final_cut = self.apply_chisquare_cut(args, lc)
 
 				if self.uncertainties:
 					lc = self.apply_uncertainty_cut(lc)
@@ -982,7 +990,7 @@ class clean_atlas_lc():
 
 			if args.plot:
 				plot.save()
-				
+
 		# save snlist.txt with any new rows
 		print(f'Saving SN list at {self.snlist_filename}')
 		self.snlist.write(self.snlist_filename)
