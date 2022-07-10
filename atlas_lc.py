@@ -121,7 +121,7 @@ class atlas_lc:
 
 		if not(num_controls is None):
 			print(f'Loading {num_controls} control light curves...')
-			for control_index in lcs:
+			for control_index in self.lcs:
 				self.lcs[control_index] = pdastrostatsclass()
 				self.lcs[control_index].load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
 

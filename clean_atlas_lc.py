@@ -570,7 +570,7 @@ class clean_atlas_lc():
 			if args.plot:
 				if plot is None:
 					raise RuntimeError('Plot object not passed to apply_chisquare_cut()!')
-				plot.plot_limcuts(limcuts, contam_cut_data['cut'], loss_cut_data['cut'], self.min_cut, self.max_cut)
+				plot.plot_limcuts(limcuts, contam_cut_data['cut'], loss_cut_data['cut'], self.contam_lim, self.loss_lim, self.min_cut, self.max_cut)
 
 			print(f'# Contamination cut according to given contam_limit, with {contam_cut_data["Pcontamination"]:0.2f}% contamination and {contam_cut_data["Ploss"]:0.2f}% loss: {contam_cut_data["cut"]:0.2f}')
 			if contam_cut_data['case'] == 'above lim':
@@ -595,19 +595,26 @@ class clean_atlas_lc():
 					print(f'## WARNING: Final cut\'s contamination {Pcontamination:0.2f}% exceeds {self.contam_lim:0.2f}%!')
 				if (Ploss > self.loss_lim):
 					print(f'## WARNING: Final cut\'s loss {Ploss:0.2f}% exceeds loss_lim {self.loss_lim:0.2f}%!')
+		
+			output = f'\n\t- The cut optimized according to the given contamination limit of {self.contam_lim:0.2f}% was {contam_cut_data["cut"]:0.2f}, with a contamination of {contam_cut_data["Pcontamination"]:0.2f}% and a loss of {contam_cut_data["Ploss"]:0.2f}%.'
+			output += f'\n\t- The cut optimized according to the given loss limit of {self.loss_lim:0.2f}% was {loss_cut_data["cut"]:0.2f}, with a contamination of {loss_cut_data["Pcontamination"]:0.2f}% and a loss of {loss_cut_data["Ploss"]:0.2f}%.'
 		else:
 			final_cut = self.chisquare_cut
+
 			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
+			output = f'Cut was manually set to {final_cut} by user, overriding dynamic chi-square cut.'
 
 		# update mask column with final chi-square cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['chisquare'], cut_ix)
-		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
+		s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%'
+		output += f'\n\n{s}.'
+		print(f'# {s}')
 
 		if args.plot:
-			return lc, final_cut, plot
+			return lc, final_cut, output, plot
 		else:
-			return lc, final_cut
+			return lc, final_cut, output
 
 	# apply chi-square cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
@@ -616,9 +623,12 @@ class clean_atlas_lc():
 		# update mask column with uncertainty cut
 		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['uncertainty'], cut_ix)
-		print(f'# Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%')
 
-		return lc
+		s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%'
+		output = f'\n\n{s}.'
+		print(f'# {s}')
+
+		return lc, output
 
 	# make sure that for every SN measurement, we have corresponding control light curve 
 	# measurements at that MJD
@@ -701,8 +711,15 @@ class clean_atlas_lc():
 		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_stn']))/len(lc.pdastro.t)))
 		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Nclip']))/len(lc.pdastro.t)))
 		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Ngood']))/len(lc.pdastro.t)))
-		print('## Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t)))
-		print('## Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.pdastro.t)))
+		
+		s = 'Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t))
+		print(f'## {s}')
+		output = f'\n\n {s}.'
+		s = 'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.pdastro.t))
+		print(f'## {s}')
+		output += f'\n {s}.'
+
+		return output
 
 	# apply control light curve cut to SN light curve and update mask column with flag
 	def apply_control_cut(self, lc):
@@ -733,9 +750,9 @@ class clean_atlas_lc():
 		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
 		lc.update_mask_col(self.flags['controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
 		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
-		self.print_control_flag_stats(lc)
+		output = self.print_control_flag_stats(lc)
 
-		return lc
+		return lc, output
 
 	# average the SN light curve
 	def average_lc(self, lc, avglc):
@@ -844,22 +861,26 @@ class clean_atlas_lc():
 		for col in ['Nclip','Ngood','Nexcluded','Mask']: 
 			avglc.pdastro.t[col] = avglc.pdastro.t[col].astype(np.int32)
 
-		print('# Total percent of data flagged: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.pdastro.t)))
+		s = 'Total percent of data flagged: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.pdastro.t))
+		print(f'# {s}')
+		output = f'\n\n{s}.'
 
-		return lc, avglc
+		return lc, avglc, output
 
 	# output text file with information on cuts and flags
-	def add_to_readme(self, f, lc, filt, final_cut):
+	def add_to_readme(self, f, lc, filt, final_cut, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
 
 		if self.chisquares:
 			f.write(f'\n\n### Chi-square cut')
 			f.write(f'\nWe flag measurements with a chi-square (column name "chi/N") value above {final_cut:0.2f} with hex value {hex(self.flags["chisquare"])}.')
+			f.write(chisquare_output)
 
 		if self.uncertainties:
 			f.write(f'\n\n### Uncertainty cut')
 			f.write(f'\nWe flag measurements with an uncertainty (column name "duJy") value above {self.uncertainty_cut:0.2f} with hex value {hex(self.flags["uncertainty"])}.')
-		
+			f.write(uncertainty_output)
+
 		if self.controls:
 			f.write(f'\n\n### Control light curve cut')
 			f.write(f'\nThe control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics.')
@@ -868,8 +889,9 @@ class clean_atlas_lc():
 			f.write(f'\n\t- A returned abs(flux/dflux) > {self.stn_max:0.2f}')
 			f.write(f'\n\t- Number of clipped/"bad" measurements in the 3σ-clipped average > {self.c_Nclip_max}')
 			f.write(f'\n\t- Number of used/"good" measurements in the 3σ-clipped average < {self.c_Ngood_min}')
+			f.write(control_output)
 
-		f.write(f'\n\nAfter any or all of these three cuts are applied, the light curves are saved with the new Mask column.')
+		f.write(f'\n\nAfter cuts are applied, the light curves are saved with the new Mask column.')
 
 		if self.averaging:
 			f.write(f'\n\n### Averaging light curves and cutting bad days')
@@ -879,6 +901,7 @@ class clean_atlas_lc():
 			f.write(f'\n\t- Number of measurements averaged < {self.g_Ngood_min}')
 			f.write(f'\n\t- Number of measurements clipped > {self.g_Nclip_max}')
 			f.write(f'\n\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename.')
+			f.write(averaging_output)
 
 		return f
 
@@ -946,31 +969,35 @@ class clean_atlas_lc():
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc()
 
+				chisquare_output = None
 				if self.chisquares:
 					if args.plot:
-						lc, final_cut, plot = self.apply_chisquare_cut(args, lc, plot)
+						lc, final_cut, chisquare_output, plot = self.apply_chisquare_cut(args, lc, plot)
 						plot.plot_chisquare_cut()
 					else:
-						lc, final_cut = self.apply_chisquare_cut(args, lc)
+						lc, final_cut, chisquare_output = self.apply_chisquare_cut(args, lc)
 
+				uncertainty_output = None
 				if self.uncertainties:
-					lc = self.apply_uncertainty_cut(lc)
+					lc, uncertainty_output = self.apply_uncertainty_cut(lc)
 					if args.plot:
 						plot.plot_uncertainty_cut()
 
+				control_output = None
 				if self.controls:
-					lc = self.apply_control_cut(lc)
+					lc, control_output = self.apply_control_cut(lc)
 					if args.plot:
 						plot.plot_controls_cut()
 
 				if args.plot and (self.chisquares or self.uncertainties or self.controls):
 					plot.plot_all_cuts()
 
+				averaging_output = None
 				if self.averaging:
 					avglc = atlas_lc(tnsname=lc.tnsname, is_averaged=True, mjd_bin_size=self.mjd_bin_size)
 					avglc.discdate = lc.discdate
 
-					lc, avglc = self.average_lc(lc, avglc)
+					lc, avglc, averaging_output = self.average_lc(lc, avglc)
 
 					# save averaged light curve
 					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
@@ -984,7 +1011,10 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
-				f = self.add_to_readme(f, lc, filt, final_cut)
+				f = self.add_to_readme(f, lc, filt, final_cut, chisquare_output=chisquare_output, 
+															   uncertainty_output=uncertainty_output,
+															   control_output=control_output,
+															   averaging_output=averaging_output)
 
 			f.close()
 

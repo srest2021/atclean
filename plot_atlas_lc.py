@@ -208,7 +208,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
-	def plot_limcuts(self, limcuts, contam_cut, loss_cut, min_cut, max_cut):
+	def plot_limcuts(self, limcuts, contam_cut, loss_cut, contam_lim, loss_lim, min_cut, max_cut):
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -218,12 +218,12 @@ class plot_atlas_lc():
 		plt.xlabel('Chi-square cut')
 		plt.ylabel(f'% of baseline measurements')
 
-		plt.axhline(loss_cut,linewidth=1,color='r',linestyle='--',label='Loss limit')
+		plt.axhline(loss_lim,linewidth=1,color='r',linestyle='--',label='Loss limit')
 		plt.plot(limcuts.t['PSF Chi-Square Cut'], limcuts.t['Ploss'],ms=5,color='r',marker='o',label='Loss')
 		plt.axvline(x=loss_cut,color='r',label='Loss cut')
 		plt.axvspan(loss_cut, max_cut, alpha=0.2, color='r')
 
-		plt.axhline(contam_cut,linewidth=1,color='g',linestyle='--',label='Contamination limit')
+		plt.axhline(contam_lim,linewidth=1,color='g',linestyle='--',label='Contamination limit')
 		plt.plot(limcuts.t['PSF Chi-Square Cut'], limcuts.t['Pcontamination'],ms=5,color='g',marker='o',label='Contamination')
 		plt.axvline(x=contam_cut,color='g',label='Contamination cut')
 		plt.axvspan(min_cut, contam_cut, alpha=0.2, color='g')
