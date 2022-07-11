@@ -199,16 +199,16 @@ class clean_atlas_lc():
 		tchange2 = 58882
 
 		regions = {}
-		regions['t0'] = lc.pdastro.ix_inrange(colnames=['MJD'], uplim=tchange1)
-		regions['t1'] = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=tchange1, uplim=tchange2)
-		regions['t2'] = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=tchange2)
+		regions['t0'] = lc.lcs[0].ix_inrange(colnames=['MJD'], uplim=tchange1)
+		regions['t1'] = lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=tchange1, uplim=tchange2)
+		regions['t2'] = lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=tchange2)
 		regions['b_t0'] = AandB(regions['t0'], baseline_ix)
 		regions['b_t1'] = AandB(regions['t1'], baseline_ix)
 		regions['b_t2'] = AandB(regions['t2'], baseline_ix)
 
 		for region_index in range(0,3):
 			if len(regions['t%d'%region_index]) > 0:
-				print('## TEMPLATE REGION t%d MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['t%d'%region_index][-1],'MJD']))
+				print('## TEMPLATE REGION t%d MJD RANGE: %0.2f - %0.2f' % (region_index, lc.lcs[0].t.loc[regions['t%d'%region_index][0],'MJD'], lc.lcs[0].t.loc[regions['t%d'%region_index][-1],'MJD']))
 			else:
 				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
 
@@ -231,15 +231,15 @@ class clean_atlas_lc():
 			adjust_region_index += 1
 		if len(regions['b_t%d'%adjust_region_index]) < Ndays_min:
 			print('## Getting baseline flux for template region t%d by obtaining last %d days of region... ' % (adjust_region_index, self.get_Ndays(adjust_region_index)))
-			regions['b_t%d'%adjust_region_index] = lc.pdastro.ix_inrange(colnames=['MJD'],
-																		lowlim=lc.pdastro.t.loc[regions['t%d'%adjust_region_index][-1],'MJD'] - self.get_Ndays(adjust_region_index),
-																		uplim=lc.pdastro.t.loc[regions['t%d'%adjust_region_index][-1],'MJD'])
+			regions['b_t%d'%adjust_region_index] = lc.lcs[0].ix_inrange(colnames=['MJD'],
+																		lowlim=lc.lcs[0].t.loc[regions['t%d'%adjust_region_index][-1],'MJD'] - self.get_Ndays(adjust_region_index),
+																		uplim=lc.lcs[0].t.loc[regions['t%d'%adjust_region_index][-1],'MJD'])
 		if adjust_region_index < 1: regions['b_t1'] = regions['t1']
 		if adjust_region_index < 2: regions['b_t2'] = regions['t2']
 
 		for region_index in range(0,3):
 			if len(regions['b_t%d'%region_index]) > 0:
-				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.pdastro.t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.pdastro.t.loc[regions['b_t%d'%region_index][-1],'MJD']))
+				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.lcs[0].t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.lcs[0].t.loc[regions['b_t%d'%region_index][-1],'MJD']))
 			else:
 				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: not found' % region_index)
 
@@ -247,12 +247,12 @@ class clean_atlas_lc():
 		first_i = regions['b_t%d'%adjust_region_index][0]
 		mid_i   = regions['b_t%d'%adjust_region_index][int(len(regions['b_t%d'%adjust_region_index])/2)]
 		last_i  = regions['b_t%d'%adjust_region_index][-1]
-		median1 = np.median(lc.pdastro.t.loc[lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=lc.pdastro.t.loc[first_i,'MJD'], uplim=lc.pdastro.t.loc[mid_i,'MJD']), 'uJy'])
-		median2 = np.median(lc.pdastro.t.loc[lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=lc.pdastro.t.loc[mid_i+1,'MJD'], uplim=lc.pdastro.t.loc[last_i,'MJD']), 'uJy'])
+		median1 = np.median(lc.lcs[0].t.loc[lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=lc.lcs[0].t.loc[first_i,'MJD'], uplim=lc.lcs[0].t.loc[mid_i,'MJD']), 'uJy'])
+		median2 = np.median(lc.lcs[0].t.loc[lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=lc.lcs[0].t.loc[mid_i+1,'MJD'], uplim=lc.lcs[0].t.loc[last_i,'MJD']), 'uJy'])
 		print(f'## Checking that baseline flux is consistent throughout adjusted region...\n## Median of first half: {median1:0.2f}\n## Median of second half: {median2:0.2f}')
 
 		lc.corrected_baseline_ix = np.concatenate([regions['b_t0'], regions['b_t1'], regions['b_t2']])
-		lc.during_sn_ix = AnotB(lc.pdastro.getindices(), lc.corrected_baseline_ix)
+		lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
 		
 		return regions, lc
 
@@ -261,29 +261,21 @@ class clean_atlas_lc():
 	def controls_correct_for_template(self, lc, control_index, regions, region_index):
 		b_goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
 
-		lowlim = lc.pdastro.t.loc[regions[f'b_t{region_index}'][0], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][0],"MJD"]
-		uplim= lc.pdastro.t.loc[regions[f'b_t{region_index}'][-1], 'MJD'] #lc.lcs[control_index].t.loc[regions[f'b_t{region_index}'][-1],"MJD"]
+		lowlim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][0], 'MJD'] 
+		uplim= lc.lcs[0].t.loc[regions[f'b_t{region_index}'][-1], 'MJD']
 		b_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
 
 		if len(b_region_i) > 0:
-			#print(f'#### Adjusting for template change in region b_t{region_index} from {lowlim:0.2f}-{uplim:0.2f}...')
-			#print(f'#### Baseline median before: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
-						
 			if len(AandB(b_region_i,b_goodx2_i)) > 0:
 				median = np.median(lc.lcs[control_index].t.loc[AandB(b_region_i,b_goodx2_i),'uJy'])
 			else:
 				median = np.median(lc.lcs[control_index].t.loc[b_region_i,'uJy'])
 
-			lowlim = lc.pdastro.t.loc[regions[f't{region_index}'][0], 'MJD']
-			uplim = lc.pdastro.t.loc[regions[f't{region_index}'][-1], 'MJD']
+			lowlim = lc.lcs[0].t.loc[regions[f't{region_index}'][0], 'MJD']
+			uplim = lc.lcs[0].t.loc[regions[f't{region_index}'][-1], 'MJD']
 			t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
-
-			#print(f'#### Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
+			
 			lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
-			#print(f'#### Baseline median now: {np.median(lc.lcs[control_index].t.loc[b_region_i,"uJy"])}')
-
-		#else:
-			#print(f'#### No baseline region for region b_t{region_index}, skipping...')
 
 		return lc
 
@@ -296,28 +288,27 @@ class clean_atlas_lc():
 		regions, lc = self.get_baseline_regions(lc, Ndays_min=6)
 
 		# get indices of measurements with x2<=5 so that when getting median, use these indices if possible
-		b_goodx2_i = lc.pdastro.ix_inrange(colnames=['chi/N'], uplim=5, indices=lc.corrected_baseline_ix)
+		b_goodx2_i = lc.lcs[0].ix_inrange(colnames=['chi/N'], uplim=5, indices=lc.corrected_baseline_ix)
 
 		# for each region, adjust for template change by subtracting median of that region's baseline flux
 		for region_index in range(0,3):
 			region_i = regions[f'b_t{region_index}']
 			if len(region_i) > 0:
-				print(f'# Adjusting for template change in region b_t{region_index} from {lc.pdastro.t.loc[region_i[0],"MJD"]:0.2f}-{lc.pdastro.t.loc[region_i[-1],"MJD"]:0.2f}...')
-				print(f'## Baseline median before: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
+				print(f'# Adjusting for template change in region b_t{region_index} from {lc.lcs[0].t.loc[region_i[0],"MJD"]:0.2f}-{lc.lcs[0].t.loc[region_i[-1],"MJD"]:0.2f}...')
+				print(f'## Baseline median before: {np.median(lc.lcs[0].t.loc[region_i,"uJy"])}')
 				
 				if len(AandB(region_i,b_goodx2_i)) > 0:
-					median = np.median(lc.pdastro.t.loc[AandB(region_i,b_goodx2_i),'uJy'])
+					median = np.median(lc.lcs[0].t.loc[AandB(region_i,b_goodx2_i),'uJy'])
 				else:
-					median = np.median(lc.pdastro.t.loc[region_i,'uJy'])
+					median = np.median(lc.lcs[0].t.loc[region_i,'uJy'])
 
 				print(f'## Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
-				lc.pdastro.t.loc[regions['t%d'%region_index],'uJy'] -= median
-				print(f'## Baseline median now: {np.median(lc.pdastro.t.loc[region_i,"uJy"])}')
+				lc.lcs[0].t.loc[regions['t%d'%region_index],'uJy'] -= median
+				print(f'## Baseline median now: {np.median(lc.lcs[0].t.loc[region_i,"uJy"])}')
 
 				if self.controls:
 					print(f'## Correcting control light curves for potential flux in template...')
-					for control_index in lc.lcs: #range(1,self.num_controls+1):
-						#print(f'### Control index: {control_index}')
+					for control_index in range(1,self.num_controls+1):
 						lc = self.controls_correct_for_template(lc, control_index, regions, region_index)
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
@@ -325,20 +316,20 @@ class clean_atlas_lc():
 		return lc
 
 	# drop mask column and any extra/unneeded columns from previous iterations
-	def drop_extra_columns(self, lc):
+	def drop_extra_columns(self, lc, control_index=0):
 		dropcols=[]
 
 		for col in ['Noffsetlc', '__tmp_SN']:
-			if col in lc.pdastro.t.columns:
+			if col in lc.lcs[control_index].t.columns:
 				dropcols.append(col)
-		for col in lc.pdastro.t.columns:
+		for col in lc.lcs[control_index].t.columns:
 			if re.search('^c\d_',col): 
 				dropcols.append(col)
 
 		# drop any extra columns
 		if len(dropcols)>0: 
 			#print('Dropping extra columns: ',dropcols)
-			lc.pdastro.t.drop(columns=dropcols,inplace=True)
+			lc.lcs[control_index].t.drop(columns=dropcols,inplace=True)
 
 		return lc
 
@@ -352,13 +343,13 @@ class clean_atlas_lc():
 			indices = lc.corrected_baseline_ix
 		
 		# define good and bad baseline measurement indices according to abs(uJy/duJy) bound
-		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-self.stn_bound, uplim=self.stn_bound, indices=indices)
+		b_good_i = lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-self.stn_bound, uplim=self.stn_bound, indices=indices)
 		b_bad_i = AnotB(indices, b_good_i)
 
 		# for different x2 cuts decreasing from 50
 		for cut in range(self.min_cut, self.max_cut+1, self.cut_step):
 			# define kept baseline measurement indices according to current chi-square cut
-			b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'], uplim=cut, indices=indices)
+			b_kept_i = lc.lcs[0].ix_inrange(colnames=['chi/N'], uplim=cut, indices=indices)
 			b_cut_i = AnotB(indices, b_kept_i)
 
 			# construct new row of limcuts table
@@ -378,12 +369,12 @@ class clean_atlas_lc():
 							100*len(AandB(b_good_i,b_kept_i))/len(b_good_i), # Ngood,kept/Ngood
 							100*len(AandB(b_good_i,b_cut_i))/len(b_good_i), # Ngood,cut/Ngood = Loss
 							100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i), # Nbad,kept/Nkept = Contamination
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.pdastro.ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
+							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
+							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
 							]], columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
 										 'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
 										 'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
@@ -394,9 +385,9 @@ class clean_atlas_lc():
 	def get_limcuts_data(self, lc, name, cut, case):
 		indices = lc.corrected_baseline_ix
 	  
-		b_good_i = lc.pdastro.ix_inrange(colnames=['uJy/duJy'],lowlim=-self.stn_bound,uplim=self.stn_bound,indices=indices)
+		b_good_i = lc.lcs[0].ix_inrange(colnames=['uJy/duJy'],lowlim=-self.stn_bound,uplim=self.stn_bound,indices=indices)
 		b_bad_i = AnotB(indices, b_good_i)
-		b_kept_i = lc.pdastro.ix_inrange(colnames=['chi/N'],uplim=cut,indices=indices)
+		b_kept_i = lc.lcs[0].ix_inrange(colnames=['chi/N'],uplim=cut,indices=indices)
 		b_cut_i = AnotB(indices, b_kept_i)
 
 		data = {}
@@ -604,12 +595,14 @@ class clean_atlas_lc():
 			print(f'Chi-square cut set to {final_cut} manually by user, overriding dynamic chi-square cut')
 			output = f'Cut was manually set to {final_cut} by user, overriding dynamic chi-square cut.'
 
-		# update mask column with final chi-square cut
-		cut_ix = lc.pdastro.ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['chisquare'], cut_ix)
-		s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%'
-		output += f'\n\n{s}.'
-		print(f'# {s}')
+		# update SN mask column with final chi-square cut and apply same cut to control light curves
+		for control_index in range(self.num_controls+1):
+			cut_ix = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
+			lc.update_mask_col(self.flags['chisquare'], cut_ix, control_index=control_index)
+			if control_index == 0:
+				s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.lcs[0].getindices()):0.2f}%'
+				output += f'\n\n{s}.'
+				print(f'# {s}')
 
 		if args.plot:
 			return lc, final_cut, output, plot
@@ -620,13 +613,14 @@ class clean_atlas_lc():
 	def apply_uncertainty_cut(self, lc):
 		print('\nNow applying uncertainty cut...')
 
-		# update mask column with uncertainty cut
-		cut_ix = lc.pdastro.ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
-		lc.update_mask_col(self.flags['uncertainty'], cut_ix)
-
-		s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.pdastro.getindices()):0.2f}%'
-		output = f'\n\n{s}.'
-		print(f'# {s}')
+		# update SN mask column with final chi-square cut and apply same cut to control light curves
+		for control_index in range(self.num_controls+1):
+			cut_ix = lc.lcs[control_index].ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
+			lc.update_mask_col(self.flags['uncertainty'], cut_ix, control_index=control_index)
+			if control_index == 0:
+				s = f'Total percent of data flagged: {100*len(cut_ix)/len(lc.lcs[0].getindices()):0.2f}%'
+				output = f'\n\n{s}.'
+				print(f'# {s}')
 
 		return lc, output
 
@@ -635,11 +629,11 @@ class clean_atlas_lc():
 	def verify_mjds(self, lc):
 		print('# Making sure SN and control light curve MJDs match up exactly...')
 		# sort SN lc by MJD
-		mjd_sorted_i = lc.pdastro.ix_sort_by_cols('MJD')
-		lc.pdastro.t = lc.pdastro.t.loc[mjd_sorted_i]
-		sn_sorted = lc.pdastro.t.loc[mjd_sorted_i,'MJD'].to_numpy()
+		mjd_sorted_i = lc.lcs[0].ix_sort_by_cols('MJD')
+		lc.lcs[0].t = lc.lcs[0].t.loc[mjd_sorted_i]
+		sn_sorted = lc.lcs[0].t.loc[mjd_sorted_i,'MJD'].to_numpy()
 
-		for control_index in lc.lcs: #range(1,self.num_controls+1):
+		for control_index in range(1,self.num_controls+1):
 			# sort control light curves by MJD
 			mjd_sorted_i = lc.lcs[control_index].ix_sort_by_cols('MJD')
 			control_sorted = lc.lcs[control_index].t.loc[mjd_sorted_i,'MJD'].to_numpy()
@@ -679,19 +673,19 @@ class clean_atlas_lc():
 		print('# Calculating control light curve statistics...')
 
 		# construct arrays for control lc data
-		uJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
-		duJy = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), np.nan)
-		Mask = np.full((self.num_controls, len(lc.pdastro.t['MJD'])), 0, dtype=np.int32)
+		uJy = np.full((self.num_controls, len(lc.lcs[0].t['MJD'])), np.nan)
+		duJy = np.full((self.num_controls, len(lc.lcs[0].t['MJD'])), np.nan)
+		Mask = np.full((self.num_controls, len(lc.lcs[0].t['MJD'])), 0, dtype=np.int32)
 		
 		for control_index in range(1,self.num_controls+1):
-			if (len(lc.lcs[control_index].t) != len(lc.pdastro.t['MJD'])) or (np.array_equal(lc.pdastro.t['MJD'], lc.lcs[control_index].t['MJD']) is False):
+			if (len(lc.lcs[control_index].t) != len(lc.lcs[0].t['MJD'])) or (np.array_equal(lc.lcs[0].t['MJD'], lc.lcs[control_index].t['MJD']) is False):
 				raise RuntimeError(f'## sERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds().')
 			else:
 				uJy[control_index-1,:] = lc.lcs[control_index].t['uJy']
 				duJy[control_index-1,:] = lc.lcs[control_index].t['duJy']
 				Mask[control_index-1,:] = lc.lcs[control_index].t['Mask']
 
-		c2_param2columnmapping = lc.pdastro.intializecols4statparams(prefix='c2_',format4outvals='{:.2f}',skipparams=['converged','i'])
+		c2_param2columnmapping = lc.lcs[0].intializecols4statparams(prefix='c2_',format4outvals='{:.2f}',skipparams=['converged','i'])
 
 		for index in range(uJy.shape[-1]):
 			pda4MJD = pdastrostatsclass()
@@ -700,22 +694,22 @@ class clean_atlas_lc():
 			pda4MJD.t['Mask'] = np.bitwise_and(Mask[1:,index], self.flags['chisquare']|self.flags['uncertainty'])
 			
 			pda4MJD.calcaverage_sigmacutloop('uJy',noisecol='duJy',maskcol='Mask',maskval=(self.flags['chisquare']|self.flags['uncertainty']),verbose=1,Nsigma=3.0,median_firstiteration=True)
-			lc.pdastro.statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index) 
+			lc.lcs[0].statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index) 
 
 		return lc
 
 	def print_control_flag_stats(self, lc):
 		print('# Control light curve cut results:')
-		print('## Length of SN light curve: %d' % len(lc.pdastro.t))
-		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_x2']))/len(lc.pdastro.t)))
-		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_stn']))/len(lc.pdastro.t)))
-		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Nclip']))/len(lc.pdastro.t)))
-		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_Ngood']))/len(lc.pdastro.t)))
+		print('## Length of SN light curve: %d' % len(lc.lcs[0].t))
+		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_x2']))/len(lc.lcs[0].t)))
+		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_stn']))/len(lc.lcs[0].t)))
+		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_Nclip']))/len(lc.lcs[0].t)))
+		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_Ngood']))/len(lc.lcs[0].t)))
 		
-		s = 'Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.pdastro.t))
+		s = 'Total percent of data flagged as bad: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_bad']))/len(lc.lcs[0].t))
 		print(f'## {s}')
 		output = f'\n\n {s}.'
-		s = 'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.pdastro.t))
+		s = 'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['controls_questionable']))/len(lc.lcs[0].t))
 		print(f'## {s}')
 		output += f'\n {s}.'
 
@@ -733,45 +727,65 @@ class clean_atlas_lc():
 		lc = self.get_control_stats(lc)
 
 		print('# Flagging SN light curve based on control light curve statistics...')
-		lc.pdastro.t['c2_abs_stn'] = lc.pdastro.t['c2_mean']/lc.pdastro.t['c2_mean_err']
+		lc.lcs[0].t['c2_abs_stn'] = lc.lcs[0].t['c2_mean']/lc.lcs[0].t['c2_mean_err']
 
 		# flag measurements according to given bounds
-		flag_x2_i = lc.pdastro.ix_inrange(colnames=['c2_X2norm'], lowlim=self.c_x2_max, exclude_lowlim=True)
+		flag_x2_i = lc.lcs[0].ix_inrange(colnames=['c2_X2norm'], lowlim=self.c_x2_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_x2'], flag_x2_i)
-		flag_stn_i = lc.pdastro.ix_inrange(colnames=['c2_abs_stn'], lowlim=self.stn_max, exclude_lowlim=True)
+		flag_stn_i = lc.lcs[0].ix_inrange(colnames=['c2_abs_stn'], lowlim=self.stn_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_stn'], flag_stn_i)
-		flag_nclip_i = lc.pdastro.ix_inrange(colnames=['c2_Nclip'], lowlim=self.c_Nclip_max, exclude_lowlim=True)
+		flag_nclip_i = lc.lcs[0].ix_inrange(colnames=['c2_Nclip'], lowlim=self.c_Nclip_max, exclude_lowlim=True)
 		lc.update_mask_col(self.flags['controls_Nclip'], flag_nclip_i)
-		flag_ngood_i = lc.pdastro.ix_inrange(colnames=['c2_Ngood'], uplim=self.c_Ngood_min, exclude_uplim=True)
+		flag_ngood_i = lc.lcs[0].ix_inrange(colnames=['c2_Ngood'], uplim=self.c_Ngood_min, exclude_uplim=True)
 		lc.update_mask_col(self.flags['controls_Ngood'], flag_ngood_i)
 
 		# update mask column with control light curve cut on any measurements flagged according to given bounds
-		zero_Nclip_i = lc.pdastro.ix_equal('c2_Nclip', 0)
-		unmasked_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
+		zero_Nclip_i = lc.lcs[0].ix_equal('c2_Nclip', 0)
+		unmasked_i = lc.lcs[0].ix_unmasked('Mask', maskval=self.flags['controls_x2']|self.flags['controls_stn']|self.flags['controls_Nclip']|self.flags['controls_Ngood'])
 		lc.update_mask_col(self.flags['controls_questionable'], AnotB(unmasked_i,zero_Nclip_i))
-		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.pdastro.getindices(),unmasked_i))
+		lc.update_mask_col(self.flags['controls_bad'], AnotB(lc.lcs[0].getindices(),unmasked_i))
+
+		# copy over SN's control cut flags to control light curve 'Mask' column
+		flags_arr = np.full(lc.lcs[0].t['Mask'].shape, (self.flags['controls_bad']|
+														self.flags['controls_questionable']|
+														self.flags['controls_x2']|
+														self.flags['controls_stn']|
+														self.flags['controls_Nclip']|
+														self.flags['controls_Ngood']))
+        flags_to_copy = np.bitwise_and(lc.lcs[0].t['Mask'], flags_arr)
+        for control_index in range(1,self.num_controls+1):
+			if len(lc.lcs[control_index]) < 1:
+				continue
+			elif len(lc.lcs[control_index]) == 1:
+				lc.lcs[control_index].t.loc[0,'Mask']= int(lc.lcs[control_index].t.loc[0,'Mask']) | flags_to_copy
+			else:
+				lc.lcs[control_index].t['Mask'] = np.bitwise_or(lc.lcs[control_index].t['Mask'], flags_to_copy)
 		
 		output = self.print_control_flag_stats(lc)
 
 		return lc, output
 
-	# average the SN light curve
-	def average_lc(self, lc, avglc):
-		print(f'\nNow averaging SN light curve...')
+	def average_lc(self, lc, avglc, control_index=0):
+		if control_index == 0:
+			print(f'\nNow averaging SN light curve...')
+		else:
+			print(f'Now averaging control light curve {control_index:03d}...')
 
-		mjd = int(np.amin(lc.pdastro.t['MJD']))
-		mjd_max = int(np.amax(lc.pdastro.t['MJD']))+1
+		avglc.lcs[control_index] = pdastrostatsclass()
 
-		good_i = lc.pdastro.ix_unmasked('Mask', maskval=self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'])
+		mjd = int(np.amin(lc.lcs[control_index].t['MJD']))
+		mjd_max = int(np.amax(lc.lcs[control_index].t['MJD']))+1
+
+		good_i = lc.lcs[control_index].ix_unmasked('Mask', maskval=self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'])
 
 		while mjd <= mjd_max:
-			range_i = lc.pdastro.ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+self.mjd_bin_size, exclude_uplim=True)
+			range_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+self.mjd_bin_size, exclude_uplim=True)
 			range_good_i = AandB(range_i,good_i)
 
 			# add new row to averaged light curve if keep_empty_bins or any measurements present
 			if self.keep_empty_bins or len(range_i) >= 1:
 				new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
-				avglc_index = avglc.pdastro.newrow(new_row)
+				avglc_index = avglc.lcs[control_index].newrow(new_row)
 			
 			# if no measurements present, flag or skip over day
 			if len(range_i) < 1:
@@ -783,23 +797,23 @@ class clean_atlas_lc():
 			# if no good measurements, average values anyway and flag
 			if len(range_good_i) < 1:
 				# average flux
-				lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_i, Nsigma=3.0, median_firstiteration=True)
-				fluxstatparams = deepcopy(lc.pdastro.statparams)
+				lc.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_i, Nsigma=3.0, median_firstiteration=True)
+				fluxstatparams = deepcopy(lc.lcs[control_index].statparams)
 
 				# get average mjd
 				# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-				lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
-				avg_mjd = lc.pdastro.statparams['mean']
+				lc.lcs[control_index].calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+				avg_mjd = lc.lcs[control_index].statparams['mean']
 
 				# add row and flag
-				avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
-													'uJy':fluxstatparams['mean'], 
-													'duJy':fluxstatparams['mean_err'], 
-													'stdev':fluxstatparams['stdev'],
-													'x2':fluxstatparams['X2norm'],
-													'Nclip':fluxstatparams['Nclip'],
-													'Ngood':fluxstatparams['Ngood'],
-													'Mask':0})
+				avglc.lcs[control_index].add2row(avglc_index, {'MJD':avg_mjd, 
+															   'uJy':fluxstatparams['mean'], 
+															   'duJy':fluxstatparams['mean_err'], 
+															   'stdev':fluxstatparams['stdev'],
+															   'x2':fluxstatparams['X2norm'],
+															   'Nclip':fluxstatparams['Nclip'],
+															   'Ngood':fluxstatparams['Ngood'],
+															   'Mask':0})
 				lc.update_mask_col(self.flags['avg_badday'], range_i)
 				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
 
@@ -807,8 +821,8 @@ class clean_atlas_lc():
 				continue
 			
 			# average good measurements
-			lc.pdastro.calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
-			fluxstatparams = deepcopy(lc.pdastro.statparams)
+			lc.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol='duJy', indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
+			fluxstatparams = deepcopy(lc.lcs[control_index].statparams)
 
 			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
 				lc.update_mask_col(self.flags['avg_badday'], range_i)
@@ -818,18 +832,18 @@ class clean_atlas_lc():
 
 			# get average mjd
 			# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-			lc.pdastro.calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
-			avg_mjd = lc.pdastro.statparams['mean']
+			lc.lcs[control_index].calcaverage_sigmacutloop('MJD', noisecol='duJy', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+			avg_mjd = lc.lcs[control_index].statparams['mean']
 
 			# add row to averaged light curve
-			avglc.pdastro.add2row(avglc_index, {'MJD':avg_mjd, 
-												'uJy':fluxstatparams['mean'], 
-												'duJy':fluxstatparams['mean_err'], 
-												'stdev':fluxstatparams['stdev'],
-												'x2':fluxstatparams['X2norm'],
-												'Nclip':fluxstatparams['Nclip'],
-												'Ngood':fluxstatparams['Ngood'],
-												'Mask':0})
+			avglc.lcs[control_index].add2row(avglc_index, {'MJD':avg_mjd, 
+														   'uJy':fluxstatparams['mean'], 
+														   'duJy':fluxstatparams['mean_err'], 
+														   'stdev':fluxstatparams['stdev'],
+														   'x2':fluxstatparams['X2norm'],
+														   'Nclip':fluxstatparams['Nclip'],
+														   'Ngood':fluxstatparams['Ngood'],
+														   'Mask':0})
 			
 			# flag clipped measurements in lc
 			if len(fluxstatparams['ix_clip']) > 0:
@@ -855,14 +869,21 @@ class clean_atlas_lc():
 			mjd += self.mjd_bin_size
 		
 		# convert flux to magnitude and dflux to dmagnitude
-		avglc.pdastro.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
+		avglc.lcs[control_index].flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
 		avglc = self.drop_extra_columns(avglc)
 
 		for col in ['Nclip','Ngood','Nexcluded','Mask']: 
-			avglc.pdastro.t[col] = avglc.pdastro.t[col].astype(np.int32)
+			avglc.lcs[control_index].t[col] = avglc.lcs[control_index].t[col].astype(np.int32)
 
-		s = 'Total percent of data flagged: %0.2f%%' % (100*len(lc.pdastro.ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.pdastro.t))
+		return lc, avglc
+
+	# average the SN light curve and, if necessary, control light curves
+	def average(self, lc, avglc):
+		for control_index in range(self.num_controls+1):
+			lc, avglc = self.average_lc(lc, avglc, control_index)
+
+		s = 'Total percent of data flagged: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.lcs[0].t))
 		print(f'# {s}')
 		output = f'\n\n{s}.'
 
@@ -952,19 +973,19 @@ class clean_atlas_lc():
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
-				lc.load(filt, self.output_dir, num_controls=self.num_controls)
-				lc, snlist_index = self.get_lc_data(lc, snlist_index) #lc.get_tns_data(self.tns_api_key) # TO DO: NO NEED TO REPEAT THIS FOR EACH FILTER--ADD SNLIST.TXT?
+				lc.load(self.output_dir, filt, num_controls=self.num_controls)
+				lc, snlist_index = self.get_lc_data(lc, snlist_index)
 
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
 				# clear 'Mask' column
-				lc.pdastro.t['Mask'] = 0
+				lc.lcs[0].t['Mask'] = 0
 
 				# add flux/dflux column
 				print('Adding uJy/duJy column to light curve...')
-				lc.pdastro.t['uJy/duJy'] = lc.pdastro.t['uJy']/lc.pdastro.t['duJy']
-				lc.pdastro.t = lc.pdastro.t.replace([np.inf, -np.inf], np.nan)
+				lc.lcs[0].t['uJy/duJy'] = lc.lcs[0].t['uJy']/lc.lcs[0].t['duJy']
+				lc.lcs[0].t = lc.lcs[0].t.replace([np.inf, -np.inf], np.nan)
 
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
@@ -998,7 +1019,7 @@ class clean_atlas_lc():
 					avglc = atlas_lc(tnsname=lc.tnsname, is_averaged=True, mjd_bin_size=self.mjd_bin_size)
 					avglc.discdate = lc.discdate
 
-					lc, avglc, averaging_output = self.average_lc(lc, avglc)
+					lc, avglc, averaging_output = self.average(lc, avglc)
 
 					# save averaged light curve
 					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)

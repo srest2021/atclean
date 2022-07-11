@@ -11,7 +11,7 @@ from pdastro import pdastrostatsclass, AorB, AnotB
 
 class atlas_lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjd_bin_size=None, discdate=None, ra=None, dec=None):
-		self.pdastro = pdastrostatsclass()
+		#self.pdastro = pdastrostatsclass()
 		self.lcs = {}
 
 		self.tnsname = tnsname
@@ -58,7 +58,7 @@ class atlas_lc:
 	def get_baseline_ix(self):
 		if self.discdate is None:
 			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
-		return self.pdastro.ix_inrange(colnames=['MJD'],uplim=self.discdate-20,exclude_uplim=True)
+		return self.lcs[0].ix_inrange(colnames=['MJD'],uplim=self.discdate-20,exclude_uplim=True)
 
 	# get a light curve filename for saving/loading
 	def get_filename(self, filt, control_index, directory):
@@ -81,23 +81,12 @@ class atlas_lc:
 		print(f'# Filename: {filename}')
 		return filename
 
-	# save only SN light curve 
-	def save_lc(self, output_dir, filt=None, overwrite=True):
-		if self.is_averaged:
-			print('\nSaving SN averaged light curve...')
-		else:
-			print('\nSaving SN light curve...')
-
-		if filt is None:
-			o_ix = self.pdastro.ix_equal(colnames=['F'],val='o')
-			self.pdastro.write(filename=self.get_filename('o',0,output_dir), indices=o_ix, overwrite=overwrite)
-			self.pdastro.write(filename=self.get_filename('c',0,output_dir), indices=AnotB(self.pdastro.getindices(),o_ix), overwrite=overwrite)
-		else:
-			self.pdastro.write(filename=self.get_filename(filt,0,output_dir), overwrite=overwrite)
-
-	# save only a single control light curve
-	def save_control_lc(self, output_dir, control_index, filt=None, overwrite=True):
-		#print(f'# Saving control light curve {control_index:03d}')
+	# save a single light curve
+	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True):
+		if control_index == 0:
+			output = '\nSaving SN averaged light curve...' if self.is_averaged else '\nSaving SN light curve...'
+			print(output)
+		
 		if filt is None:
 			for filt_ in ['c','o']:
 				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
@@ -107,41 +96,46 @@ class atlas_lc:
 
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
-		self.save_lc(output_dir, filt=filt, overwrite=overwrite)
+		if len(self.lcs < 1):
+			print('WARNING: No light curves to save! Skipping...')
+		else:
+			for control_index in self.lcs:
+				self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 
-		if len(self.lcs) > 0:
-			print('Saving control light curves...')
-			for control_index in range(1,len(self.lcs)+1):
-				self.save_control_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
+	# load a single light curve
+	def load_lc(self, output_dir, filt, is_averaged=False, control_index=0):
+		if (len(self.lcs) > 0) and self.is_averaged != is_averaged:
+			raise RuntimeError(f'ERROR: cannot load a light curve whose is_averaged status of {is_averaged} does not match previous status of {self.is_averaged}!')
+		self.is_averaged = is_averaged
+		
+		if control_index == 0:
+			output = '\nLoading SN averaged light curve...' if self.is_averaged else '\nLoading SN light curve...'
+			print(output)
+
+		self.lcs[control_index] = pdastrostatsclass()
+		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True)
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
-	def load(self, filt, input_dir, num_controls=None):
-		print('Loading SN light curve...')
-		self.pdastro.load_spacesep(self.get_filename(filt,0,input_dir), delim_whitespace=True)
+	def load(self, output_dir, filt, is_averaged=False, num_controls=0):
+		self.load_lc(output_dir, filt, is_averaged=is_averaged)
 
-		if not(num_controls is None):
-			print(f'Loading {num_controls} control light curves...')
-			for control_index in range(1,num_controls+1):
-				self.lcs[control_index] = pdastrostatsclass()
-				self.lcs[control_index].load_spacesep(self.get_filename(filt,control_index,input_dir), delim_whitespace=True)
+		print(f'Loading {num_controls} control light curves...')
+		for control_index in range(num_controls+1):
+			self.load_lc(output_dir, filt, is_averaged=is_averaged, control_index=control_index)
 
-	# add downloaded control light curve to control light curve dictionary
-	def add_control_lc(self, control_lc, control_index):
-		self.lcs[control_index] = control_lc
-
-	# update given indices of 'Mask' column in the SN light curve with given flag(s)
-	def update_mask_col(self, flag, indices):
+	# update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
+	def update_mask_col(self, flag, indices, control_index=0):
 		if len(indices) > 1:
-			flag_arr = np.full(self.pdastro.t.loc[indices,'Mask'].shape, flag)
-			self.pdastro.t.loc[indices,'Mask'] = np.bitwise_or(self.pdastro.t.loc[indices,'Mask'], flag_arr)
+			flag_arr = np.full(self.lcs[control_index].t.loc[indices,'Mask'].shape, flag)
+			self.lcs[control_index].t.loc[indices,'Mask'] = np.bitwise_or(self.lcs[control_index].t.loc[indices,'Mask'], flag_arr)
 		elif len(indices) == 1:
-			self.pdastro.t.loc[indices[0],'Mask'] = int(self.pdastro.t.loc[indices[0],'Mask']) | flag
+			self.lcs[control_index].t.loc[indices[0],'Mask'] = int(self.lcs[control_index].t.loc[indices[0],'Mask']) | flag
 
 	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):
 		if indices is None:
-			indices = self.pdastro.getindices()
+			indices = self.lcs[0].getindices()
 		if len(indices)==0: 
 			return None
 		else:
-			return np.percentile(self.pdastro.t.loc[indices, 'uJy'], percentile)
+			return np.percentile(self.lcs[0].t.loc[indices, 'uJy'], percentile)

@@ -269,32 +269,11 @@ class download_atlas_lc:
 			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,'ra':ra.degree,'dec':dec.degree,'ra_offset':ra_offset.degree,'dec_offset':dec_offset.degree,'radius':r,'n_detec':np.nan,'n_detec_o':np.nan,'n_detec_c':np.nan},ignore_index=True)
 
 	# update number of control light curve detections in control_coords table
-	def update_control_coords(self, control_lc, control_index):
-		o_ix = control_lc.pdastro.ix_equal(colnames=['F'],val='o')
-		self.control_coords.t.loc[control_index,'n_detec'] = len(control_lc.pdastro.t)
-		self.control_coords.t.loc[control_index,'n_detec_o'] = len(control_lc.pdastro.t.loc[o_ix])
-		self.control_coords.t.loc[control_index,'n_detec_c'] = len(control_lc.pdastro.t.loc[AnotB(control_lc.pdastro.getindices(),o_ix)])
-
-	# download a single light curve
-	def download_lc(self, args, lc, token):	
-		print(f'Downloading forced photometry light curve at {RaInDeg(lc.ra):0.8f}, {DecInDeg(lc.dec):0.8f} from ATLAS')
-
-		try:
-			lc.pdastro.t = self.get_result(RaInDeg(lc.ra), DecInDeg(lc.dec), token, lookbacktime_days=self.lookbacktime_days)
-		except Exception as e:
-			raise RuntimeError('ERROR in get_result(): '+str(e))
-
-		# sort data by mjd
-		lc.pdastro.t = lc.pdastro.t.sort_values(by=['MJD'],ignore_index=True)
-
-		# remove rows with duJy=0 or uJy=Nan
-		dflux_zero_ix = lc.pdastro.ix_inrange(colnames='duJy',lowlim=0,uplim=0)
-		flux_nan_ix = lc.pdastro.ix_remove_null(colnames='uJy')
-		lc.pdastro.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
-
-		lc.pdastro.flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
-
-		return lc
+	def update_control_coords(self, lc, control_index):
+		o_ix = lc.lcs[control_index].ix_equal(colnames=['F'],val='o')
+		self.control_coords.t.loc[control_index,'n_detec'] = len(lc.lcs[control_index].t)
+		self.control_coords.t.loc[control_index,'n_detec_o'] = len(lc.lcs[control_index].t.loc[o_ix])
+		self.control_coords.t.loc[control_index,'n_detec_c'] = len(lc.lcs[control_index].t.loc[AnotB(lc.lcs[control_index].getindices(),o_ix)])
 
 	def get_lc_data(self, lc, snlist_index):
 		if snlist_index == -1:
@@ -328,13 +307,35 @@ class download_atlas_lc:
 
 		return lc
 
+	# download a single light curve
+	def download_lc(self, args, token, lc, ra, dec, control_index=0):	
+		print(f'Downloading forced photometry light curve at {RaInDeg(ra):0.8f}, {DecInDeg(dec):0.8f} from ATLAS')
+		lc.lcs[control_index] = pdastrostatsclass()
+
+		try:
+			lc.lcs[control_index].t = self.get_result(RaInDeg(ra), DecInDeg(dec), token, lookbacktime_days=self.lookbacktime_days)
+		except Exception as e:
+			raise RuntimeError('ERROR in get_result(): '+str(e))
+
+		# sort data by mjd
+		lc.lcs[control_index].t = lc.lcs[control_index].t.sort_values(by=['MJD'],ignore_index=True)
+
+		# remove rows with duJy=0 or uJy=Nan
+		dflux_zero_ix = lc.lcs[control_index].ix_inrange(colnames='duJy',lowlim=0,uplim=0)
+		flux_nan_ix = lc.lcs[control_index].ix_remove_null(colnames='uJy')
+		lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
+
+		lc.lcs[control_index].flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
+
+		return lc
+
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token, snlist_index):
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		
 		lc = self.get_lc_data(lc, snlist_index)
-		lc = self.download_lc(args, lc, token)
+		lc = self.download_lc(args, token, lc, lc.ra, lc.dec)
 		lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
 		if args.controls:
@@ -346,10 +347,11 @@ class download_atlas_lc:
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):
 				print(f'\nDownloading control light curve {control_index:03d}...')
-				control_lc = atlas_lc(ra=self.control_coords.t.loc[control_index,'ra'], dec=self.control_coords.t.loc[control_index,'dec'])
-				control_lc = self.download_lc(args, control_lc, token)
-				self.update_control_coords(control_lc, control_index)
-				lc.add_control_lc(control_lc.pdastro, control_index)
+				lc = self.download_lc(args, token, lc, 
+									  ra=self.control_coords.t.loc[control_index,'ra'], 
+									  dec=self.control_coords.t.loc[control_index,'dec'], 
+									  control_index=control_index)
+				self.update_control_coords(lc, control_index)
 				lc.save_control_lc(self.output_dir, control_index, overwrite=self.overwrite)
 
 			# save control_coords table
