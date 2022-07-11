@@ -958,7 +958,11 @@ class clean_atlas_lc():
 
 			f = open(f'{self.output_dir}/{args.tnsnames[obj_index]}/README.md','w+')
 			f.write(f"# SN {args.tnsnames[obj_index]} Light Curve Cleaning and Averaging")
-
+			f.write(f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.')
+			f.write(f' As such, the SN light curve file names are {args.tnsnames[obj_index]}.o.lc.txt and {args.tnsnames[obj_index]}.c.lc.txt.')
+			f.write(f' A control light curve with the index 1 will have files named {args.tnsnames[obj_index]}_i001.o.lc.txt and {args.tnsnames[obj_index]}_i001.c.lc.txt.')
+			f.write(f' If the MJD bin size was set to 1 day, their averaged versions would be {args.tnsnames[obj_index]}.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the SN), and {args.tnsnames[obj_index]}_i001.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}_i001.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the control light curve with index 1).')
+			
 			if args.plot:
 				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
 
