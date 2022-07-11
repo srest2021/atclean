@@ -653,7 +653,7 @@ class clean_atlas_lc():
 				
 				# remove indices of rows in control light curve for which there is no MJD in the SN lc
 				if len(mjds_onlycontrol) > 0:
-					print('### Removing %d control light curve rows without matching SN rows...' % len(mjds_onlycontrol))
+					print('### Removing %d control light curve row(s) without matching SN row(s)...' % len(mjds_onlycontrol))
 					indices2skip = []
 					for mjd in mjds_onlycontrol:
 						ix = lc.lcs[control_index].ix_equal('MJD',mjd)
@@ -752,11 +752,12 @@ class clean_atlas_lc():
 														self.flags['controls_stn']|
 														self.flags['controls_Nclip']|
 														self.flags['controls_Ngood']))
-        flags_to_copy = np.bitwise_and(lc.lcs[0].t['Mask'], flags_arr)
-        for control_index in range(1,self.num_controls+1):
-			if len(lc.lcs[control_index]) < 1:
-				continue
-			elif len(lc.lcs[control_index]) == 1:
+		flags_to_copy = np.bitwise_and(lc.lcs[0].t['Mask'], flags_arr)
+		for control_index in range(1,self.num_controls+1):
+			lc.lcs[control_index].t['Mask'] = lc.lcs[control_index].t['Mask'].astype(np.int32)
+			if len(lc.lcs[control_index].t) < 1:
+				continues
+			elif len(lc.lcs[control_index].t) == 1:
 				lc.lcs[control_index].t.loc[0,'Mask']= int(lc.lcs[control_index].t.loc[0,'Mask']) | flags_to_copy
 			else:
 				lc.lcs[control_index].t['Mask'] = np.bitwise_or(lc.lcs[control_index].t['Mask'], flags_to_copy)
@@ -790,7 +791,7 @@ class clean_atlas_lc():
 			# if no measurements present, flag or skip over day
 			if len(range_i) < 1:
 				if self.keep_empty_bins:
-					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
 				mjd += self.mjd_bin_size
 				continue
 			
@@ -814,8 +815,8 @@ class clean_atlas_lc():
 															   'Nclip':fluxstatparams['Nclip'],
 															   'Ngood':fluxstatparams['Ngood'],
 															   'Mask':0})
-				lc.update_mask_col(self.flags['avg_badday'], range_i)
-				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				lc.update_mask_col(self.flags['avg_badday'], range_i, control_index=control_index)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
 
 				mjd += self.mjd_bin_size
 				continue
@@ -825,8 +826,8 @@ class clean_atlas_lc():
 			fluxstatparams = deepcopy(lc.lcs[control_index].statparams)
 
 			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
-				lc.update_mask_col(self.flags['avg_badday'], range_i)
-				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+				lc.update_mask_col(self.flags['avg_badday'], range_i, control_index=control_index)
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
 				mjd += self.mjd_bin_size
 				continue
 
@@ -847,12 +848,12 @@ class clean_atlas_lc():
 			
 			# flag clipped measurements in lc
 			if len(fluxstatparams['ix_clip']) > 0:
-				lc.update_mask_col(self.flags['avg_ixclip'], fluxstatparams['ix_clip'])
+				lc.update_mask_col(self.flags['avg_ixclip'], fluxstatparams['ix_clip'], control_index=control_index)
 			
 			# if small number within this bin, flag measurements
 			if len(range_good_i) < 3:
-				lc.update_mask_col(self.flags['avg_smallnum'], range_good_i) # TO DO: CHANGE TO RANGE_I??
-				avglc.update_mask_col(self.flags['avg_smallnum'], [avglc_index])
+				lc.update_mask_col(self.flags['avg_smallnum'], range_good_i, control_index=control_index) # TO DO: CHANGE TO RANGE_I??
+				avglc.update_mask_col(self.flags['avg_smallnum'], [avglc_index], control_index=control_index)
 			# else check sigmacut bounds and flag
 			else:
 				is_bad = False
@@ -863,8 +864,8 @@ class clean_atlas_lc():
 				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > self.g_x2_max:
 					is_bad = True
 				if is_bad:
-					lc.update_mask_col(self.flags['avg_badday'], range_i)
-					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index])
+					lc.update_mask_col(self.flags['avg_badday'], range_i, control_index=control_index)
+					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
 
 			mjd += self.mjd_bin_size
 		
@@ -944,7 +945,7 @@ class clean_atlas_lc():
 		lc.ra = self.snlist.t.loc[snlist_index,'ra']
 		lc.dec = self.snlist.t.loc[snlist_index,'dec']
 		lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
-		print(f'# RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}')
+		print(f'RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}')
 
 		return lc, snlist_index
 
@@ -979,9 +980,6 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc = self.correct_for_template(lc)
 
-				# clear 'Mask' column
-				lc.lcs[0].t['Mask'] = 0
-
 				# add flux/dflux column
 				print('Adding uJy/duJy column to light curve...')
 				lc.lcs[0].t['uJy/duJy'] = lc.lcs[0].t['uJy']/lc.lcs[0].t['duJy']
@@ -1009,7 +1007,7 @@ class clean_atlas_lc():
 				if self.controls:
 					lc, control_output = self.apply_control_cut(lc)
 					if args.plot:
-						plot.plot_controls_cut()
+						plot.plot_controls_cut(self.num_controls)
 
 				if args.plot and (self.chisquares or self.uncertainties or self.controls):
 					plot.plot_all_cuts()

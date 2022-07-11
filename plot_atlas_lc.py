@@ -78,8 +78,8 @@ class plot_atlas_lc():
 	def plot_uncertainty_cut(self):
 		self.plot_cut_lc(self.flags['uncertainty'], add2title='uncertainty cut')
 
-	def plot_controls_cut(self):
-		self.plot_og_control_lcs()
+	def plot_controls_cut(self, num_controls):
+		self.plot_og_control_lcs(num_controls)
 		self.plot_cut_lc(self.flags['controls_bad'], add2title='control light curve cut')
 
 	def plot_all_cuts(self):
@@ -102,16 +102,16 @@ class plot_atlas_lc():
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		if separate_baseline:
-			plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-			plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
+			plt.errorbar(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
 			
-			plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
-			plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
+			plt.errorbar(self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'uJy'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
+			plt.scatter(self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
 
 			plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=3)
 		else:
-			plt.errorbar(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], self.lc.pdastro.t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-			plt.scatter(self.lc.pdastro.t['MJD'], self.lc.pdastro.t['uJy'], s=45,color=color,marker='o')
+			plt.errorbar(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], self.lc.lcs[0].t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], s=45,color=color,marker='o')
 
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
 		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
@@ -122,7 +122,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
-	def plot_og_control_lcs(self, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	def plot_og_control_lcs(self, num_controls, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -138,18 +138,18 @@ class plot_atlas_lc():
 		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
 		plt.axvline(x=self.tchange2, color='magenta')
 		
-		for control_index in range(1, len(self.lc.lcs)+1):
+		for control_index in range(1, num_controls+1):
 			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t['duJy'], fmt='none',ecolor='blue',elinewidth=1,c='blue')
 			if control_index == 1:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{len(self.lc.lcs)} control light curves')
 			else:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')
 
-		plt.errorbar(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		plt.scatter(self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
+		plt.errorbar(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		plt.scatter(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
 		
-		plt.errorbar(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
-		plt.scatter(self.lc.pdastro.t.loc[self.lc.during_sn_ix,'MJD'], self.lc.pdastro.t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
+		plt.errorbar(self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'uJy'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c='red')
+		plt.scatter(self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.during_sn_ix,'uJy'], s=45,color='red',marker='o',label='During SN')
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
@@ -165,8 +165,8 @@ class plot_atlas_lc():
 	def plot_cut_lc(self, flags, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
-		good_ix = self.lc.pdastro.ix_unmasked('Mask',maskval=flags)
-		bad_ix = AnotB(self.lc.pdastro.getindices(),good_ix)
+		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=flags)
+		bad_ix = AnotB(self.lc.lcs[0].getindices(),good_ix)
 
 		fig, (cut, clean) = plt.subplots(1, 2, figsize=(16, 6.5), tight_layout=True)
 		title = f'SN {self.lc.tnsname} {self.filt}-band flux'
@@ -188,10 +188,10 @@ class plot_atlas_lc():
 		cut.set_ylim(ylim_lower, ylim_upper)
 		clean.set_ylim(ylim_lower, ylim_upper)
 
-		cut.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		cut.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
-		cut.errorbar(self.lc.pdastro.t.loc[bad_ix,'MJD'], self.lc.pdastro.t.loc[bad_ix,'uJy'], yerr=self.lc.pdastro.t.loc[bad_ix,'duJy'], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
-		cut.scatter(self.lc.pdastro.t.loc[bad_ix,'MJD'], self.lc.pdastro.t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
+		cut.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		cut.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
+		cut.errorbar(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[bad_ix,'duJy'], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
+		cut.scatter(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
 		cut.set_title('All measurements')
 		cut.axhline(linewidth=1,color='k')
 		cut.set_xlabel('MJD')
@@ -199,8 +199,8 @@ class plot_atlas_lc():
 
 		fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2)
 
-		clean.errorbar(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], yerr=self.lc.pdastro.t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-		clean.scatter(self.lc.pdastro.t.loc[good_ix,'MJD'], self.lc.pdastro.t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
+		clean.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		clean.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
 		clean.set_title('Kept measurements only')
 		clean.axhline(linewidth=1,color='k')
 		clean.set_xlabel('MJD')

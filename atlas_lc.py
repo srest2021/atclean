@@ -83,10 +83,6 @@ class atlas_lc:
 
 	# save a single light curve
 	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True):
-		if control_index == 0:
-			output = '\nSaving SN averaged light curve...' if self.is_averaged else '\nSaving SN light curve...'
-			print(output)
-		
 		if filt is None:
 			for filt_ in ['c','o']:
 				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
@@ -96,9 +92,11 @@ class atlas_lc:
 
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
-		if len(self.lcs < 1):
+		if len(self.lcs) < 1:
 			print('WARNING: No light curves to save! Skipping...')
 		else:
+			output = f'\nSaving averaged SN light curve and {len(self.lcs)-1} averaged control light curves...' if self.is_averaged else f'\nSaving SN light curve and {len(self.lcs)-1} control light curves...'
+			print(output)
 			for control_index in self.lcs:
 				self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 
@@ -107,20 +105,18 @@ class atlas_lc:
 		if (len(self.lcs) > 0) and self.is_averaged != is_averaged:
 			raise RuntimeError(f'ERROR: cannot load a light curve whose is_averaged status of {is_averaged} does not match previous status of {self.is_averaged}!')
 		self.is_averaged = is_averaged
-		
-		if control_index == 0:
-			output = '\nLoading SN averaged light curve...' if self.is_averaged else '\nLoading SN light curve...'
-			print(output)
 
 		self.lcs[control_index] = pdastrostatsclass()
 		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True)
+		self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def load(self, output_dir, filt, is_averaged=False, num_controls=0):
-		self.load_lc(output_dir, filt, is_averaged=is_averaged)
+		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
+		print(output)
 
-		print(f'Loading {num_controls} control light curves...')
-		for control_index in range(num_controls+1):
+		self.load_lc(output_dir, filt, is_averaged=is_averaged)
+		for control_index in range(1, num_controls+1):
 			self.load_lc(output_dir, filt, is_averaged=is_averaged, control_index=control_index)
 
 	# update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
@@ -129,7 +125,7 @@ class atlas_lc:
 			flag_arr = np.full(self.lcs[control_index].t.loc[indices,'Mask'].shape, flag)
 			self.lcs[control_index].t.loc[indices,'Mask'] = np.bitwise_or(self.lcs[control_index].t.loc[indices,'Mask'], flag_arr)
 		elif len(indices) == 1:
-			self.lcs[control_index].t.loc[indices[0],'Mask'] = int(self.lcs[control_index].t.loc[indices[0],'Mask']) | flag
+			self.lcs[control_index].t.loc[indices,'Mask'] = int(self.lcs[control_index].t.loc[indices,'Mask']) | flag
 
 	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):
