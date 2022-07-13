@@ -227,16 +227,16 @@ class download_atlas_lc:
 			dec_center = Angle(sn_dec.degree, u.degree)
 
 			# add SN coordinates as first row
-			o_ix = lc.lcs[0].ix_equal(colnames=['F'],val='o')
+			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
 			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,
 																  'ra':sn_ra.degree,
 																  'dec':sn_dec.degree,
 																  'ra_offset':0,
 																  'dec_offset':0,
 																  'radius':0,
-																  'n_detec':len(lc.lcs[0].t),
-																  'n_detec_o':len(lc.lcs[0].t.loc[o_ix]),
-																  'n_detec_c':len(lc.lcs[0].t.loc[AnotB(lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
+																  'n_detec':len(sn_lc.lcs[0].t),
+																  'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
+																  'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
 		else:
 			# coordinates of close bright object
 			cb_ra = Angle(RaInDeg(self.closebright_coords[0]), u.degree)
@@ -260,9 +260,9 @@ class download_atlas_lc:
 																  'ra_offset':np.nan,
 																  'dec_offset':np.nan,
 																  'radius':np.nan,
-																  'n_detec':len(lc.lcs[0].t),
-																  'n_detec_o':len(lc.lcs[0].t.loc[o_ix]),
-																  'n_detec_c':len(lc.lcs[0].t.loc[AnotB(lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
+																  'n_detec':len(sn_lc.lcs[0].t),
+																  'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
+																  'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
 
 		for i in range(self.num_controls):
 			angle = Angle(i*360.0/self.num_controls, u.degree)
