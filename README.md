@@ -49,16 +49,16 @@ The uncertainty cut is a static procedure currently set at a constant value of 1
 
 The control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics. The four parameters in these sections define the bounds on these returned statistics if a SN measurement is to be kept.
 
-Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `atlas_lc_settings.ini` by setting variable `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) 
+Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `atlas_lc_settings.ini` by setting field `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) 
 
 Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `atlas_lc_settings.ini`: 
-- A returned chi-square > 4.0 (change variable `x2_max`)
-- Number of measurements averaged < 2 (change variable `Nclip_max`)
-- Number of measurements clipped > 1 (change variable `Ngood_min`)
+- A returned chi-square > 4.0 (change field `x2_max`)
+- Number of measurements averaged < 2 (change field `Nclip_max`)
+- Number of measurements clipped > 1 (change field `Ngood_min`)
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
 
-The last optional step of this procedure is to check for any pre-SN eruptions in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps. We can also apply this rolling sum to the control light curves in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum.
+The last optional step of this procedure is to check for any pre-SN eruptions (with specified size of `gaussian_sigma` days in `atlas_lc_settings.ini`) in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps. We can also apply this rolling sum to the control light curves (controlled by field `apply_to_controls` in `atlas_lc_settings.ini`) in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum.
 
 Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
