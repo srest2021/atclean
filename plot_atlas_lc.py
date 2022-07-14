@@ -36,11 +36,11 @@ class plot_atlas_lc():
 		self.filt = None
 		self.flags = flags
 		self.args = args
+
 		if add2filename is None:
 			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots.pdf')
 		else:
 			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots_{add2filename}.pdf')
-
 
 		self.tchange1 = 58417
 		self.tchange2 = 58882
@@ -231,3 +231,59 @@ class plot_atlas_lc():
 		plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
 
 		self.pdf.savefig(fig, bbox_inches='tight')
+
+	def plot_sim_bumps(self, avglc, simparams=None, add2title=None):
+		if not self.avglc.is_averaged:
+			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
+
+		color = 'orange' if self.filt == 'o' else 'cyan'
+
+		fig = plt.figure(figsize=(10,6), tight_layout=True)
+		plt.gca().spines['right'].set_visible(False)
+		plt.gca().spines['top'].set_visible(False)
+		plt.axhline(linewidth=1,color='k')
+		plt.ylabel('Flux (µJy)')
+		plt.xlabel('MJD')
+		title = f'SN {self.avglc.tnsname} {self.filt}-band averaged flux'
+		if not(simparams is None):
+			title += f'\nand {len(simparams["sim_peakMJD"].split(","))} simulated pre-SN bump(s) with appmag {simparams["sim_appmag"]:0.2f}'
+		if not(add2title is None):
+			title += add2title
+		plt.title(title)
+		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange2, color='magenta')
+
+		good_ix = self.avglc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
+		if not(simparams is None):
+			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c=color)
+			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], s=45,color=color,marker='o',label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
+
+			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], s=45,color=color,marker='o',label='kept measurements')
+
+			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t['simLC'], color='red', label='gaussian model(s)')
+		else:
+			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], s=45,color=color,marker='o',label='kept measurements')
+
+		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
+
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		plt.xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		plt.ylim(ylim_lower, ylim_upper)
+
+		self.pdf.savefig(fig)
+
+	def plot_snr(self, avglc, add2title=None):
+		if not self.lc.is_averaged:
+			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
+
+
+	def plot_all_snr(self, avglc, add2title=None):
+		if not self.lc.is_averaged:
+			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
+
+

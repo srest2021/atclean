@@ -58,6 +58,8 @@ Then we cut any measurements in the SN light curve for the given epoch for which
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
 
+The last optional step of this procedure is to check for any pre-SN eruptions in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps. We can also apply this rolling sum to the control light curves in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum.
+
 Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
 - `-x` or `--chisquares`: apply chi-square cut
@@ -65,6 +67,10 @@ Arguments (will override default config file settings if specified):
 - `-c` or `--controls`: apply control light curve cut
 - `-g` or `--average`: average the light curve, cut bad days, and save as new file
 	- `-m` or `--mjd_bin_size`: set MJD bin size in days
+- `-b` or `--detect_bumps`: apply a rolling gaussian weighted sum to the SN's flux/dflux in order to amplify possible precursor bumps
+	- If you add this argument, the script will additionally apply the previously specified cuts and averaging to the control light curves, as these are needed to identify the detection limit for that particular SN. So **if you have not downloaded control light curves for this SN**, you must change the `apply_to_controls` field in `atlas_lc_settings.ini` to `False`. Additionally, **if you have not added the `-g` averaging argument to the command, this procedure will not execute**. 
+	- `--sim_gaussian`: comma-separated peakMJD list, peak_appmag, gaussian_sigma: add a gaussian at peakMJD with a peak apparent magnitude of peak_appmag and a sigma of gaussian_sigma in days
+		- This argument will allow you to simulate a pre-SN eruption within your light curve and analyze whether or not the rolling gaussian weighted sum successfully amplifies it. 
 - `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `-ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)

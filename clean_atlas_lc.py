@@ -12,6 +12,7 @@ import sigmacut
 from pdastro import pdastrostatsclass, AandB, AnotB
 from atlas_lc import atlas_lc
 from plot_atlas_lc import plot_atlas_lc
+from asym_gaussian import gauss2lc
 
 class clean_atlas_lc():
 	def __init__(self):
@@ -913,9 +914,12 @@ class clean_atlas_lc():
 
 		return lc, avglc, output
 
-	def apply_gaussian(self, control_index, simparams):
-		print()
+	# add simulated bump if necessary and apply rolling gaussian weighted sum to light curve
+	def apply_gaussian(self, avglc, control_index=0, simparams=None):
+		
 
+
+		return avglc
 
 	# output text file with information on cuts and flags
 	def add_to_readme(self, f, lc, filt, final_cut, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
@@ -1060,21 +1064,34 @@ class clean_atlas_lc():
 
 				# TO DO: write apply_gaussian() and add plotting
 				if self.detect_bumps:
-					for appmag in self.appmags:
-						print('\nNow detecting pre-SN bumps...')
+					print('\nNow detecting pre-SN bumps...')
 
-						if not self.averaging:
-							raise RuntimeError('ERROR: Cannot detect pre-SN bumps without averaging! Please add -g to your command in order to average light curves.')
-						if self.apply_to_controls and self.num_controls <= 0:
-							raise RuntimeError('ERROR: Cannot apply to control light curves without at least one control light curve! Check the num_controls field in config file.')
+					if not self.averaging:
+						raise RuntimeError('ERROR: Cannot detect pre-SN bumps without averaging! Please add -g to your command in order to average light curves.')
+					if self.apply_to_controls and self.num_controls <= 0:
+						raise RuntimeError('ERROR: Cannot apply to control light curves without at least one control light curve! Check the num_controls field in config file.')
 
-						simparams = {'sim_peakMJD':float(args.sim_gaussian[0]),'sim_appmag':float(appmag),'sim_sigma_minus':float(args.sim_gaussian[2]),'sim_sigma_plus':float(args.sim_gaussian[2])}
-						print(f'# Simulation apparent magnitude: {simparams["sim_appmag"]:0.2f} mag')
-						print(f'# Simulation peak MJD: {simparams["sim_peakMJD"]:0.2f} MJD')
-						print(f'# Simulation gaussian sigma: {simparams["sim_sigma_plus"]:0.2f} days')
+					if not(self.appmags is None):
+						for appmag in self.appmags:
+							simparams = {'sim_peakMJD':float(args.sim_gaussian[0]),'sim_appmag':float(appmag),'sim_sigma_minus':float(args.sim_gaussian[2]),'sim_sigma_plus':float(args.sim_gaussian[2])}
+							print(f'# Simulation apparent magnitude: {simparams["sim_appmag"]:0.2f} mag')
+							print(f'# Simulation peak MJD(s): {simparams["sim_peakMJD"]}')
+							print(f'# Simulation gaussian sigma: {simparams["sim_sigma_plus"]:0.2f} days')
 
+							for control_index in range(self.num_controls+1):
+								avglc = self.apply_gaussian(avglc, control_index=control_index, simparams=simparams)
+
+							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename='detect_bumps', flags=self.flags)
+							bumps_plot.set(lc=avglc, filt=filt)
+							bumps_plot.plot_sim_bumps(avglc, simparams=simparams)
+					else:
 						for control_index in range(self.num_controls+1):
-							self.apply_gaussian(control_index, simparams)
+							avglc = self.apply_gaussian(avglc, control_index=control_index)
+
+						bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename='detect_bumps', flags=self.flags)
+						bumps_plot.set(lc=avglc, filt=filt)
+						bumps_plot.plot_sim_bumps(avglc)
+
 
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
