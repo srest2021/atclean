@@ -23,6 +23,7 @@ class clean_atlas_lc():
 		self.snlist_filename = None
 		self.snlist = None
 		self.overwrite = True
+		self.num_controls = 0
 
 		# flags for each cut
 		self.flags = {'chisquare':0x1,
@@ -57,7 +58,6 @@ class clean_atlas_lc():
 
 		# control light curve cut
 		self.controls = False
-		self.num_controls = None
 		self.c_x2_max = None
 		self.stn_max = None
 		self.c_Nclip_max = None
@@ -70,6 +70,11 @@ class clean_atlas_lc():
 		self.g_Nclip_max = None
 		self.g_Ngood_min = None 
 		self.g_x2_max = None
+
+		# detecting pre-SN bumps
+		self.detect_bumps = False
+		self.gaussian_sigma = None
+		self.appmags = None
 	
 	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
@@ -84,6 +89,9 @@ class clean_atlas_lc():
 		
 		parser.add_argument('-g', '--average', default=False, action='store_true', help='average light curves and cut bad days')
 		parser.add_argument('-m', '--mjd_bin_size', type=float, default=None, help='MJD bin size in days for averaging')
+
+		parser.add_argument('-b', '--detect_bumps', default=False, action='store_true', help='apply rolling gaussian weighted sum to flux/dflux in order to amplify possible precursor bumps')
+		parser.add_argument('--sim_gaussian', nargs=3, default=None, help=('comma-separated peakMJD list, peak_appmag, gaussian_sigma: add a gaussian at peakMJD with a peak apparent magnitude of peak_appmag and a sigma of gaussian_sigma in days'))
 
 		parser.add_argument('-p', '--plot', default=False, action='store_true', help='plot each cut and save into PDF file')
 		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
@@ -122,7 +130,10 @@ class clean_atlas_lc():
 
 		self.overwrite = not args.dont_overwrite
 		print(f'Overwrite existing light curve files: {self.overwrite}')
-		print(f'Plotting: {args.plot}')
+		self.num_controls = int(cfg['Control light curve settings']['num_controls'])
+		print(f'Number of control light curves: {self.num_controls}')
+		self.plot = args.plot
+		print(f'Plotting: {self.plot}')
 
 		self.chisquares = args.chisquares
 		if self.chisquares:
@@ -155,7 +166,6 @@ class clean_atlas_lc():
 		self.controls = args.controls
 		if self.controls:
 			print(f'\nControl light curve cut: {self.controls}')
-			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
 			self.c_x2_max = float(cfg['Control light curve cut settings']['x2_max'])
 			self.stn_max = float(cfg['Control light curve cut settings']['stn_max'])
 			self.c_Nclip_max = int(cfg['Control light curve cut settings']['Nclip_max'])
@@ -183,8 +193,21 @@ class clean_atlas_lc():
 			print(f'## Minimum number of good measurements (Ngood_min): {self.g_Ngood_min}')
 			print(f'## Maximum chi-square (x2_max): {self.g_x2_max}')
 
-		self.plot = args.plot
-		print(f'\nPlotting: {self.plot}')
+		self.detect_bumps = args.detect_bumps
+		if self.detect_bumps:
+			print(f'\nDetecting pre-SN bumps: {self.detect_bumps}')
+			self.apply_to_controls = bool(cfg['Detecting bumps settings']['apply_to_controls'])
+			print(f'# Applying to control light curves in order to establish detection limit: {self.apply_to_controls}')
+			self.gaussian_sigma = float(cfg['Detecting bumps settings']['gaussian_sigma'])
+			print(f'# Searching for pre-SN bumps with a sigma of {self.gaussian_sigma:0.2f} days')
+			if not(args.sim_gaussian is None):
+				print(f'# Adding simulated gaussian pre-SN bump to SN light curve: True')
+				if ',' in args.sim_gaussian[1]:
+					self.appmags = args.sim_gaussian[1].split(',')
+					print(f'## Multiple magnitudes input: {appmags}')
+				else:
+					self.appmags = [args.sim_gaussian[1]]
+					print(f'## Only one magnitude input: {appmags}')
 
 	# helper function for get_baseline_regions()
 	def get_Ndays(self, SN_region_index):
@@ -511,7 +534,7 @@ class clean_atlas_lc():
 
 		final_cut = None
 		if case1 and not case2 and not case3: # 1 and 1
-			print(f'# Valid chi-square cut range from {loss_cut:0.2f} to {contam_cut:0.2f}! Setting to 3...')
+			print(f'# Valid chi-square cut range from {loss_cut:0.2f} to {contam_cut:0.2f}! Setting to {self.min_cut:0.2f}...')
 			final_cut = self.min_cut
 		elif case1: # 1
 			if case2: # and 2
@@ -890,6 +913,10 @@ class clean_atlas_lc():
 
 		return lc, avglc, output
 
+	def apply_gaussian(self, control_index, simparams):
+		print()
+
+
 	# output text file with information on cuts and flags
 	def add_to_readme(self, f, lc, filt, final_cut, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
@@ -1030,6 +1057,24 @@ class clean_atlas_lc():
 					if args.plot:
 						plot.set(lc=avglc, filt=filt)
 						plot.plot_averaged_lc()
+
+				# TO DO: write apply_gaussian() and add plotting
+				if self.detect_bumps:
+					for appmag in self.appmags:
+						print('\nNow detecting pre-SN bumps...')
+
+						if not self.averaging:
+							raise RuntimeError('ERROR: Cannot detect pre-SN bumps without averaging! Please add -g to your command in order to average light curves.')
+						if self.apply_to_controls and self.num_controls <= 0:
+							raise RuntimeError('ERROR: Cannot apply to control light curves without at least one control light curve! Check the num_controls field in config file.')
+
+						simparams = {'sim_peakMJD':float(args.sim_gaussian[0]),'sim_appmag':float(appmag),'sim_sigma_minus':float(args.sim_gaussian[2]),'sim_sigma_plus':float(args.sim_gaussian[2])}
+						print(f'# Simulation apparent magnitude: {simparams["sim_appmag"]:0.2f} mag')
+						print(f'# Simulation peak MJD: {simparams["sim_peakMJD"]:0.2f} MJD')
+						print(f'# Simulation gaussian sigma: {simparams["sim_sigma_plus"]:0.2f} days')
+
+						for control_index in range(self.num_controls+1):
+							self.apply_gaussian(control_index, simparams)
 
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
