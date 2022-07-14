@@ -86,8 +86,6 @@ class plot_atlas_lc():
 		self.plot_cut_lc(self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'], add2title='all cuts')
 
 	def plot_og_lc(self, separate_baseline=True, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
-		color = 'orange' if self.filt == 'o' else 'cyan'
-
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -100,6 +98,8 @@ class plot_atlas_lc():
 		plt.title(title)
 		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
 		plt.axvline(x=self.tchange2, color='magenta')
+
+		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		if separate_baseline:
 			plt.errorbar(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
@@ -123,8 +123,6 @@ class plot_atlas_lc():
 		self.pdf.savefig(fig)
 
 	def plot_og_control_lcs(self, num_controls, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
-		color = 'orange' if self.filt == 'o' else 'cyan'
-
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -145,6 +143,8 @@ class plot_atlas_lc():
 			else:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')
 
+		color = 'orange' if self.filt == 'o' else 'cyan'
+
 		plt.errorbar(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		plt.scatter(self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'MJD'], self.lc.lcs[0].t.loc[self.lc.corrected_baseline_ix,'uJy'], s=45,color=color,marker='o',label='Baseline')
 		
@@ -163,8 +163,6 @@ class plot_atlas_lc():
 		self.pdf.savefig(fig)
 
 	def plot_cut_lc(self, flags, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
-		color = 'orange' if self.filt == 'o' else 'cyan'
-
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=flags)
 		bad_ix = AnotB(self.lc.lcs[0].getindices(),good_ix)
 
@@ -187,6 +185,8 @@ class plot_atlas_lc():
 		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
 		cut.set_ylim(ylim_lower, ylim_upper)
 		clean.set_ylim(ylim_lower, ylim_upper)
+
+		color = 'orange' if self.filt == 'o' else 'cyan'
 
 		cut.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
@@ -236,8 +236,6 @@ class plot_atlas_lc():
 		if not self.avglc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
-		color = 'orange' if self.filt == 'o' else 'cyan'
-
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -253,19 +251,17 @@ class plot_atlas_lc():
 		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
 		plt.axvline(x=self.tchange2, color='magenta')
 
+		color = 'orange' if self.filt == 'o' else 'cyan'
 		good_ix = self.avglc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
+
+		plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=5, fmt='none', ecolor=color, elinewidth=1, c=color)
+		plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], zorder=10, s=45, color=color, marker='o', label='kept measurements')
 		if not(simparams is None):
-			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor='red',elinewidth=1,c=color)
-			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], s=45,color=color,marker='o',label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
+			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=0, fmt='none', ecolor='red', elinewidth=1, c=color)
+			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], zorder=15, s=45, color='red', marker='o', label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
 
-			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], s=45,color=color,marker='o',label='kept measurements')
-
-			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t['simLC'], color='red', label='gaussian model(s)')
-		else:
-			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
-			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], s=45,color=color,marker='o',label='kept measurements')
-
+			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t['simLC'], zorder=20, color='red', label='gaussian model(s)')
+		
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
@@ -277,13 +273,69 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
-	def plot_snr(self, avglc, add2title=None):
-		if not self.lc.is_averaged:
+	def plot_snr(self, avglc, simparams=None, add2title=None):
+		if not self.avglc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
+		fig = plt.figure(figsize=(10,6), tight_layout=True)
+		plt.gca().spines['right'].set_visible(False)
+		plt.gca().spines['top'].set_visible(False)
+		plt.axhline(linewidth=1,color='k')
+		plt.ylabel('Signal-to-noise')
+		plt.xlabel('MJD')
+		title = f'SN {self.avglc.tnsname} {self.filt}-band signal-to-noise \nand gaussian weighted rolling sum of signal-to-noise'
+		if not(add2title is None):
+			title += add2title
+		plt.title(title)
 
-	def plot_all_snr(self, avglc, add2title=None):
-		if not self.lc.is_averaged:
+		color = 'orange' if self.filt == 'o' else 'cyan'
+
+		plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
+		plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsumnorm'], fmt=color, zorder=10, label='gaussian weighted rolling sum of S/N')
+		if not(simparams is None):
+			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsim'], s=45, color='red', marker='o', zorder=0, label='simulated S/N')
+			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsimsum'], fmt='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
+	
+		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
+
+		self.pdf.savefig(fig)
+
+	def plot_all_snr(self, avglc, simparams=None, add2title=None):
+		if not self.avglc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
+		fig = plt.figure(figsize=(10,6), tight_layout=True)
+		plt.gca().spines['right'].set_visible(False)
+		plt.gca().spines['top'].set_visible(False)
+		plt.axhline(linewidth=1,color='k')
+		plt.ylabel('Signal-to-noise')
+		plt.xlabel('MJD')
+		title = f'SN {self.avglc.tnsname} and control light curves {self.filt}-band \ngaussian weighted rolling sum of signal-to-noise'
+		if not(add2title is None):
+			title += add2title
+		plt.title(title)
 
+		for control_index in self.avglc.lcs:
+			if control_index == 0:
+				if not(simparams is None):
+					color = 'r'
+				elif self.filt == 'o':
+					color = 'o'
+				else:
+					color = 'c'
+
+				label = f'SN {self.avglc.tnsname}' if simparams is None else f'SN {self.avglc.tnsname} with simulated bump(s)'
+				zorder = 10
+				snrsum_colname = 'SNRsumnorm' if simparams is None else 'SNRsimsum'
+			else:
+				color = 'b'
+				if control_index == 1:
+					label = f'{len(self.avglc.lcs)-1} control light curve(s)'
+				zorder = 0
+				snrsum_colname = 'SNRsumnorm'
+
+			plt.plot(self.avglc.lcs[control_index].t['MJDbin'], self.avglc.lcs[control_index].t[snrsum_colname], color=color, zorder=zorder, label='gaussian weighted rolling sum of simulated S/N')
+
+		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
+
+		self.pdf.savefig(fig)

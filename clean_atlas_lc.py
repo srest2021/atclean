@@ -1062,7 +1062,7 @@ class clean_atlas_lc():
 						plot.set(lc=avglc, filt=filt)
 						plot.plot_averaged_lc()
 
-				# TO DO: write apply_gaussian() and add plotting
+				# TO DO: write apply_gaussian() and plotting
 				if self.detect_bumps:
 					print('\nNow detecting pre-SN bumps...')
 
@@ -1081,9 +1081,12 @@ class clean_atlas_lc():
 							for control_index in range(self.num_controls+1):
 								avglc = self.apply_gaussian(avglc, control_index=control_index, simparams=simparams)
 
-							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename='detect_bumps', flags=self.flags)
+							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename=f'detect_bumps_appmag{appmag:0.2f}', flags=self.flags)
 							bumps_plot.set(lc=avglc, filt=filt)
 							bumps_plot.plot_sim_bumps(avglc, simparams=simparams)
+							bumps_plot.plot_snr(avglc, simparams=simparams)
+							if self.apply_to_controls:
+								bumps_plot.plot_all_snr(avglc, simparams=simparams)
 					else:
 						for control_index in range(self.num_controls+1):
 							avglc = self.apply_gaussian(avglc, control_index=control_index)
@@ -1091,7 +1094,11 @@ class clean_atlas_lc():
 						bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename='detect_bumps', flags=self.flags)
 						bumps_plot.set(lc=avglc, filt=filt)
 						bumps_plot.plot_sim_bumps(avglc)
+						bumps_plot.plot_snr(avglc)
+						if self.apply_to_controls:
+							bumps_plot.plot_all_snr(avglc)
 
+					bumps_plot.save()
 
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
