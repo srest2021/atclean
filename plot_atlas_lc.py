@@ -232,8 +232,8 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
-	def plot_sim_bumps(self, avglc, simparams=None, add2title=None):
-		if not self.avglc.is_averaged:
+	def plot_sim_bumps(self, simparams=None, add2title=None):
+		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -242,7 +242,7 @@ class plot_atlas_lc():
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Flux (µJy)')
 		plt.xlabel('MJD')
-		title = f'SN {self.avglc.tnsname} {self.filt}-band averaged flux'
+		title = f'SN {self.lc.tnsname} {self.filt}-band averaged flux'
 		if not(simparams is None):
 			title += f'\nand {len(simparams["sim_peakMJD"].split(","))} simulated pre-SN bump(s) with appmag {simparams["sim_appmag"]:0.2f}'
 		if not(add2title is None):
@@ -252,15 +252,15 @@ class plot_atlas_lc():
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		color = 'orange' if self.filt == 'o' else 'cyan'
-		good_ix = self.avglc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
+		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
 
-		plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=5, fmt='none', ecolor=color, elinewidth=1, c=color)
-		plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJy'], zorder=10, s=45, color=color, marker='o', label='kept measurements')
+		plt.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=5, fmt='none', ecolor=color, elinewidth=1, c=color)
+		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], zorder=10, s=45, color=color, marker='o', label='kept measurements')
 		if not(simparams is None):
-			plt.errorbar(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=0, fmt='none', ecolor='red', elinewidth=1, c=color)
-			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'uJysim'], zorder=15, s=45, color='red', marker='o', label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
+			plt.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=0, fmt='none', ecolor='red', elinewidth=1, c=color)
+			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJysim'], zorder=15, s=45, color='red', marker='o', label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
 
-			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t['simLC'], zorder=20, color='red', label='gaussian model(s)')
+			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['simLC'], zorder=20, color='red', label='gaussian model(s)')
 		
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
@@ -273,8 +273,8 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
-	def plot_snr(self, avglc, simparams=None, add2title=None):
-		if not self.avglc.is_averaged:
+	def plot_snr(self, simparams=None, add2title=None):
+		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -283,25 +283,26 @@ class plot_atlas_lc():
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Signal-to-noise')
 		plt.xlabel('MJD')
-		title = f'SN {self.avglc.tnsname} {self.filt}-band signal-to-noise \nand gaussian weighted rolling sum of signal-to-noise'
+		title = f'SN {self.lc.tnsname} {self.filt}-band signal-to-noise \nand gaussian weighted rolling sum of signal-to-noise'
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
 
 		color = 'orange' if self.filt == 'o' else 'cyan'
-
-		plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
-		plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsumnorm'], fmt=color, zorder=10, label='gaussian weighted rolling sum of S/N')
+		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
+		
+		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
+		plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsumnorm'], fmt=color, zorder=10, label='gaussian weighted rolling sum of S/N')
 		if not(simparams is None):
-			plt.scatter(self.avglc.lcs[0].t.loc[good_ix,'MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsim'], s=45, color='red', marker='o', zorder=0, label='simulated S/N')
-			plt.plot(self.avglc.lcs[0].t['MJDbin'], self.avglc.lcs[0].t.loc[good_ix,'SNRsimsum'], fmt='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
+			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsim'], s=45, color='red', marker='o', zorder=0, label='simulated S/N')
+			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsimsum'], fmt='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
 	
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
 		self.pdf.savefig(fig)
 
-	def plot_all_snr(self, avglc, simparams=None, add2title=None):
-		if not self.avglc.is_averaged:
+	def plot_all_snr(self, simparams=None, add2title=None):
+		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
@@ -310,12 +311,12 @@ class plot_atlas_lc():
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Signal-to-noise')
 		plt.xlabel('MJD')
-		title = f'SN {self.avglc.tnsname} and control light curves {self.filt}-band \ngaussian weighted rolling sum of signal-to-noise'
+		title = f'SN {self.lc.tnsname} and control light curves {self.filt}-band \ngaussian weighted rolling sum of signal-to-noise'
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
 
-		for control_index in self.avglc.lcs:
+		for control_index in self.lc.lcs:
 			if control_index == 0:
 				if not(simparams is None):
 					color = 'r'
@@ -324,17 +325,17 @@ class plot_atlas_lc():
 				else:
 					color = 'c'
 
-				label = f'SN {self.avglc.tnsname}' if simparams is None else f'SN {self.avglc.tnsname} with simulated bump(s)'
+				label = f'SN {self.lc.tnsname}' if simparams is None else f'SN {self.lc.tnsname} with simulated bump(s)'
 				zorder = 10
 				snrsum_colname = 'SNRsumnorm' if simparams is None else 'SNRsimsum'
 			else:
 				color = 'b'
 				if control_index == 1:
-					label = f'{len(self.avglc.lcs)-1} control light curve(s)'
+					label = f'{len(self.lc.lcs)-1} control light curve(s)'
 				zorder = 0
 				snrsum_colname = 'SNRsumnorm'
 
-			plt.plot(self.avglc.lcs[control_index].t['MJDbin'], self.avglc.lcs[control_index].t[snrsum_colname], color=color, zorder=zorder, label='gaussian weighted rolling sum of simulated S/N')
+			plt.plot(self.lc.lcs[control_index].t['MJDbin'], self.lc.lcs[control_index].t[snrsum_colname], color=color, zorder=zorder, label='gaussian weighted rolling sum of simulated S/N')
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 

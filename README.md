@@ -58,7 +58,7 @@ Then we cut any measurements in the SN light curve for the given epoch for which
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
 
-The last optional step of this procedure is to check for any pre-SN eruptions (with specified size of `gaussian_sigma` days in `atlas_lc_settings.ini`) in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps. We can also apply this rolling sum to the control light curves (controlled by field `apply_to_controls` in `atlas_lc_settings.ini`) in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum.
+The last optional step of this procedure is to check for any pre-SN eruptions (with specified size of `gaussian_sigma` days in `atlas_lc_settings.ini`) in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps, then plot. We can also apply this rolling sum to the control light curves (controlled by field `apply_to_controls` in `atlas_lc_settings.ini`) in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum. 
 
 Arguments (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
