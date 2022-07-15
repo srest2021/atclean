@@ -205,10 +205,10 @@ class clean_atlas_lc():
 				print(f'# Adding simulated gaussian pre-SN bump to SN light curve: True')
 				if ',' in args.sim_gaussian[1]:
 					self.appmags = args.sim_gaussian[1].split(',')
-					print(f'## Multiple magnitudes input: {appmags}')
+					print(f'## Multiple magnitudes input: {self.appmags}')
 				else:
 					self.appmags = [args.sim_gaussian[1]]
-					print(f'## Only one magnitude input: {appmags}')
+					print(f'## Only one magnitude input: {self.appmags}')
 
 	# helper function for get_baseline_regions()
 	def get_Ndays(self, SN_region_index):
@@ -1146,7 +1146,7 @@ class clean_atlas_lc():
 
 					if not(self.appmags is None):
 						for appmag in self.appmags:
-							simparams = {'sim_peakMJD':float(args.sim_gaussian[0]),'sim_appmag':float(appmag),'sim_sigma_minus':float(args.sim_gaussian[2]),'sim_sigma_plus':float(args.sim_gaussian[2])}
+							simparams = {'sim_peakMJD':args.sim_gaussian[0],'sim_appmag':float(appmag),'sim_sigma_minus':float(args.sim_gaussian[2]),'sim_sigma_plus':float(args.sim_gaussian[2])}
 							print(f'# Simulation apparent magnitude: {simparams["sim_appmag"]:0.2f} mag')
 							print(f'# Simulation peak MJD(s): {simparams["sim_peakMJD"].split(",")}')
 							print(f'# Simulation gaussian sigma: {simparams["sim_sigma_plus"]:0.2f} days')
@@ -1160,7 +1160,7 @@ class clean_atlas_lc():
 									print(f'# Applying gaussian weighted rolling sum to control light curve {control_index:03d}...')
 									avglc = self.apply_gaussian(avglc, control_index=control_index)
 
-							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename=f'detect_bumps.{filt}.appmag{appmag:0.2f}', flags=self.flags)
+							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename=f'detect_bumps.{filt}.appmag{simparams["sim_appmag"]:0.2f}', flags=self.flags)
 							bumps_plot.set(lc=avglc, filt=filt)
 							bumps_plot.plot_sim_bumps(simparams=simparams)
 							bumps_plot.plot_snr(simparams=simparams)
@@ -1194,7 +1194,8 @@ class clean_atlas_lc():
 
 			if args.plot:
 				plot.save()
-			bumps_plot.save()
+			if self.appmags is None:
+				bumps_plot.save()
 
 		# save snlist.txt with any new rows
 		print(f'Saving SN list at {self.snlist_filename}')

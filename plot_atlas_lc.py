@@ -254,14 +254,13 @@ class plot_atlas_lc():
 		color = 'orange' if self.filt == 'o' else 'cyan'
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
 
-		plt.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=5, fmt='none', ecolor=color, elinewidth=1, c=color)
-		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], zorder=10, s=45, color=color, marker='o', label='kept measurements')
 		if not(simparams is None):
 			plt.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJysim'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=0, fmt='none', ecolor='red', elinewidth=1, c=color)
-			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJysim'], zorder=15, s=45, color='red', marker='o', label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
-
+			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJysim'], zorder=5, s=45, color='red', marker='o', label=f'simulated bump(s), width={simparams["sim_sigma_plus"]:0.2f} days')
 			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['simLC'], zorder=20, color='red', label='gaussian model(s)')
-		
+		plt.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,'duJy'], zorder=10, fmt='none', ecolor=color, elinewidth=1, c=color)
+		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'uJy'], zorder=15, s=45, color=color, marker='o', label='kept measurements')
+
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
@@ -291,12 +290,12 @@ class plot_atlas_lc():
 		color = 'orange' if self.filt == 'o' else 'cyan'
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
 
-		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
-		plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['SNRsumnorm'], color=color, zorder=10, label='gaussian weighted rolling sum of S/N')
 		if not(simparams is None):
 			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsim'], s=45, color='red', marker='o', zorder=0, label='simulated S/N')
 			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['SNRsimsum'], color='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
-	
+		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
+		plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['SNRsumnorm'], color=color, zorder=10, label='gaussian weighted rolling sum of S/N')
+		
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
 		self.pdf.savefig(fig)
