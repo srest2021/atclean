@@ -290,12 +290,12 @@ class plot_atlas_lc():
 
 		color = 'orange' if self.filt == 'o' else 'cyan'
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['avg_badday'])
-		
+
 		plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNR'], s=45, color=color, marker='o', zorder=5, label='S/N')
-		plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsumnorm'], fmt=color, zorder=10, label='gaussian weighted rolling sum of S/N')
+		plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['SNRsumnorm'], color=color, zorder=10, label='gaussian weighted rolling sum of S/N')
 		if not(simparams is None):
 			plt.scatter(self.lc.lcs[0].t.loc[good_ix,'MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsim'], s=45, color='red', marker='o', zorder=0, label='simulated S/N')
-			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t.loc[good_ix,'SNRsimsum'], fmt='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
+			plt.plot(self.lc.lcs[0].t['MJDbin'], self.lc.lcs[0].t['SNRsimsum'], color='red', zorder=15, label='gaussian weighted rolling sum of simulated S/N')
 	
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
@@ -317,25 +317,26 @@ class plot_atlas_lc():
 		plt.title(title)
 
 		for control_index in self.lc.lcs:
+			label = None
 			if control_index == 0:
 				if not(simparams is None):
-					color = 'r'
+					color = 'red'
 				elif self.filt == 'o':
-					color = 'o'
+					color = 'orange'
 				else:
-					color = 'c'
+					color = 'cyan'
 
 				label = f'SN {self.lc.tnsname}' if simparams is None else f'SN {self.lc.tnsname} with simulated bump(s)'
 				zorder = 10
 				snrsum_colname = 'SNRsumnorm' if simparams is None else 'SNRsimsum'
 			else:
-				color = 'b'
+				color = 'blue'
 				if control_index == 1:
 					label = f'{len(self.lc.lcs)-1} control light curve(s)'
 				zorder = 0
 				snrsum_colname = 'SNRsumnorm'
 
-			plt.plot(self.lc.lcs[control_index].t['MJDbin'], self.lc.lcs[control_index].t[snrsum_colname], color=color, zorder=zorder, label='gaussian weighted rolling sum of simulated S/N')
+			plt.plot(self.lc.lcs[control_index].t['MJDbin'], self.lc.lcs[control_index].t[snrsum_colname], color=color, zorder=zorder, label=label)
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 

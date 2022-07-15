@@ -1060,7 +1060,16 @@ class clean_atlas_lc():
 			f.write(f' If the MJD bin size was set to 1 day, their averaged versions would be {args.tnsnames[obj_index]}.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the SN), and {args.tnsnames[obj_index]}_i001.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}_i001.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the control light curve with index 1).')
 			
 			if args.plot:
-				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], output_dir=self.output_dir, args=args, flags=self.flags)
+				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], 
+									 output_dir=self.output_dir, 
+									 args=args, 
+									 flags=self.flags)
+			if self.detect_bumps:
+				bumps_plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], 
+										   output_dir=self.output_dir, 
+										   args=args, 
+										   add2filename='detect_bumps', 
+										   flags=self.flags)
 
 			snlist_index = -1
 			snlist_ix = self.snlist.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
@@ -1127,7 +1136,6 @@ class clean_atlas_lc():
 						plot.set(lc=avglc, filt=filt)
 						plot.plot_averaged_lc()
 
-				# TO DO: write apply_gaussian() and plotting
 				if self.detect_bumps:
 					print('\nNow detecting pre-SN bumps...')
 
@@ -1152,12 +1160,13 @@ class clean_atlas_lc():
 									print(f'# Applying gaussian weighted rolling sum to control light curve {control_index:03d}...')
 									avglc = self.apply_gaussian(avglc, control_index=control_index)
 
-							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename=f'detect_bumps_appmag{appmag:0.2f}', flags=self.flags)
+							bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename=f'detect_bumps.{filt}.appmag{appmag:0.2f}', flags=self.flags)
 							bumps_plot.set(lc=avglc, filt=filt)
 							bumps_plot.plot_sim_bumps(simparams=simparams)
 							bumps_plot.plot_snr(simparams=simparams)
 							if self.apply_to_controls:
 								bumps_plot.plot_all_snr(simparams=simparams)
+							bumps_plot.save()
 					else:
 						for control_index in range(self.num_controls+1):
 							if control_index == 0:
@@ -1166,14 +1175,11 @@ class clean_atlas_lc():
 								print(f'# Applying gaussian weighted rolling sum to control light curve {control_index:03d}...')
 							avglc = self.apply_gaussian(avglc, control_index=control_index)
 
-						bumps_plot = plot_atlas_lc(tnsname=lc.tnsname, output_dir=self.output_dir, args=args, add2filename='detect_bumps', flags=self.flags)
 						bumps_plot.set(lc=avglc, filt=filt)
 						bumps_plot.plot_sim_bumps()
 						bumps_plot.plot_snr()
 						if self.apply_to_controls:
 							bumps_plot.plot_all_snr()
-
-					bumps_plot.save()
 
 				# drop extra control lc cut columns and save lc with new 'Mask' column
 				lc = self.drop_extra_columns(lc)
@@ -1188,6 +1194,7 @@ class clean_atlas_lc():
 
 			if args.plot:
 				plot.save()
+			bumps_plot.save()
 
 		# save snlist.txt with any new rows
 		print(f'Saving SN list at {self.snlist_filename}')
