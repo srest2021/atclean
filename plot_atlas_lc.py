@@ -58,7 +58,7 @@ class plot_atlas_lc():
 			self.set_plot_lims()
 
 	def save(self):
-		print('\nSaving PDF of plots...')
+		print('\nSaving PDF of plots...\n')
 		self.pdf.close()
 
 	def set_plot_lims(self):
