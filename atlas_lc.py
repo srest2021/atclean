@@ -24,7 +24,7 @@ class atlas_lc:
 		self.corrected_baseline_ix = None
 		self.during_sn_ix = None
 
-		self.dflux_colnames = None
+		self.dflux_colnames = ['duJy']
 
 	def __str__(self):
 		res = f'SN {self.tnsname} light curve'
@@ -121,6 +121,8 @@ class atlas_lc:
 		self.load_lc(output_dir, filt, is_averaged=is_averaged)
 		for control_index in range(1, num_controls+1):
 			self.load_lc(output_dir, filt, is_averaged=is_averaged, control_index=control_index)
+
+		self.dflux_colnames = ['duJy'] * (num_controls+1)
 
 	# update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
 	def update_mask_col(self, flag, indices, control_index=0):

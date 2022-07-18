@@ -365,10 +365,6 @@ class clean_atlas_lc():
 		return lc
 
 	def apply_true_uncertainties(self, lc):
-		# list to store uncertainty column name to use in future cuts 
-		# for SN light curve and each control light curve
-		lc.dflux_colnames = ['duJy'] * (len(lc.lcs) + 1)
-
 		output = ''
 		for control_index in range(self.num_controls+1):
 			if control_index == 0:
@@ -1194,6 +1190,7 @@ class clean_atlas_lc():
 					# plot averaged light curve
 					if args.plot:
 						plot.set(lc=avglc, filt=filt)
+						#print(avglc.lcs[0].t.loc[range(10)].to_string())
 						plot.plot_averaged_lc()
 
 				if self.detect_bumps:
