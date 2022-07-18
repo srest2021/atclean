@@ -42,8 +42,15 @@ class clean_atlas_lc():
 					  'avg_ixclip':0x1000,
 					  'avg_smallnum':0x2000}
 
-		# chi-square cut
+		# uncertainty cut
+		self.uncertainties = False 
+		self.uncertainty_cut = None
+
+		# estimating true uncertainties
 		self.estimate_true_uncertainties = False
+		self.estimate_true_uncertainties_chisquare_cut = None
+
+		# chi-square cut
 		self.chisquares = False
 		self.chisquare_cut = None 
 		self.stn_bound = None
@@ -53,10 +60,6 @@ class clean_atlas_lc():
 		self.contam_lim = None
 		self.loss_lim = None
 		self.lim_to_prioritize = None
-
-		# uncertainty cut
-		self.uncertainties = False 
-		self.uncertainty_cut = None
 
 		# control light curve cut
 		self.controls = False
@@ -137,7 +140,8 @@ class clean_atlas_lc():
 		self.plot = args.plot
 		print(f'Plotting: {self.plot}')
 
-		self.estimate_true_uncertainties = bool(cfg['estimate_true_uncertainties'])
+		self.estimate_true_uncertainties = bool(cfg['True uncertainties estimation settings']['estimate_true_uncertainties'])
+		self.estimate_true_uncertainties_chisquare_cut = float(cfg['True uncertainties estimation settings']['estimate_true_uncertainties_chisquare_cut'])
 
 		self.chisquares = args.chisquares
 		if self.chisquares:
@@ -360,47 +364,47 @@ class clean_atlas_lc():
 
 		return lc
 
-	def estimate_true_uncertainties(self, lc):
+	def apply_true_uncertainties(self, lc):
 		# list to store uncertainty column name to use in future cuts 
-        # for SN light curve and each control light curve
-        lc.dflux_colnames = ['duJy'] * (len(lc.lcs) + 1)
+		# for SN light curve and each control light curve
+		lc.dflux_colnames = ['duJy'] * (len(lc.lcs) + 1)
 
-        output = ''
+		output = ''
 		for control_index in range(self.num_controls+1):
 			if control_index == 0:
 				print('\nNow estimating true uncertainties for SN light curve...')
-				clean_ix = AandB(lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[0].ix_inrange(colnames=['chi/N'],uplim=chisquare_cut,exclude_uplim=True))
+				clean_ix = AandB(lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[0].ix_inrange(colnames=['chi/N'],uplim=self.estimate_true_uncertainties_chisquare_cut,exclude_uplim=True))
 				clean_ix = AandB(lc.corrected_baseline_ix, clean_ix)
 			else:
 				print(f'Now estimating true uncertainties for control light curve {control_index:03d}...')
-				clean_ix = AandB(lc.lcs[control_index].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[control_index].ix_inrange(colnames=['chi/N'],uplim=chisquare_cut,exclude_uplim=True))
+				clean_ix = AandB(lc.lcs[control_index].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[control_index].ix_inrange(colnames=['chi/N'],uplim=self.estimate_true_uncertainties_chisquare_cut,exclude_uplim=True))
 
 			lc.lcs[control_index].calcaverage_sigmacutloop('uJy', indices=clean_ix, Nsigma=3.0, median_firstiteration=True, verbose=1)
-	    	sigma_true_typical = lc.lcs[control_index].statparams['stdev']
+			sigma_true_typical = lc.lcs[control_index].statparams['stdev']
 
-		    median_dflux = np.median(lc.lcs[control_index].t.loc[clean_ix, 'duJy'])
+			median_dflux = np.median(lc.lcs[control_index].t.loc[clean_ix, 'duJy'])
 
-		    print(f'# Median uncertainty: {median_dflux:0.2f}; true typical uncertainty: {sigma_true_typical:0.2f}')
-		    output += ''
+			print(f'# Median uncertainty: {median_dflux:0.2f}; true typical uncertainty: {sigma_true_typical:0.2f}')
+			output += ''
 
-		    if sigma_true_typical > median_dflux:
-	        	print(f'# True typical uncertainty greater the current median uncertainty. Proceeding with true uncertainties estimation...')
+			if sigma_true_typical > median_dflux:
+				print(f'# True typical uncertainty greater the current median uncertainty. Proceeding with true uncertainties estimation...')
 
-	        	# for following cuts, use updated uncertainty column for this light curve
-	        	lc.dflux_colnames[control_index] = 'duJy_new'
+				# for following cuts, use updated uncertainty column for this light curve
+				lc.dflux_colnames[control_index] = 'duJy_new'
 
-	        	# add extra noise source to current noise in new column
-	        	sigma_extra = np.sqrt(sigma_true_typical*sigma_true_typical - median_dflux)
-	        	print(f'## Sigma extra calculated: {sigma_extra:0.4f}')
-	        	print('## Adding sigma_extra to new duJy column...')
-	    		lc.lcs[control_index].t['duJy_new'] = np.sqrt(lc.lcs[control_index].t['duJy']**2 + sigma_extra**2)
+				# add extra noise source to current noise in new column
+				sigma_extra = np.sqrt(sigma_true_typical*sigma_true_typical - median_dflux)
+				print(f'## Sigma extra calculated: {sigma_extra:0.4f}')
+				print('## Adding sigma_extra to new duJy column...')
+				lc.lcs[control_index].t['duJy_new'] = np.sqrt(lc.lcs[control_index].t['duJy']**2 + sigma_extra**2)
 
-	    		if control_index == 0:
-	    			output += f' An extra noise of sigma {sigma_extra:0.4f} was added to the uncertainties.'
-	        else:
-	        	print(f'# True typical uncertainty less than or equal to the current median uncertainty. Skipping true uncertainties estimation.')
-	        	if control_index == 0:
-	    			output += ''
+				if control_index == 0:
+					output += f' An extra noise of sigma {sigma_extra:0.4f} was added to the uncertainties.'
+			else:
+				print(f'# True typical uncertainty less than or equal to the current median uncertainty. Skipping true uncertainties estimation.')
+				if control_index == 0:
+					output += ''
 
 		return lc, output
 
@@ -1151,7 +1155,7 @@ class clean_atlas_lc():
 
 				estimate_true_uncertainties_output = None
 				if self.estimate_true_uncertainties:
-					lc, estimate_true_uncertainties_output = self.estimate_true_uncertainties(lc)
+					lc, estimate_true_uncertainties_output = self.apply_true_uncertainties(lc)
 					if args.plot:
 						plot.plot_uncertainty_estimations()
 
@@ -1241,7 +1245,8 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
-				f = self.add_to_readme(f, lc, filt, final_cut, chisquare_output=chisquare_output, 
+				f = self.add_to_readme(f, lc, filt, final_cut, estimate_true_uncertainties_output=estimate_true_uncertainties_output,
+															   chisquare_output=chisquare_output, 
 															   uncertainty_output=uncertainty_output,
 															   control_output=control_output,
 															   averaging_output=averaging_output)
@@ -1250,7 +1255,7 @@ class clean_atlas_lc():
 
 			if args.plot:
 				plot.save()
-			if self.appmags is None:
+			if self.detect_bumps and self.appmags is None:
 				bumps_plot.save()
 
 		# save snlist.txt with any new rows

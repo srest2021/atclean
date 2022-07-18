@@ -168,7 +168,7 @@ class plot_atlas_lc():
 		title = f'SN {self.lc.tnsname} {self.filt}-band flux'
 		if not(add2title is None):
 			title += add2title
-		plt.suptitle(title, y=1) #, fontsize=19)
+		plt.suptitle(title, y=1, fontsize=19)
 		before.set_title('before adding extra noise')
 		after.set_title('after adding extra noise')
 
@@ -183,12 +183,12 @@ class plot_atlas_lc():
 		# set x and y limits
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
 		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
-		cut.set_xlim(xlim_lower, xlim_upper)
-		clean.set_xlim(xlim_lower, xlim_upper)
+		before.set_xlim(xlim_lower, xlim_upper)
+		after.set_xlim(xlim_lower, xlim_upper)
 		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
 		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
-		cut.set_ylim(ylim_lower, ylim_upper)
-		clean.set_ylim(ylim_lower, ylim_upper)
+		before.set_ylim(ylim_lower, ylim_upper)
+		after.set_ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
