@@ -24,6 +24,8 @@ class atlas_lc:
 		self.corrected_baseline_ix = None
 		self.during_sn_ix = None
 
+		self.dflux_colnames = None
+
 	def __str__(self):
 		res = f'SN {self.tnsname} light curve'
 		if self.is_averaged:
@@ -97,7 +99,7 @@ class atlas_lc:
 		else:
 			output = f'\nSaving averaged SN light curve and {len(self.lcs)-1} averaged control light curves...' if self.is_averaged else f'\nSaving SN light curve and {len(self.lcs)-1} control light curves...'
 			print(output)
-			
+
 			for control_index in self.lcs:
 				self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
 

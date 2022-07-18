@@ -153,6 +153,7 @@ class plot_atlas_lc():
 
 		plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2)
 
+		# set x and y limits
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
 		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
 		plt.xlim(xlim_lower, xlim_upper)
@@ -161,6 +162,35 @@ class plot_atlas_lc():
 		plt.ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig)
+
+	def plot_uncertainty_estimations(self, add2title=None):
+		fig, (before, after) = plt.subplots(1, 2, figsize=(16, 6.5), tight_layout=True)
+		title = f'SN {self.lc.tnsname} {self.filt}-band flux'
+		if not(add2title is None):
+			title += add2title
+		plt.suptitle(title, y=1) #, fontsize=19)
+		before.set_title('before adding extra noise')
+		after.set_title('after adding extra noise')
+
+		color = 'orange' if self.filt == 'o' else 'cyan'
+
+		before.errorbar(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], self.lc.lcs[0].t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		before.scatter(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], s=45,color=color,marker='o')
+
+		after.errorbar(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], self.lc.lcs[0].t['duJy_new'], fmt='none',ecolor=color,elinewidth=1,c=color)
+		after.scatter(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], s=45,color=color,marker='o')
+
+		# set x and y limits
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		cut.set_xlim(xlim_lower, xlim_upper)
+		clean.set_xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		cut.set_ylim(ylim_lower, ylim_upper)
+		clean.set_ylim(ylim_lower, ylim_upper)
+
+		self.pdf.savefig(fig, bbox_inches='tight')
 
 	def plot_cut_lc(self, flags, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=flags)
@@ -175,16 +205,6 @@ class plot_atlas_lc():
 		else:
 			title += f', {add2title}'
 		plt.suptitle(title, fontsize=19, y=1)
-
-		# set x and y limits
-		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
-		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
-		cut.set_xlim(xlim_lower, xlim_upper)
-		clean.set_xlim(xlim_lower, xlim_upper)
-		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
-		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
-		cut.set_ylim(ylim_lower, ylim_upper)
-		clean.set_ylim(ylim_lower, ylim_upper)
 
 		color = 'orange' if self.filt == 'o' else 'cyan'
 
@@ -205,6 +225,16 @@ class plot_atlas_lc():
 		clean.axhline(linewidth=1,color='k')
 		clean.set_xlabel('MJD')
 		clean.set_ylabel('Flux (uJy)')
+
+		# set x and y limits
+		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
+		xlim_upper = self.args.xlim_upper if not(self.args.xlim_upper is None) else self.xlim_upper
+		cut.set_xlim(xlim_lower, xlim_upper)
+		clean.set_xlim(xlim_lower, xlim_upper)
+		ylim_lower = self.args.ylim_lower if not(self.args.ylim_lower is None) else self.ylim_lower
+		ylim_upper = self.args.ylim_upper if not(self.args.ylim_upper is None) else self.ylim_upper
+		cut.set_ylim(ylim_lower, ylim_upper)
+		clean.set_ylim(ylim_lower, ylim_upper)
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 

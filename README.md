@@ -43,15 +43,25 @@ Example commands:
 #### (applies all cuts - chi-squares, uncertainties, control light curves - and averages light curves)
 Using the default settings in `atlas_lc_settings.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
-The chi-square cut procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
+The uncertainty cut is a static procedure currently set at a constant value of 160. To change, set the `cut` field in `atlas_lc_settings.ini` to a different value.
 
-The uncertainty cut is a static procedure currently set at a constant value of 160. To change, set the `cut` parameter in the `Uncertainty cut settings` section to a different value.
+We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section. This procedure can be turned off or back on in `atlas_lc_settings.ini` through the `estimate_true_uncertainties` field. Here is the exact procedure we use:
+1. Keep the uncertainty cut at 160 and apply a preliminary chi-square cut at 20. Filter out any measurements flagged by these two cuts.
+2. Calculate the true typical uncertainty $\text{sigma\_true\_typical}$ by taking a 3σ cut of the unflagged baseline flux and getting the standard deviation.
+3. If $\text{sigma\_true\_typical}$ is greater than the median uncertainty of the unflagged baseline flux, $\text{median}(∂µJy)$, proceed with estimating the extra noise to add. Otherwise, keep the old chi-square cut and skip this procedure. 
+4. Calculate the extra noise source using the following formula, where the median uncertainty, $\text{median}(∂µJy)$, is taken from the unflagged baseline flux:
+    - $\text{sigma\_extra}^2 = \text{sigma\_true\_typical}^2 - \text{sigma\_poisson}^2 = \text{sigma\_true\_typical}^2 - \text{median}(∂µJy)^2 $
+5. Apply the extra noise source to the existing uncertainty using the following formula:
+    - $\text{new }∂µJy = \sqrt{(\text{old }∂µJy)^2 + \text{sigma\_extra}^2}$
+6. Repeat for each control light curve. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
+
+The chi-square cut procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
 
 The control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics. The four parameters in these sections define the bounds on these returned statistics if a SN measurement is to be kept.
 
 Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `atlas_lc_settings.ini` by setting field `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) 
 
-Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `atlas_lc_settings.ini`: 
+Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `atlas_lc_settings.ini`): 
 - A returned chi-square > 4.0 (change field `x2_max`)
 - Number of measurements averaged < 2 (change field `Nclip_max`)
 - Number of measurements clipped > 1 (change field `Ngood_min`)
