@@ -780,7 +780,7 @@ class clean_atlas_lc():
 		for control_index in range(1,self.num_controls+1):
 			lc.lcs[control_index].t['Mask'] = lc.lcs[control_index].t['Mask'].astype(np.int32)
 			if len(lc.lcs[control_index].t) < 1:
-				continues
+				continue
 			elif len(lc.lcs[control_index].t) == 1:
 				lc.lcs[control_index].t.loc[0,'Mask']= int(lc.lcs[control_index].t.loc[0,'Mask']) | flags_to_copy
 			else:
