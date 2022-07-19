@@ -1062,7 +1062,7 @@ class clean_atlas_lc():
 			f.write(f'\n\t- Number of used/"good" measurements in the 3σ-clipped average < {self.c_Ngood_min}')
 			f.write(control_output)
 
-		f.write(f'\n\nAfter cuts are applied, the light curves are saved with the new Mask column.')
+		f.write(f'\n\n### After the uncertainty, chi-square, and control light curve cuts are applied, the light curves are resaved with the new "Mask" column.')
 
 		if self.averaging:
 			f.write(f'\n\n### Averaging light curves and cutting bad days')

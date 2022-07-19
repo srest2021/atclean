@@ -176,9 +176,15 @@ class plot_atlas_lc():
 
 		before.errorbar(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], self.lc.lcs[0].t['duJy'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		before.scatter(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], s=45,color=color,marker='o')
+		before.axhline(linewidth=1,color='k')
+		before.set_ylabel('Flux (µJy)')
+		before.set_xlabel('MJD')
 
 		after.errorbar(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], self.lc.lcs[0].t['duJy_new'], fmt='none',ecolor=color,elinewidth=1,c=color)
 		after.scatter(self.lc.lcs[0].t['MJD'], self.lc.lcs[0].t['uJy'], s=45,color=color,marker='o')
+		after.axhline(linewidth=1,color='k')
+		after.set_ylabel('Flux (µJy)')
+		after.set_xlabel('MJD')
 
 		# set x and y limits
 		xlim_lower = self.args.xlim_lower if not(self.args.xlim_lower is None) else self.xlim_lower
