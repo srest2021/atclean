@@ -346,11 +346,11 @@ class clean_atlas_lc():
 
 		return lc
 
-	# drop mask column and any extra/unneeded columns from previous iterations
+	# drop mask column and any added columns from previous iterations
 	def drop_extra_columns(self, lc, control_index=0):
 		dropcols=[]
 
-		for col in ['Noffsetlc', '__tmp_SN']:
+		for col in ['Noffsetlc', 'duJy_new', 'uJy/duJy', '__tmp_SN']:
 			if col in lc.lcs[control_index].t.columns:
 				dropcols.append(col)
 		for col in lc.lcs[control_index].t.columns:
@@ -760,9 +760,9 @@ class clean_atlas_lc():
 
 		for index in range(uJy.shape[-1]):
 			pda4MJD = pdastrostatsclass()
-			pda4MJD.t['uJy'] = uJy[1:,index]
-			pda4MJD.t['duJy'] = duJy[1:,index]
-			pda4MJD.t['Mask'] = np.bitwise_and(Mask[1:,index], self.flags['chisquare']|self.flags['uncertainty'])
+			pda4MJD.t['uJy'] = uJy[0:,index]
+			pda4MJD.t['duJy'] = duJy[0:,index]
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], self.flags['chisquare']|self.flags['uncertainty'])
 			
 			pda4MJD.calcaverage_sigmacutloop('uJy',noisecol='duJy',maskcol='Mask',maskval=(self.flags['chisquare']|self.flags['uncertainty']),verbose=1,Nsigma=3.0,median_firstiteration=True)
 			lc.lcs[0].statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index) 
