@@ -22,7 +22,7 @@ Download an ATLAS light curve using ATLAS's REST API (more information located h
 
 Configure default settings for downloading and saving light curves in **`atlas_lc_settings.ini`**. You must add your ATLAS credentials and TNS API key to this file for the script to work properly. Then, set the proper output directory for the files. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
-Arguments (will override default config file settings if specified):
+**Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
 - `-c` or `--controls`: download control light curves in addition to SN light curve
 - `-b` or `--closebright`: use RA and Dec coordinates of a close bright object interfering with the target object's light curve as the center of the circle of control light curves.
@@ -33,7 +33,7 @@ Arguments (will override default config file settings if specified):
 - `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
-Example commands:
+**Example commands**:
 - `download_atlas_lc.py 2019vxm` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
 - `download_atlas_lc.py 2019vxm -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days
 - `download_atlas_lc.py 2019vxm -c` downloads full SN 2019vxm and control light curves
@@ -43,23 +43,23 @@ Example commands:
 #### (applies all cuts - chi-squares, uncertainties, control light curves - and averages light curves)
 Using the default settings in `atlas_lc_settings.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
-The uncertainty cut is a static procedure currently set at a constant value of 160. To change, set the `cut` field in `atlas_lc_settings.ini` to a different value.
+The **uncertainty cut** is a static procedure currently set at a constant value of 160. To change, set the `cut` field in `atlas_lc_settings.ini` to a different value.
 
-We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section. This procedure can be turned off or back on in `atlas_lc_settings.ini` through the `estimate_true_uncertainties` field. Here is the exact procedure we use:
+We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. This procedure can be turned off or back on in `atlas_lc_settings.ini` through the `estimate_true_uncertainties` field. Here is the exact procedure we use:
 1. Keep the uncertainty cut at 160 and apply a preliminary chi-square cut at 20. Filter out any measurements flagged by these two cuts.
 2. Calculate the true typical uncertainty `sigma_true_typical` by taking a 3σ cut of the unflagged baseline flux and getting the standard deviation.
 3. If `sigma_true_typical` is greater than the median uncertainty of the unflagged baseline flux, proceed with estimating the extra noise to add. Otherwise, keep the old chi-square cut and skip this procedure. 
 4. Calculate the extra noise source using the following formula, where the median uncertainty is taken from the unflagged baseline flux:
-    - `sigma_extra^2 = sigma_true_typical^2 - (median_duJy)^2`
+    - `sigma_extra^2 = sigma_true_typical^2 - median_duJy^2`
 5. Apply the extra noise source to the existing uncertainty using the following formula:
     - `duJy_new = sqrt(duJy^2 + sigma_extra^2)`
 6. Repeat for each control light curve. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
-The chi-square cut procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
+The **chi-square cut** procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
 
-The control light curve cut examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics. The four parameters in these sections define the bounds on these returned statistics if a SN measurement is to be kept.
+The **control light curve cut** examines each SN epoch and its corresponding control light curve measurements at that epoch, applies a 3-sigma-clipped average, calculates statistics, and then cuts bad epochs based on those returned statistics. The four parameters in these sections define the bounds on these returned statistics if a SN measurement is to be kept.
 
-Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `atlas_lc_settings.ini` by setting field `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) 
+Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `atlas_lc_settings.ini` by setting field `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) 
 
 Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `atlas_lc_settings.ini`): 
 - A returned chi-square > 4.0 (change field `x2_max`)
@@ -68,9 +68,9 @@ Then we cut any measurements in the SN light curve for the given epoch for which
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
 
-The last optional step of this procedure is to check for any pre-SN eruptions (with specified size of `gaussian_sigma` days in `atlas_lc_settings.ini`) in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps, then plot. We can also apply this rolling sum to the control light curves (controlled by field `apply_to_controls` in `atlas_lc_settings.ini`) in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum. 
+The last optional step of this procedure is to **check for any pre-SN eruptions** (with specified size of `gaussian_sigma` days in `atlas_lc_settings.ini`) in the SN light curve. We apply a rolling gaussian weighted sum to the SN's flux/dflux ratio in order to amplify these possible precursor bumps, then plot. We can also apply this rolling sum to the control light curves (controlled by field `apply_to_controls` in `atlas_lc_settings.ini`) in order to establish the detection limit for this SN. Optionally, we can insert simulated precursor bump(s) into the SN light curve at specified MJDs, apparent magnitudes, and sigmas in order to test their amplification by the rolling sum. 
 
-Arguments (will override default config file settings if specified):
+**Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
 - `-x` or `--chisquares`: apply chi-square cut
 - `-u` or `--uncertainties`: apply uncertainty cut
@@ -87,6 +87,6 @@ Arguments (will override default config file settings if specified):
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 
-Example commands:
+**Example commands**:
 - `clean_atlas_lc.py 2019vxm -x -u -c -a -p` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
 - `clean_atlas_lc.py 2019vxm -x` - applies ONLY chi-square cut to SN 2019vxm
