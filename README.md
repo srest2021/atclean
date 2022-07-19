@@ -50,9 +50,9 @@ We also attempt to account for an extra noise source in the data by estimating t
 2. Calculate the true typical uncertainty `sigma_true_typical` by taking a 3σ cut of the unflagged baseline flux and getting the standard deviation.
 3. If `sigma_true_typical` is greater than the median uncertainty of the unflagged baseline flux, proceed with estimating the extra noise to add. Otherwise, keep the old chi-square cut and skip this procedure. 
 4. Calculate the extra noise source using the following formula, where the median uncertainty is taken from the unflagged baseline flux:
-    - `sigma_extra^2 = sigma_true_typical^2 - sigma_poisson^2 = sigma_true_typical^2 - (median_duJy)^2`
+    - `sigma_extra^2 = sigma_true_typical^2 - (median_duJy)^2`
 5. Apply the extra noise source to the existing uncertainty using the following formula:
-    - `duJy_new = sqrt(duJy + sigma_extra^2)`
+    - `duJy_new = sqrt(duJy^2 + sigma_extra^2)`
 6. Repeat for each control light curve. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
 The chi-square cut procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.ipynb`**.
