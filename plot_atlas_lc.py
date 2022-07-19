@@ -42,14 +42,17 @@ class plot_atlas_lc():
 		else:
 			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots_{add2filename}.pdf')
 
+		# ATLAS template change dates in MJD
 		self.tchange1 = 58417
 		self.tchange2 = 58882
 
+		# plot x and y axis limits
 		self.xlim_lower = None
 		self.xlim_upper = None
 		self.ylim_lower = None
 		self.ylim_upper = None
 
+	# set the source light curve object and current filter
 	def set(self, lc, filt):
 		self.lc = lc 
 		self.filt = filt
@@ -57,35 +60,44 @@ class plot_atlas_lc():
 		if not self.lc.is_averaged:
 			self.set_plot_lims()
 
+	# save PDF of current plots
 	def save(self):
 		print('\nSaving PDF of plots...\n')
 		self.pdf.close()
 
+	# set the plot x and y axis limits automatically
 	def set_plot_lims(self):
 		self.xlim_lower = self.lc.discdate-200
 		self.xlim_upper = self.lc.discdate+800
 		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
 		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)
 
+	# plot averaged SN light curve with bad days flagged
 	def plot_averaged_lc(self):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
 		self.plot_cut_lc(self.flags['avg_badday'], add2title=f'MJD bin size {self.lc.mjd_bin_size:0.1f} days')
 
+	# plot SN light curve with bad chi-square measurements flagged
 	def plot_chisquare_cut(self):
 		self.plot_cut_lc(self.flags['chisquare'], add2title='chi-square cut')
 
+	# plot SN light curve with bad uncertainties flagged
 	def plot_uncertainty_cut(self):
 		self.plot_cut_lc(self.flags['uncertainty'], add2title='uncertainty cut')
 
+	# plot SN and control light curves, then plot
+	# SN light curve with bad control light curve cut measurements flagged 
 	def plot_controls_cut(self, num_controls):
 		self.plot_og_control_lcs(num_controls)
 		self.plot_cut_lc(self.flags['controls_bad'], add2title='control light curve cut')
 
+	# plot SN light curve with all bad measurements flagged
 	def plot_all_cuts(self):
 		self.plot_cut_lc(self.flags['chisquare']|self.flags['uncertainty']|self.flags['controls_bad'], add2title='all cuts')
 
-	def plot_og_lc(self, separate_baseline=True, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	# plot SN light curve
+	def plot_og_lc(self, separate_baseline=True, add2title=None):
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -122,7 +134,8 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
-	def plot_og_control_lcs(self, num_controls, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	# plot control light curves
+	def plot_og_control_lcs(self, num_controls, add2title=None):
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
 		plt.gca().spines['top'].set_visible(False)
@@ -163,6 +176,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
+	# plot SN light curve before and after true uncertainties estimated
 	def plot_uncertainty_estimations(self, add2title=None):
 		fig, (before, after) = plt.subplots(1, 2, figsize=(16, 6.5), tight_layout=True)
 		title = f'SN {self.lc.tnsname} {self.filt}-band flux'
@@ -198,7 +212,8 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
-	def plot_cut_lc(self, flags, add2title=None): #, xlim_lower=None, xlim_upper=None, ylim_lower=None, ylim_upper=None):
+	# plot SN light curve with all measurements (flagged and kept), then just kept measurements
+	def plot_cut_lc(self, flags, add2title=None):
 		good_ix = self.lc.lcs[0].ix_unmasked('Mask',maskval=flags)
 		bad_ix = AnotB(self.lc.lcs[0].getindices(),good_ix)
 
@@ -244,6 +259,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
+	# for dynamic chi-square cuts, plot range of possible cuts and their contamination and loss
 	def plot_limcuts(self, limcuts, contam_cut, loss_cut, contam_lim, loss_lim, min_cut, max_cut):
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
 		plt.gca().spines['right'].set_visible(False)
@@ -268,6 +284,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig, bbox_inches='tight')
 
+	# plot averaged SN light curve and, if any, simulated pre-SN bump(s)
 	def plot_sim_bumps(self, simparams=None, add2title=None):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
@@ -308,6 +325,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
+	# plot SN signal-to-noise and gaussian weighted rolling sum of signal-to-noise
 	def plot_snr(self, simparams=None, add2title=None):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
@@ -336,6 +354,7 @@ class plot_atlas_lc():
 
 		self.pdf.savefig(fig)
 
+	# plot SN and control light curve gaussian weighted rolling sums of signal-to-noise
 	def plot_all_snr(self, simparams=None, add2title=None):
 		if not self.lc.is_averaged:
 			raise RuntimeWarning('ERROR: Light curve to be plotted is not averaged!')
@@ -346,7 +365,7 @@ class plot_atlas_lc():
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Signal-to-noise')
 		plt.xlabel('MJD')
-		title = f'SN {self.lc.tnsname} and control light curves {self.filt}-band \ngaussian weighted rolling sum of signal-to-noise'
+		title = f'SN {self.lc.tnsname} and control light curves {self.filt}-band \ngaussian weighted rolling sums of signal-to-noise'
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
