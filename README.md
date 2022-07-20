@@ -13,14 +13,14 @@ Control light curve cut currently in progress of being implemented and added to 
 ### Quick setup in `atlas_lc_settings.ini`
 Open the config file `atlas_lc_settings.ini` and replace the following fields with your information.
 1. Replace `[ATLAS credentials]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
-2. Replace `[TNS credentials]` `api_key` with your TNS API key (or ask Sofia to send you hers).
+2. Optionally replace `[TNS credentials]` `api_key` with your TNS API key.
+	- If given a TNS API key, the script will automatically fetch an object's RA, Dec, and discovery date from TNS. If you don't have a key, you can ask Sofia to send you hers, or you can manually add this information to a table in a text file titled `snlist.txt`. (You can change this file's name in `[Input/output settings]` `snlist_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
 3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files will be stored.
+4. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
 ### `download_atlas_lc.py` 
 #### (downloads SN light curve and, optionally, control light curves)
-Download an ATLAS light curve using ATLAS's REST API (more information located here: https://fallingstar-data.com/forcedphot/apiguide/) and TNS's API. 
-
-Configure default settings for downloading and saving light curves in **`atlas_lc_settings.ini`**. You must add your ATLAS credentials and TNS API key to this file for the script to work properly. Then, set the proper output directory for the files. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
+This script allows you to download ATLAS light curve(s) using ATLAS's [REST API](https://fallingstar-data.com/forcedphot/apiguide/) and TNS's API (to optionally fetch RA, Dec, and discovery date information for the SN). 
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
