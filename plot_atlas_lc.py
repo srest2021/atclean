@@ -79,12 +79,20 @@ class plot_atlas_lc():
 		self.plot_cut_lc(self.flags['avg_badday'], add2title=f'MJD bin size {self.lc.mjd_bin_size:0.1f} days')
 
 	# plot SN light curve with bad chi-square measurements flagged
-	def plot_chisquare_cut(self):
-		self.plot_cut_lc(self.flags['chisquare'], add2title='chi-square cut')
+	def plot_chisquare_cut(self, add2title=None):
+		add2title2 = 'chi-square cut'
+		if not(add2title is None):
+			add2title2 += f' {add2title}'
+			
+		self.plot_cut_lc(self.flags['chisquare'], add2title=add2title2)
 
 	# plot SN light curve with bad uncertainties flagged
-	def plot_uncertainty_cut(self):
-		self.plot_cut_lc(self.flags['uncertainty'], add2title='uncertainty cut')
+	def plot_uncertainty_cut(self, add2title=None):
+		add2title2 = 'uncertainty cut'
+		if not(add2title is None):
+			add2title2 += f' {add2title}'
+
+		self.plot_cut_lc(self.flags['uncertainty'], add2title=add2title2)
 
 	# plot SN and control light curves, then plot
 	# SN light curve with bad control light curve cut measurements flagged 

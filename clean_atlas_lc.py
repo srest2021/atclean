@@ -1147,7 +1147,7 @@ class clean_atlas_lc():
 				if self.uncertainties:
 					lc, uncertainty_output = self.apply_uncertainty_cut(lc)
 					if args.plot:
-						plot.plot_uncertainty_cut()
+						plot.plot_uncertainty_cut(add2title=f'at {self.uncertainty_cut:0.2f}')
 
 				estimate_true_uncertainties_output = None
 				if self.estimate_true_uncertainties:
@@ -1164,7 +1164,7 @@ class clean_atlas_lc():
 				if self.chisquares:
 					if args.plot:
 						lc, final_cut, chisquare_output, plot = self.apply_chisquare_cut(args, lc, plot)
-						plot.plot_chisquare_cut()
+						plot.plot_chisquare_cut(add2title=f'at {final_cut:0.2f}')
 					else:
 						lc, final_cut, chisquare_output = self.apply_chisquare_cut(args, lc)
 
