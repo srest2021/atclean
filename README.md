@@ -20,7 +20,7 @@ Open the config file `atlas_lc_settings.ini` and replace the following fields wi
 
 ### `download_atlas_lc.py` 
 #### (downloads SN light curve and, optionally, control light curves)
-This script allows you to download ATLAS light curve(s) using ATLAS's [REST API](https://fallingstar-data.com/forcedphot/apiguide/) and TNS's API (to optionally fetch RA, Dec, and discovery date information for the SN). 
+This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). 
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download

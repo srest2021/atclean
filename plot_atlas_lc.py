@@ -83,7 +83,7 @@ class plot_atlas_lc():
 		add2title2 = 'chi-square cut'
 		if not(add2title is None):
 			add2title2 += f' {add2title}'
-			
+
 		self.plot_cut_lc(self.flags['chisquare'], add2title=add2title2)
 
 	# plot SN light curve with bad uncertainties flagged
@@ -160,7 +160,7 @@ class plot_atlas_lc():
 		for control_index in range(1, num_controls+1):
 			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t[self.lc.dflux_colnames[control_index]], fmt='none',ecolor='blue',elinewidth=1,c='blue')
 			if control_index == 1:
-				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{len(self.lc.lcs)} control light curves')
+				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{num_controls} control light curves')
 			else:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')
 

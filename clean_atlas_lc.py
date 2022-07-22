@@ -140,8 +140,10 @@ class clean_atlas_lc():
 		self.plot = args.plot
 		print(f'Plotting: {self.plot}')
 
-		self.estimate_true_uncertainties = bool(cfg['True uncertainties estimation settings']['estimate_true_uncertainties'])
+		self.estimate_true_uncertainties = bool(cfg['True uncertainties estimation settings']['estimate_true_uncertainties']=='True')
 		self.estimate_true_uncertainties_chisquare_cut = float(cfg['True uncertainties estimation settings']['estimate_true_uncertainties_chisquare_cut'])
+		if self.estimate_true_uncertainties:
+			print(f'Estimating true uncertainties set to {self.estimate_true_uncertainties} with preliminary chi-square cut at {self.estimate_true_uncertainties_chisquare_cut:0.2f}')
 
 		self.chisquares = args.chisquares
 		if self.chisquares:
@@ -1033,7 +1035,29 @@ class clean_atlas_lc():
 
 		return avglc
 
-	# output text file with information on cuts and flags
+	# begin output text file with information on cuts and flags
+	def begin_readme(self, args, obj_index):
+		f = open(f'{self.output_dir}/{args.tnsnames[obj_index]}/README.md','w+')
+		f.write(f"# SN {args.tnsnames[obj_index]} Light Curve Cleaning and Averaging")
+		f.write(f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.')
+		#f.write(f' As such, the SN light curve file names are {args.tnsnames[obj_index]}.o.lc.txt and {args.tnsnames[obj_index]}.c.lc.txt.')
+		#f.write(f' A control light curve with the index 1 will have files named {args.tnsnames[obj_index]}_i001.o.lc.txt and {args.tnsnames[obj_index]}_i001.c.lc.txt.')
+		#f.write(f' Their averaged versions would be {args.tnsnames[obj_index]}.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the SN), and {args.tnsnames[obj_index]}_i001.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}_i001.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the control light curve with index 1).')
+
+		f.write(f'\n\nThe following details the file names for each of the light curve versions:')
+		f.write(f'\n\t- SN light curves: {args.tnsnames[obj_index]}.o.lc.txt and {args.tnsnames[obj_index]}.c.lc.txt')
+		f.write(f'\n\t- Averaged light curves: {args.tnsnames[obj_index]}.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}.c.{self.mjd_bin_size:0.2f}days.lc.txt')
+		f.write(f'\n\t- Control light curves, where X=001,...,{self.num_controls:03d}: {args.tnsnames[obj_index]}_iX.o.lc.txt and {args.tnsnames[obj_index]}_iX.c.lc.txt')
+
+		f.write(f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): ')
+		f.write(f'\n\t- Uncertainty cut: {hex(self.flags["uncertainty"])}')
+		f.write(f'\n\t- Chi-square cut: {hex(self.flags["chisquare"])}')
+		f.write(f'\n\t- Control light curve cut: {hex(self.flags["controls_bad"])}')
+		f.write(f'\n\t- Bad day (for averaged light curves): {hex(self.flags["avg_badday"])}')
+
+		return f
+
+	# add information about each cut to output text file
 	def add_to_readme(self, f, lc, filt, final_cut, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
 
@@ -1104,12 +1128,7 @@ class clean_atlas_lc():
 		for obj_index in range(0,len(args.tnsnames)):
 			print(f'\nCOMMENCING LOOP FOR SN {args.tnsnames[obj_index]}')
 
-			f = open(f'{self.output_dir}/{args.tnsnames[obj_index]}/README.md','w+')
-			f.write(f"# SN {args.tnsnames[obj_index]} Light Curve Cleaning and Averaging")
-			f.write(f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.')
-			f.write(f' As such, the SN light curve file names are {args.tnsnames[obj_index]}.o.lc.txt and {args.tnsnames[obj_index]}.c.lc.txt.')
-			f.write(f' A control light curve with the index 1 will have files named {args.tnsnames[obj_index]}_i001.o.lc.txt and {args.tnsnames[obj_index]}_i001.c.lc.txt.')
-			f.write(f' If the MJD bin size was set to 1 day, their averaged versions would be {args.tnsnames[obj_index]}.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the SN), and {args.tnsnames[obj_index]}_i001.o.{self.mjd_bin_size:0.2f}days.lc.txt and {args.tnsnames[obj_index]}_i001.c.{self.mjd_bin_size:0.2f}days.lc.txt (for the control light curve with index 1).')
+			f = self.begin_readme(args, obj_index)
 			
 			if args.plot:
 				plot = plot_atlas_lc(tnsname=args.tnsnames[obj_index], 
@@ -1123,9 +1142,9 @@ class clean_atlas_lc():
 										   add2filename='detect_bumps', 
 										   flags=self.flags)
 
+			# check if SN information exists in snlist.txt
 			snlist_index = -1
 			snlist_ix = self.snlist.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
-			# check if SN information exists in snlist.txt
 			if len(snlist_ix) > 0:
 				if len(snlist_ix > 1):
 					# drop duplicate rows
@@ -1143,12 +1162,14 @@ class clean_atlas_lc():
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc()
 
+				# uncertainty cut
 				uncertainty_output = None
 				if self.uncertainties:
 					lc, uncertainty_output = self.apply_uncertainty_cut(lc)
 					if args.plot:
 						plot.plot_uncertainty_cut(add2title=f'at {self.uncertainty_cut:0.2f}')
 
+				# estimate true uncertainties
 				estimate_true_uncertainties_output = None
 				if self.estimate_true_uncertainties:
 					lc, estimate_true_uncertainties_output = self.apply_true_uncertainties(lc)
@@ -1160,6 +1181,7 @@ class clean_atlas_lc():
 				lc.lcs[0].t['uJy/duJy'] = lc.lcs[0].t['uJy']/lc.lcs[0].t[lc.dflux_colnames[0]]
 				lc.lcs[0].t = lc.lcs[0].t.replace([np.inf, -np.inf], np.nan)
 
+				# chi-square cut
 				chisquare_output = None
 				if self.chisquares:
 					if args.plot:
@@ -1168,6 +1190,7 @@ class clean_atlas_lc():
 					else:
 						lc, final_cut, chisquare_output = self.apply_chisquare_cut(args, lc)
 
+				# control light curve cut
 				control_output = None
 				if self.controls:
 					lc, control_output = self.apply_control_cut(lc)
@@ -1177,6 +1200,7 @@ class clean_atlas_lc():
 				if args.plot and (self.chisquares or self.uncertainties or self.controls):
 					plot.plot_all_cuts()
 
+				# average and cut bad days
 				averaging_output = None
 				if self.averaging:
 					avglc = atlas_lc(tnsname=lc.tnsname, is_averaged=True, mjd_bin_size=self.mjd_bin_size)
@@ -1193,6 +1217,7 @@ class clean_atlas_lc():
 						#print(avglc.lcs[0].t.loc[range(10)].to_string())
 						plot.plot_averaged_lc()
 
+				# detect pre-SN bumps 
 				if self.detect_bumps:
 					print('\nNow detecting pre-SN bumps...')
 
@@ -1242,9 +1267,9 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
-				f = self.add_to_readme(f, lc, filt, final_cut, estimate_true_uncertainties_output=estimate_true_uncertainties_output,
+				f = self.add_to_readme(f, lc, filt, final_cut, uncertainty_output=uncertainty_output,
+															   estimate_true_uncertainties_output=estimate_true_uncertainties_output,
 															   chisquare_output=chisquare_output, 
-															   uncertainty_output=uncertainty_output,
 															   control_output=control_output,
 															   averaging_output=averaging_output)
 
