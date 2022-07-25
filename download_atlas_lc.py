@@ -193,6 +193,7 @@ class download_atlas_lc:
 					if resp.json()['finishtimestamp']:
 						result_url = resp.json()['result_url']
 						print(f"Task is complete with results available at {result_url}")
+						break
 					elif resp.json()['starttimestamp']:
 						if not taskstarted_printed:
 							print(f"Task is running (started at {resp.json()['starttimestamp']})")
@@ -207,9 +208,13 @@ class download_atlas_lc:
 					sys.exit()
 			
 		with requests.Session() as s:
-			result = s.get(result_url, headers=headers).text
-			
-		dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), delim_whitespace=True)
+			if result_url is None:
+				print('WARNING: Empty light curve--no data within this MJD range...')
+				dfresult = pd.DataFrame(columns=['MJD','m','dm','uJy','duJy','F','err','chi/N','RA','Dec','x','y','maj','min','phi','apfit','Sky','ZP','Obs','Mask'])
+			else:
+				result = s.get(result_url, headers=headers).text
+				dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), delim_whitespace=True)
+		
 		return dfresult
 
 	# get RA and Dec coordinates of control light curves in a circle pattern around SN location and add to control_coords table
@@ -349,7 +354,8 @@ class download_atlas_lc:
 		# remove rows with duJy=0 or uJy=Nan
 		dflux_zero_ix = lc.lcs[control_index].ix_inrange(colnames='duJy',lowlim=0,uplim=0)
 		flux_nan_ix = lc.lcs[control_index].ix_remove_null(colnames='uJy')
-		lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
+		if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
+			lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
 
 		lc.lcs[control_index].flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
