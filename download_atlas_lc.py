@@ -412,7 +412,7 @@ class download_atlas_lc:
 			self.download_lcs(args, args.tnsnames[obj_index], token, snlist_index)
 
 		# save snlist.txt with any new rows
-		print(f'Saving SN list at {self.snlist_filename}')
+		print(f'\nSaving SN list at {self.snlist_filename}')
 		self.snlist.write(self.snlist_filename)
 
 if __name__ == "__main__":

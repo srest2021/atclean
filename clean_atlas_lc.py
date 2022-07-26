@@ -1049,10 +1049,14 @@ class clean_atlas_lc():
 			f.write(f'\n\t- Control light curves, where X=001,...,{self.num_controls:03d}: {args.tnsnames[obj_index]}_iX.o.lc.txt and {args.tnsnames[obj_index]}_iX.c.lc.txt')
 
 		f.write(f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): ')
-		f.write(f'\n\t- Uncertainty cut: {hex(self.flags["uncertainty"])}')
-		f.write(f'\n\t- Chi-square cut: {hex(self.flags["chisquare"])}')
-		f.write(f'\n\t- Control light curve cut: {hex(self.flags["controls_bad"])}')
-		f.write(f'\n\t- Bad day (for averaged light curves): {hex(self.flags["avg_badday"])}')
+		if self.uncertainties:
+			f.write(f'\n\t- Uncertainty cut: {hex(self.flags["uncertainty"])}')
+		if self.chisquares:
+			f.write(f'\n\t- Chi-square cut: {hex(self.flags["chisquare"])}')
+		if self.controls:
+			f.write(f'\n\t- Control light curve cut: {hex(self.flags["controls_bad"])}')
+		if self.averaging:
+			f.write(f'\n\t- Bad day (for averaged light curves): {hex(self.flags["avg_badday"])}')
 
 		return f
 
