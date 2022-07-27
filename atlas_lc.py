@@ -35,7 +35,7 @@ class atlas_lc:
 
 	# get RA, Dec, and discovery date information from TNS
 	def get_tns_data(self, api_key):
-		print('Obtaining RA, Dec, and discovery date from TNS...')
+		print('Obtaining RA, Dec, and/or discovery date from TNS...')
 
 		try:
 			url = 'https://www.wis-tns.org/api/get/object'
@@ -44,8 +44,10 @@ class atlas_lc:
 			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 			
-			self.ra = json_data['data']['reply']['ra']
-			self.dec = json_data['data']['reply']['dec']
+			if self.ra is None:
+				self.ra = json_data['data']['reply']['ra']
+			if self.dec is None: 
+				self.dec = json_data['data']['reply']['dec']
 			discoverydate = json_data['data']['reply']['discoverydate']
 		except Exception as e:
 			print(json_data['data']['reply'])
@@ -54,7 +56,8 @@ class atlas_lc:
 		date = list(discoverydate.partition(' '))[0]
 		time = list(discoverydate.partition(' '))[2]
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
-		self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices
+		if self.discdate is None:
+			self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices
 
 	# get baseline indices (any indices before the SN discovery date)
 	def get_baseline_ix(self):
@@ -83,8 +86,7 @@ class atlas_lc:
 		print(f'# Filename: {filename}')
 		return filename
 
-	# save a single light curve
-	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True):
+		# save a single light curve
 		if filt is None:
 			for filt_ in ['c','o']:
 				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)

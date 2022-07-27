@@ -57,17 +57,11 @@ class download_atlas_lc:
 			parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 		
 		parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
-		
+		parser.add_argument('--coords', type=str, default=None, help='comma-separated RA and Dec of SN light curve to download')
+		parser.add_argument('--discdate', type=str, default=None, help='SN discovery date in MJD')
+
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
-		
-		"""
-		parser.add_argument('-p','--plot', default=False, action='store_true', help='plot light curves and save into PDF file')
-		parser.add_argument('--xlim_lower', type=float, default=None, help='if plotting, manually set lower x axis limit to a certain MJD')
-		parser.add_argument('--xlim_upper', type=float, default=None, help='if plotting, manually set upper x axis limit to a certain MJD')
-		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
-		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
-		"""
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
@@ -308,34 +302,59 @@ class download_atlas_lc:
 		self.control_coords.t.loc[control_index,'n_detec_o'] = len(lc.lcs[control_index].t.loc[o_ix])
 		self.control_coords.t.loc[control_index,'n_detec_c'] = len(lc.lcs[control_index].t.loc[AnotB(lc.lcs[control_index].getindices(),o_ix)])
 
-	def get_lc_data(self, lc, snlist_index):
-		if snlist_index == -1:
-			lc.get_tns_data(self.tns_api_key)
+	def get_lc_data(self, args, lc, snlist_index):
+		# get RA, Dec, and discovery date from command line if available
+		if not(args.coords is None):
+			print('Getting RA and Dec coordinates from command line argument --coords...')
+			if len(args.tnsnames) > 1:
+				raise RuntimeError('ERROR: Only one SN allowed when specifying SN coordinates in command line!')
+			coords = [coord.strip() for coord in args.coords.split(",")]
+			if len(coords) > 2:
+				raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec.')
+			if len(coords) < 2:
+				raise RuntimeError('ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec.')
+			lc.ra = coords[0]
+			lc.dec = coords[1]
+		if not(args.discdate is None):
+			print('Getting discovery date from command line argument --discdate...')
+			if len(args.tnsnames) > 1:
+				raise RuntimeError('ERROR: Only one SN allowed when specifying SN discovery date in command line!')
+			lc.discdate = args.discdate
 
-			# add row to self.snlist
-			self.snlist.newrow({'tnsname':lc.tnsname, 
-								'ra':lc.ra, 
-								'dec':lc.dec, 
-								'discovery_date':lc.discdate, 
-								'closebright_ra':np.nan, 
-								'closebright_dec':np.nan})
-			
-			snlist_index = len(self.snlist.t) - 1
-		
-		lc.ra = self.snlist.t.loc[snlist_index,'ra']
-		lc.dec = self.snlist.t.loc[snlist_index,'dec']
-		lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
-
-		if self.closebright:
-			if self.closebright_coords is None:
-				print(f'Getting close bright object coordinates from SN list at {self.snlist_filename}...')
-				if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
-					self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
-					self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
+		# if RA, Dec, or discovery date not provided in command line, check in snlist.txt or try using TNS API
+		if args.coords is None or args.discdate is None:
+			# check if no existing row in snlist.txt; else no need to add new row
+			if snlist_index == -1:
+				# check if we can query TNS
+				if self.tns_api_key == 'None':
+					# all options exhausted
+					raise RuntimeError('ERROR: No TNS API key provided, no corresponding SN entry in snlist.txt, and not enough information provided in arguments! Please provide RA, Dec, and discovery date in --coords and --discdate arguments.')
 				else:
-					raise RuntimeError(f'ERROR: Close bright object coordinates given in SN list file at {self.snlist_filename} are not valid!')
+					# get RA, Dec, and/or discovery date from TNS
+					lc.get_tns_data(self.tns_api_key)
+			else:
+				print(f'Getting RA, Dec, and/or discovery date from existing row in SN list...')
+
+		# add RA, Dec, and discovery date to new row in snlist.txt if no existing row for this SN
+		if snlist_index == -1:
+			# add row to snlist.txt
+			self.snlist.newrow({'tnsname':lc.tnsname, 'ra':lc.ra, 'dec':lc.dec, 'discovery_date':lc.discdate, 'closebright_ra':np.nan, 'closebright_dec':np.nan})
+			snlist_index = len(self.snlist.t)-1
+
+		# fill in missing information from snlist.txt
+		if lc.ra is None: lc.ra = self.snlist.t.loc[snlist_index,'ra']
+		if lc.dec is None: lc.dec = self.snlist.t.loc[snlist_index,'dec']
+		if lc.discdate is None: lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
+
+		if self.closebright and self.closebright_coords is None:
+			print(f'Getting close bright object coordinates from SN list at {self.snlist_filename}...')
+			if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
+				self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
+				self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
+			else:
+				raise RuntimeError(f'ERROR: Close bright object coordinates given in SN list file at {self.snlist_filename} are not valid!')
 		
-		output = f'# RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}'
+		output = f'RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}'
 		if self.closebright: 
 			output += f', closebright RA: {self.closebright_coords[0]}, closebright Dec: {self.closebright_coords[1]}'
 		print(output)
@@ -370,7 +389,7 @@ class download_atlas_lc:
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		
-		lc = self.get_lc_data(lc, snlist_index)
+		lc = self.get_lc_data(args, lc, snlist_index)
 		lc = self.download_lc(args, token, lc, lc.ra, lc.dec)
 		lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
