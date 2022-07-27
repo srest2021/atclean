@@ -61,7 +61,7 @@ class download_atlas_lc:
 		parser.add_argument('--discdate', type=str, default=None, help='SN discovery date in MJD')
 
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
-		parser.add_argument('-b','--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
+		parser.add_argument('--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
