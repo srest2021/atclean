@@ -32,9 +32,11 @@ This script allows you to download ATLAS light curve(s) using [ATLAS's REST API]
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to download
+- `--coords`: manually input comma-separated RA and Dec coordinates of a single SN to override querying TNS and SN list text file
+- `--discdate`: manually input discovery date in MJD of a single SN to override querying TNS and SN list text file
 - `-c` or `--controls`: download control light curves in addition to SN light curve
-- `-b` or `--closebright`: use RA and Dec coordinates of a close bright object interfering with the target object's light curve as the center of the circle of control light curves.
-	- These RA and Dec coordinates must be manually input by the user in the SN list text file. (The default file name is 'snlist.txt' and is automatically generated in the given output directory once script is run at least once. Simply open the file and add in the desired RA and Dec in the corresponding SN's row.)
+- `--closebright`: manually input comma-separated RA and Dec coordinates of a close bright object interfering with the target SN's light curve and use as the center of the circle of control light curves
+	- If you are downloading multiple SNe at once and have multiple sets of coordinates, they must be manually input to the SN list text file instead of this argument, as they cannot be automatically fetched from TNS.
 - `-u` or `--username`: override default username given in `atlas_lc_settings.ini` config file
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)
