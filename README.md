@@ -2,11 +2,11 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc.ipynb`](#-clean-atlas-lcipynb-) (applies all cuts--chi-squares, uncertainties, and control light curves--and applies averaging)
+	- [`clean_atlas_lc.ipynb`](#clean-atlas-lc.ipynb) (applies all cuts--chi-squares, uncertainties, and control light curves--and applies averaging)
 - [Python Scripts](#python-scripts)
-    - [Quick setup in `atlas_lc_settings.ini`](#quick-setup-in--atlas-lc-settingsini-)
-    - [`download_atlas_lc.py`](#-download-atlas-lcpy-) (downloads SN light curve and, optionally, control light curves)
-    - [`clean_atlas_lc.py`](#-clean-atlas-lcpy-) (applies all cuts - chi-squares, uncertainties, control light curves - and averages light curves)
+    - [Quick setup in `atlas_lc_settings.ini`](#quick-setup-in-atlas-lc-settings.ini)
+    - [`download_atlas_lc.py`](#download-atlas-lc.py) (downloads SN light curve and, optionally, control light curves)
+    - [`clean_atlas_lc.py`](#clean-atlas-lc.py) (applies all cuts - chi-squares, uncertainties, control light curves - and averages light curves)
 
 ## Jupyter Notebooks
 
