@@ -127,11 +127,14 @@ class download_atlas_lc:
 			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
 			if args.closebright:
 				self.closebright = True
-				#self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
-				#if len(self.closebright_coords > 2):
-					#raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+				if len(args.tnsnames) > 1:
+					raise RuntimeError('ERROR: Only one SN allowed when specifying close bright object coordinates in command line!')
+				self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
+				if len(self.closebright_coords) > 2:
+					raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+				print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+				
 				self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
-				#print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
 				print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
 			
 	def connect_atlas(self):
@@ -228,8 +231,8 @@ class download_atlas_lc:
 			r = Angle(self.radius, u.arcsec)
 
 			# circle pattern center is SN location
-			ra_center = Angle(sn_ra.degree, u.degree)
-			dec_center = Angle(sn_dec.degree, u.degree)
+			ra_center = sn_ra
+			dec_center = sn_dec
 
 			# add SN coordinates as first row
 			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
@@ -250,15 +253,14 @@ class download_atlas_lc:
 			# circle pattern radius is distance between SN and bright object
 			c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
 			c2 = SkyCoord(cb_ra, cb_dec, frame='fk5')
-			sep = c1.separation(c2)
-			r = sep.arcsecond
+			r = c1.separation(c2)
 
 			# circle pattern center is close bright object location
-			ra_center = Angle(cb_ra.degree, u.degree)
-			dec_center = Angle(cb_dec.degree, u.degree)
+			ra_center = cb_ra
+			dec_center = cb_dec
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
-			o_ix = lc.lcs[0].ix_equal(colnames=['F'],val='o')
+			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
 			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,
 																  'ra':sn_ra.degree,
 																  'dec':sn_dec.degree,
@@ -325,11 +327,13 @@ class download_atlas_lc:
 		lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
 
 		if self.closebright:
-			if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
-				self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
-				self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
-			else:
-				raise RuntimeError(f'ERROR: Closebright coordinates given in SN list file at {self.snlist_filename} are not valid!')
+			if self.closebright_coords is None:
+				print(f'Getting close bright object coordinates from SN list at {self.snlist_filename}...')
+				if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
+					self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
+					self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
+				else:
+					raise RuntimeError(f'ERROR: Close bright object coordinates given in SN list file at {self.snlist_filename} are not valid!')
 		
 		output = f'# RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}'
 		if self.closebright: 
@@ -374,7 +378,8 @@ class download_atlas_lc:
 			print('Control light curve downloading set to True')
 			
 			self.get_control_coords(lc)
-			print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
+			with pd.option_context('display.float_format', '{:,.8f}'.format):
+				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):
