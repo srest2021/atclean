@@ -94,6 +94,15 @@ class atlas_lc:
 		else:
 			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
 
+	# save a single light curve
+	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True):
+		if filt is None:
+			for filt_ in ['c','o']:
+				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
+				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+		else:
+			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
+
 	# save SN light curve and, if necessary, control light curves
 	def save(self, output_dir, filt=None, overwrite=True):
 		if len(self.lcs) < 1:
