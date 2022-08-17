@@ -139,15 +139,12 @@ class atlas_lc:
 	def update_mask_col(self, flag, indices, control_index=0):
 		if len(indices) > 1:
 			flag_arr = np.full(self.lcs[control_index].t.loc[indices,'Mask'].shape, flag)
-			self.lcs[control_index].t.loc[indices,'Mask'] = np.bitwise_or(self.lcs[control_index].t.loc[indices,'Mask'], flag_arr)
+			self.lcs[control_index].t.loc[indices,'Mask'] = np.bitwise_or(self.lcs[control_index].t.loc[indices,'Mask'].astype(int), flag_arr)
 		elif len(indices) == 1:
 			self.lcs[control_index].t.loc[indices,'Mask'] = int(self.lcs[control_index].t.loc[indices,'Mask']) | flag
 
 	# get the xth percentile SN flux using given indices
 	def get_xth_percentile_flux(self, percentile, indices=None):
-		if indices is None:
+		if indices is None or len(indices)==0:
 			indices = self.lcs[0].getindices()
-		if len(indices)==0: 
-			return None
-		else:
-			return np.percentile(self.lcs[0].t.loc[indices, 'uJy'], percentile)
+		return np.percentile(self.lcs[0].t.loc[indices, 'uJy'], percentile)
