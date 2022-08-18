@@ -152,7 +152,6 @@ class download_atlas_lc:
 		if not(mjd_max is None):
 			mjd_max = int(Time.now().mjd - mjd_max)
 		print(f'MJD min: {lookbacktime_days}; MJD max: {mjd_max}')
-
 		baseurl = 'https://fallingstar-data.com/forcedphot'
 		task_url = None
 		while not task_url:
