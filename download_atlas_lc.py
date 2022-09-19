@@ -152,6 +152,7 @@ class download_atlas_lc:
 		if not(mjd_max is None):
 			mjd_max = int(Time.now().mjd - mjd_max)
 		print(f'MJD min: {lookbacktime_days}; MJD max: {mjd_max}')
+
 		baseurl = 'https://fallingstar-data.com/forcedphot'
 		task_url = None
 		while not task_url:
@@ -186,7 +187,7 @@ class download_atlas_lc:
 			with requests.Session() as s:
 				resp = s.get(task_url, headers=headers)
 				if resp.status_code == 200: 
-					if resp.json()['finishtimestamp']:
+					if not(resp.json()['finishtimestamp'] is None):
 						result_url = resp.json()['result_url']
 						print(f"Task is complete with results available at {result_url}")
 						break

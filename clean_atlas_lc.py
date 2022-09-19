@@ -1061,7 +1061,7 @@ class clean_atlas_lc():
 		return f
 
 	# add information about each cut to output text file
-	def add_to_readme(self, f, lc, filt, final_cut, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
+	def add_to_readme(self, f, lc, filt, final_cut=None, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
 
 		if self.uncertainties:
@@ -1192,6 +1192,7 @@ class clean_atlas_lc():
 
 				# chi-square cut
 				chisquare_output = None
+				final_cut = None
 				if self.chisquares:
 					if args.plot:
 						lc, final_cut, chisquare_output, plot = self.apply_chisquare_cut(args, lc, plot)
@@ -1276,11 +1277,12 @@ class clean_atlas_lc():
 				lc = self.drop_extra_columns(lc)
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
-				f = self.add_to_readme(f, lc, filt, final_cut, uncertainty_output=uncertainty_output,
-															   estimate_true_uncertainties_output=estimate_true_uncertainties_output,
-															   chisquare_output=chisquare_output, 
-															   control_output=control_output,
-															   averaging_output=averaging_output)
+				f = self.add_to_readme(f, lc, filt, final_cut=final_cut, 
+													uncertainty_output=uncertainty_output,
+													estimate_true_uncertainties_output=estimate_true_uncertainties_output,
+													chisquare_output=chisquare_output, 
+													control_output=control_output,
+													averaging_output=averaging_output)
 
 			f.close()
 
