@@ -8,7 +8,6 @@ from copy import deepcopy
 import pandas as pd
 import numpy as np
 
-import sigmacut
 from pdastro import pdastrostatsclass, AandB, AnotB
 from atlas_lc import atlas_lc
 from plot_atlas_lc import plot_atlas_lc
@@ -857,14 +856,14 @@ class clean_atlas_lc():
 			range_good_i = AandB(range_i,good_i)
 
 			# add new row to averaged light curve if keep_empty_bins or any measurements present
-			if self.keep_empty_bins or len(range_i) >= 1:
-				new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
-				avglc_index = avglc.lcs[control_index].newrow(new_row)
+			#if self.keep_empty_bins or len(range_i) >= 1:
+			new_row = {'MJDbin':mjd+0.5*self.mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
+			avglc_index = avglc.lcs[control_index].newrow(new_row)
 			
 			# if no measurements present, flag or skip over day
 			if len(range_i) < 1:
-				if self.keep_empty_bins:
-					avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
+				#if self.keep_empty_bins:
+				avglc.update_mask_col(self.flags['avg_badday'], [avglc_index], control_index=control_index)
 				mjd += self.mjd_bin_size
 				continue
 			
@@ -1033,7 +1032,8 @@ class clean_atlas_lc():
 			SNRsimsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=gaussian_sigma)
 			avglc.lcs[control_index].t['SNRsimsum'] = list(SNRsimsum.loc[dataindices])
 		
-		avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+		# DELETE ME
+		#avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 		return avglc
 
@@ -1220,13 +1220,9 @@ class clean_atlas_lc():
 
 					lc, avglc, averaging_output = self.average(lc, avglc)
 
-					# save averaged light curve
-					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
-
 					# plot averaged light curve
 					if args.plot:
 						plot.set(lc=avglc, filt=filt)
-						#print(avglc.lcs[0].t.loc[range(10)].to_string())
 						plot.plot_averaged_lc()
 
 				# detect pre-SN bumps 
@@ -1275,9 +1271,15 @@ class clean_atlas_lc():
 						if self.apply_to_controls:
 							bumps_plot.plot_all_snr()
 
-				# drop extra control lc cut columns and save lc with new 'Mask' column
+				# drop extra control lc cut columns
 				lc = self.drop_extra_columns(lc)
+
+				# save lc with new 'Mask' column
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+
+				if self.averaging:
+					# save averaged light curve
+					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite, keep_empty_bins=self.keep_empty_bins)
 
 				f = self.add_to_readme(f, lc, filt, final_cut=final_cut, 
 													uncertainty_output=uncertainty_output,

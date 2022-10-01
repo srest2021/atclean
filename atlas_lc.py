@@ -7,7 +7,7 @@ import json, requests, re, time, sys
 from collections import OrderedDict
 from astropy.time import Time
 import numpy as np
-from pdastro import pdastrostatsclass, AorB, AnotB
+from pdastro import pdastrostatsclass, AandB, AnotB
 
 class atlas_lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjd_bin_size=None, discdate=None, ra=None, dec=None):
@@ -95,24 +95,33 @@ class atlas_lc:
 			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
 
 	# save a single light curve
-	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True):
+	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True, keep_empty_bins=True):
+		# if not keeping empty bins in averaged lc, remove all null rows; else keep all
+		ix = self.lcs[control_index].getindices()
+		if self.is_averaged and not keep_empty_bins:
+			ix = self.lcs[control_index].ix_not_null(colnames=['uJy'])
+
 		if filt is None:
+			# split lc up by filt and save to two separate files
 			for filt_ in ['c','o']:
-				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
-				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
+				ix = AandB(ix, self.lcs[control_index].ix_equal(colnames=['F'],val=filt_))
+				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=ix, overwrite=overwrite)
 		else:
-			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
+			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), indices=ix, overwrite=overwrite)
 
 	# save SN light curve and, if necessary, control light curves
-	def save(self, output_dir, filt=None, overwrite=True):
+	def save(self, output_dir, filt=None, overwrite=True, keep_empty_bins=True):
 		if len(self.lcs) < 1:
 			print('WARNING: No light curves to save! Skipping...')
 		else:
-			output = f'\nSaving averaged SN light curve and {len(self.lcs)-1} averaged control light curves...' if self.is_averaged else f'\nSaving SN light curve and {len(self.lcs)-1} control light curves...'
+			if self.is_averaged:
+				output = f'\nSaving averaged SN light curve and {len(self.lcs)-1} averaged control light curves (keep empty bins: {keep_empty_bins})...'
+			else:
+				output = f'\nSaving SN light curve and {len(self.lcs)-1} control light curves...'
 			print(output)
 
 			for control_index in self.lcs:
-				self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite)
+				self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite, keep_empty_bins=keep_empty_bins)
 
 	# load a single light curve
 	def load_lc(self, output_dir, filt, is_averaged=False, control_index=0):

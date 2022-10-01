@@ -3,17 +3,16 @@
 Code adapted from Qinan Wang and Armin Rest by Sofia Rest
 '''
 
-import configparser, sys, argparse, requests, re, time, json, io, math, os
+import configparser, sys, argparse, requests, re, time, io, math, os
 import pandas as pd
 import numpy as np
+from getpass import getpass
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import Angle, SkyCoord
-from collections import OrderedDict
-from getpass import getpass
+
 from pdastro import pdastrostatsclass, AorB, AnotB
 from atlas_lc import atlas_lc
-from plot_atlas_lc import plot_atlas_lc
 
 def RaInDeg(ra):
 	s = re.compile('\:')
@@ -376,9 +375,10 @@ class download_atlas_lc:
 
 		# remove rows with duJy=0 or uJy=Nan
 		dflux_zero_ix = lc.lcs[control_index].ix_inrange(colnames='duJy',lowlim=0,uplim=0)
-		flux_nan_ix = lc.lcs[control_index].ix_remove_null(colnames='uJy')
+		flux_nan_ix =lc.lcs[control_index].ix_is_null(colnames='uJy')
+		print('\nDeleting %d rows with "duJy"==0 or "uJy"==NaN...' % (len(dflux_zero_ix) + len(flux_nan_ix)))
 		if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
-			lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
+			lc.lcs[control_index].t = lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
 
 		lc.lcs[control_index].flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 

@@ -8,7 +8,11 @@ import numpy as np
 from astropy.time import Time
 import astropy.io.fits as fits
 import pandas as pd
+from pandas.core.dtypes.common import is_object_dtype,is_float_dtype,is_string_dtype,is_integer_dtype
+
 from astropy.nddata import bitmask
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
 from scipy.interpolate import interp1d
 
@@ -30,6 +34,33 @@ def makepath4file(filename,raiseError=True):
         return(makepath(path,raiseError=raiseError))
     else:
         return(0)
+     
+def rmfile(filename,raiseError=1,gzip=False):
+    " if file exists, remove it "
+    if os.path.lexists(filename):
+        os.remove(filename)
+        if os.path.isfile(filename):
+            if raiseError == 1:
+                raise RuntimeError('ERROR: Cannot remove %s' % filename)
+            else:
+                return(1)
+    if gzip and os.path.lexists(filename+'.gz'):
+        os.remove(filename+'.gz')
+        if os.path.isfile(filename+'.gz'):
+            if raiseError == 1:
+                raise RuntimeError('ERROR: Cannot remove %s' % filename+'.gz')
+            else:
+                return(2)
+    return(0)
+
+def rmfiles(filenames,raiseError=1,gzip=False):
+    if not (type(filenames) is list):
+        raise RuntimeError("List type expected as input to rmfiles")
+    errorflag = 0
+    for filename in filenames:
+        errorflag |= rmfile(filename,raiseError=raiseError,gzip=gzip)
+    return(errorflag)
+
     
 #https://numpy.org/doc/stable/reference/routines.set.html
 def AorB(A,B):
@@ -39,7 +70,14 @@ def AorB(A,B):
         return(A)
     return(np.union1d(A,B))
 
-def AandB(A,B,assume_unique=False):
+def AandB(A,B,assume_unique=False,keeporder=False):
+    if keeporder:
+        # This is slower, but keeps order
+        out=[]
+        for i in A: 
+            if i in B:
+                out.append(i)
+        return(out)
     return(np.intersect1d(A,B,assume_unique=assume_unique))
 
 def AnotB(A,B,keeporder=False):
@@ -55,6 +93,28 @@ def AnotB(A,B,keeporder=False):
 def not_AandB(A,B):
     return(np.setxor1d(A,B))
 
+def unique(A):
+    unique = []
+    for a in A:
+        if a not in unique:
+            unique.append(a)
+    return unique
+
+def radec2coord(ra, dec):
+    unit = [u.deg, u.deg]
+    if ':' in str(ra):
+        # Assume input RA/DEC are hour/degree
+        unit[0] = u.hourangle
+
+    try:
+        coord = SkyCoord(ra, dec, frame='icrs', unit=unit)
+        return(coord)
+    except ValueError:
+        print(f'ERROR: cannot interpret: RA={ra} DEC={dec}')
+        return(None)
+
+
+
 class pdastroclass:
     def __init__(self,hexcols=[],hexcol_formatters={},**kwargs):
         self.t = pd.DataFrame(**kwargs)
@@ -68,6 +128,9 @@ class pdastroclass:
         self.hexcols=hexcols
         self.hexcol_formatters=hexcol_formatters
 
+        # if a file is successfully loaded, the filename is saved in this varviable
+        self.filename = None
+
 
         # if self.default_dtypeMapping != None, then the dtype mapping is applied to the table .to_string() is called in self.write
         # This makes sure that formatters don't throw errors if the type of a column got changed to float or object during
@@ -80,13 +143,17 @@ class pdastroclass:
         self.default_formatters = {}
         # example:
         # self.default_formatters = {'MJD':'{:.6f}'.format,'counter':'{:05d}'.format}
+        
+        # add list of columns to be skipped when using write function 
+        self.skipcols = []
        
         # dictionary for the splines. arguments are the y columns of the spline
         self.spline={}
 
 
     def load_lines(self,lines,sep='\s+',**kwargs):
-        errorflag = self.load_spacesep(io.StringIO('\n'.join(lines)),sep=sep,**kwargs)
+        #errorflag = self.load_spacesep(io.StringIO('\n'.join(lines)),sep=sep,**kwargs)
+        errorflag = self.load_spacesep(io.StringIO('\n'.join(lines)),**kwargs)
         return(errorflag)
 
     def load_cmpfile(self,filename,**kwargs):
@@ -116,31 +183,31 @@ class pdastroclass:
         return(errorflag,cmphdr)
         
     def load_spacesep(self,filename,test4commentedheader=True,namesMapping=None,roundingMapping=None,
-                      hexcols=None,auto_find_hexcols=True,
+                      hexcols=None,auto_find_hexcols=True, delim_whitespace=True,
                       na_values=['None','-','--'],verbose=False,**kwargs):
         
-        kwargs['delim_whitespace']=True
+        #kwargs['delim_whitespace']=True
 
         #also test for commented header to make it compatible to old format.
         self.load(filename,na_values=na_values,test4commentedheader=test4commentedheader,
-                  namesMapping=namesMapping,roundingMapping=roundingMapping,
+                  namesMapping=namesMapping,roundingMapping=roundingMapping,delim_whitespace=delim_whitespace,
                   hexcols=hexcols,auto_find_hexcols=auto_find_hexcols,verbose=verbose,**kwargs)
 
         return(0)
 
     def load(self,filename,raiseError=True,test4commentedheader=False,namesMapping=None,roundingMapping=None,
-             hexcols=None,auto_find_hexcols=True,verbose=False,**kwargs):
+             hexcols=None,auto_find_hexcols=True,verbose=False,delim_whitespace=True,**kwargs):
         #self.t = ascii.read(filename,format='commented_header',delimiter='\s',fill_values=[('-',0),('--',0)])
 
         try:
             if verbose: print('Loading %s' % filename)
-            self.t = pd.read_table(filename,**kwargs)
+            self.t = pd.read_table(filename,delim_whitespace=delim_whitespace,**kwargs)
             self.filename = filename
         except Exception as e:
             print('ERROR: could not read %s!' % filename)
-            self.filename = None
             if raiseError:
                 raise RuntimeError(str(e))
+            self.filename = None
             return(1)
         
         if test4commentedheader:
@@ -160,18 +227,25 @@ class pdastroclass:
             
         if hexcols is None: hexcols=[]
         hexcols.extend(self.hexcols)
-        if len(self.t)>0:
-            self.formattable(namesMapping=namesMapping,roundingMapping=roundingMapping,hexcols=hexcols,auto_find_hexcols=auto_find_hexcols)
+        self.formattable(namesMapping=namesMapping,roundingMapping=roundingMapping,hexcols=hexcols,auto_find_hexcols=auto_find_hexcols)
+        
+        
         return(0)
 
-    def write(self,filename=None,indices=None,columns=None,formatters=None,raiseError=True,overwrite=True,verbose=False, 
-              index=False, makepathFlag=True,convert_dtypes=False,hexcols=None,**kwargs):
+    def write(self,filename=None,indices=None,columns=None,formatters=None,
+              raiseError=True,overwrite=True,verbose=False, 
+              commentedheader=False,
+              index=False, makepathFlag=True,convert_dtypes=False,
+              hexcols=None,skipcols=None,**kwargs):
 
         # make sure indices are converted into a valid list
         indices=self.getindices(indices)
         
         # make sure columns are converted into a valid list
         columns=self.getcolnames(columns)
+        if skipcols is None: skipcols = self.skipcols
+        if len(skipcols)>0:
+            columns=AnotB(columns,skipcols,keeporder=True)
 
         # make the path to the file if necessary
         if not (filename is None):
@@ -194,7 +268,10 @@ class pdastroclass:
                         #print(errorstring)
                         return(2)
                 else:
-                    print('Warning: file exists, not deleting it, skipping! if you want to overwrite, use overwrite option!')
+                    if raiseError:
+                        raise RuntimeError(f'file {filename} already exists! use overwrite option...')
+                    
+                    print(f'Warning: file {filename} already exists, not deleting it, skipping! if you want to overwrite, use overwrite option!')
                     return(0)
         
         # Fix the dtypes if wanted. THIS IS DANGEROUS!!!
@@ -224,27 +301,16 @@ class pdastroclass:
                         formatters[hexcol]='0x{:08x}'.format
                     else:
                         formatters[hexcol]='0x{:04x}'.format
-        """
-        if indices is None:
-            # no indices are passed
-            if self.verbose and not(filename is None): print('Saving %d rows into %s' % (len(self.t),filename))
-            if len(self.t)==0:
-                # just save the header
-                if filename is None:
-                    print(' '.join(columns)+'\n')
-                else:
-                    open(filename,'w').writelines(' '.join(columns)+'\n')
-            else:
-                if filename is None:
-                    pass
-                    print(self.t.to_string(index=index, columns=columns, formatters=formatters, **kwargs))
-                else:
-                    self.t.to_string(filename, index=index, columns=columns, formatters=formatters, **kwargs)
-        else:
-            """
             
         if verbose>1 and not(filename is None): print('Saving %d rows into %s' % (len(indices),filename))
-        self.filename = None
+
+        # ugly hack: backwards compatibility to old commented header texttable format:
+        # rename first column temporarily to have a '#'
+        if commentedheader:
+            columns=list(columns)
+            self.t.rename(columns={columns[0]:f'#{columns[0]}'},inplace=True)
+            columns[0]=f'#{columns[0]}'
+
         if len(indices)==0:
             # just save the header
             if filename is None:
@@ -253,14 +319,16 @@ class pdastroclass:
                 if columns is None:
                     columns = []
                 open(filename,'w').writelines(' '.join(columns)+'\n')
-                self.filename = filename
         else:
             if filename is None:
                 print(self.t.loc[indices].to_string(index=index, columns=columns, formatters=formatters, **kwargs))
             else:
                 self.t.loc[indices].to_string(filename, index=index, columns=columns, formatters=formatters, **kwargs)
-                self.filename = filename
-                
+
+        # reverse ugly hack
+        if commentedheader:
+            columns[0]=re.sub('^\#','',columns[0])
+            self.t.rename(columns={"#"+columns[0]:columns[0]},inplace=True)
 
         if not (filename is None):
             # some extra error checking...
@@ -347,16 +415,6 @@ class pdastroclass:
             
         return(indices)
     
-    def getcolnamesDELME(self,colnames=None):
-        """Return a list of all colnames of colnames=None. If colnames=string, return a list"""
-        if (colnames is None) or colnames.lower()=='all':
-            colnames = self.t.columns
-        else:
-            if isinstance(colnames,str):
-                colnames=[colnames]
-        return(colnames)
-            
-
     def getcolnames(self,colnames=None):
         """Return a list of all colnames of colnames=None. If colnames=string, return a list"""
         if (colnames is None):
@@ -368,34 +426,11 @@ class pdastroclass:
                 colnames=[colnames]
         return(colnames)
             
-
-    def ix_nan(self,colnames=None,indices=None):
-        # get the indices based on input.
-        indices=self.getindices(indices)
-        
-        # get the column names over which to iterate
-        colnames=self.getcolnames(colnames)
-        
-        for colname in colnames:
-            #print('XXX',indices)
-            (null,) = np.where(pd.isnan(self.t.loc[indices,colname]))
-            indices = indices[null]
-            #print('YYY',notnull)
-        return(indices)
-
-    def ix_null(self,colnames=None,indices=None):
-        # get the indices based on input.
-        indices=self.getindices(indices)
-        
-        # get the column names over which to iterate
-        colnames=self.getcolnames(colnames)
-        
-        for colname in colnames:
-            (null,) = np.where(pd.isnull(self.t.loc[indices,colname]))
-            indices = indices[null]
-        return(indices)
-
     def ix_remove_null(self,colnames=None,indices=None):
+        print('ix_remove_null deprecated, replace with ix_not_null')
+        return(self.ix_not_null(colnames=colnames,indices=indices))
+    
+    def ix_not_null(self,colnames=None,indices=None):
         # get the indices based on input.
         indices=self.getindices(indices)
         
@@ -403,15 +438,33 @@ class pdastroclass:
         colnames=self.getcolnames(colnames)
         
         for colname in colnames:
-            #print('XXX',indices)
             (notnull,) = np.where(pd.notnull(self.t.loc[indices,colname]))
             indices = indices[notnull]
-            #print('YYY',notnull)
+        return(indices)
+
+    def ix_is_null(self,colnames=None,indices=None):
+        # get the indices based on input.
+        indices=self.getindices(indices)
+        
+        # get the column names over which to iterate
+        colnames=self.getcolnames(colnames)
+        
+        for colname in colnames:
+            #print('XXX',indices)
+            (null,) = np.where(pd.isnull(self.t.loc[indices,colname]))
+            indices = indices[null]
+            #print('YYY',null)
         return(indices)
 
     def ix_equal(self,colnames,val,indices=None):
         # get the indices based on input.
-        indices=self.getindices(indices)
+        
+        # use isnull() if val is None
+        if val is None:
+            indices = self.ix_is_null(colnames,indices=indices)
+            return(indices)
+
+        indices=self.getindices(indices)        
         
         # get the column names over which to iterate
         colnames=self.getcolnames(colnames)
@@ -421,6 +474,25 @@ class pdastroclass:
             
         return(indices)
         
+    def ix_not_equal(self,colnames,val,indices=None):
+        # get the indices based on input.
+        
+        # use notnull() if val is None
+        if val is None:
+            indices = self.ix_not_null(colnames,indices=indices)
+            return(indices)
+
+        indices=self.getindices(indices)        
+        
+        # get the column names over which to iterate
+        colnames=self.getcolnames(colnames)
+        for colname in colnames:
+            (keep,) = np.where(self.t.loc[indices,colname].ne(val))
+            indices = indices[keep]
+            
+        return(indices)
+        
+
     def ix_inrange(self,colnames=None,lowlim=None,uplim=None,indices=None,
                    exclude_lowlim=False,exclude_uplim=False):
 
@@ -505,7 +577,17 @@ class pdastroclass:
         indices = indices[keep]
         return(indices)    
     
-    def ix_sort_by_cols(self,cols,indices=None):
+    def ix_matchregex(self,col,regex,indices=None):
+        # get the indices based on input.
+        indices=self.getindices(indices)  
+        
+        (keep,) = np.where((self.t.loc[indices,col].str.contains(regex)==True))
+        #bla = self.t[col].str.contains(regex)==True
+
+        indices = indices[keep]
+        return(indices)    
+
+    def ix_sort_by_cols(self,cols,indices=None,ascending=True):
 
         # get the indices based on input.
         indices=self.getindices(indices)  
@@ -513,38 +595,53 @@ class pdastroclass:
         # get the column names (makes sure that it is a list)
         cols=self.getcolnames(cols)
 
-        ix_sorted = self.t.loc[indices].sort_values(cols).index.values
+        ix_sorted = self.t.loc[indices].sort_values(cols,ascending=ascending).index.values
 
         return(ix_sorted)
 
     def newrow(self,dicti=None):
-        self.t = self.t.append(dicti,ignore_index=True)
+        #self.t = self.t.append(dicti,ignore_index=True)
+        self.t = pd.concat([self.t,pd.DataFrame([dicti])],axis=0, ignore_index=True)
         return(self.t.index.values[-1])
         
     def add2row(self,index,dicti):
         self.t.loc[index,list(dicti.keys())]=list(dicti.values())
         return(index)
 
-    def fitsheader2table(self,fitsfilecolname,indices=None,requiredfitskeys=None,optionalfitskey=None,raiseError=True,skipcolname=None,headercol=None,ext=None,extname=None):
+    def fitsheader2table(self,fitsfilecolname,indices=None,requiredfitskeys=None,optionalfitskey=None,
+                         raiseError=True,verify='silentfix',skipcolname=None,headercol=None,ext=None,extname=None,
+                         prefix=None,suffix=None):
+        def fitskey2col(fitskey,prefix=None,suffix=None):
+            col = fitskey
+            if prefix is not None: col = prefix+col
+            if suffix is not None: col += suffix
+            return(col)            
+
 
         indices = self.getindices(indices)        
 
         # initialize columns if necessary
         if requiredfitskeys!=None:
             for fitskey in requiredfitskeys:
-                if not (fitskey in self.t.columns):
-                    self.t[fitskey]=None
+                col = fitskey2col(fitskey,prefix=prefix,suffix=suffix)
+                if not (col in self.t.columns):
+                    self.t[col]=None
         if optionalfitskey!=None:
             for fitskey in optionalfitskey:
-                if not (fitskey in self.t.columns):
-                    self.t[fitskey]=None
+                col = fitskey2col(fitskey,prefix=prefix,suffix=suffix)
+                if not (col in self.t.columns):
+                    self.t[col]=None
 
         if headercol!=None and (not (headercol in self.t.columns)):
             self.t[headercol]=None
 
         # loop through the images
         for index in indices:
-            header = fits.getheader(self.t.loc[index,fitsfilecolname],ext=ext,extname=extname)
+            #header = fits.getheader(self.t.loc[index,fitsfilecolname],ext=ext,extname=extname)
+            # It was impossible to use 'verify' with getheader... 
+            hdu = fits.open(self.t.loc[index,fitsfilecolname],ext=ext,extname=extname,output_verify="silentfix")
+            if verify is not None: hdu.verify(verify)
+            header = hdu[0].header
             if headercol!=None:
                 self.t[headercol]=header
                 
@@ -552,22 +649,24 @@ class pdastroclass:
                 self.t.loc[index,skipcolname]=False
             if requiredfitskeys!=None:
                 for fitskey in requiredfitskeys:
+                    col = fitskey2col(fitskey,prefix=prefix,suffix=suffix)
                     if fitskey in header:
-                        self.t.loc[index,fitskey]=header[fitskey]
+                        self.t.loc[index,col]=header[fitskey]
                     else:
                         if raiseError:
                             raise RuntimeError("fits key %s does not exist in file %s" % (fitskey,self.t[fitsfilecolname][index]))
                         else:
-                            self.t.loc[index,fitskey]=None
+                            self.t.loc[index,col]=None
                             if skipcolname!=None:
                                  self.t.loc[index,skipcolname]=True
                                  
             if optionalfitskey!=None:
                 for fitskey in optionalfitskey:
+                    col = fitskey2col(fitskey,prefix=prefix,suffix=suffix)
                     if fitskey in header:
-                        self.t.loc[index,fitskey]=header[fitskey]
+                        self.t.loc[index,col]=header[fitskey]
                     else:
-                        self.t.loc[index,fitskey]=None
+                        self.t.loc[index,col]=None
 
     def dateobs2mjd(self,dateobscol,mjdcol,timeobscol=None,indices=None,tformat='isot'):
         indices = self.getindices(indices)  
@@ -586,6 +685,20 @@ class pdastroclass:
         mjds = dateobjects.mjd
         self.t.loc[indices,mjdcol]=mjds
         
+    def mjd2dateobs(self,mjdcol,dateobscol,indices=None,tformat='isot'):
+        indices = self.getindices(indices)  
+        if len(indices)==0:
+            return(0)
+
+        if not (dateobscol in self.t.columns):
+            self.t.loc[indices,dateobscol]=None
+
+        mjdlist = list(self.t.loc[indices,mjdcol])
+
+        dateobjects = Time(mjdlist, format='mjd')
+        dateobs = dateobjects.to_value('isot')
+        self.t.loc[indices,dateobscol]=dateobs
+        
     def calc_color(self,f1,df1,f2,df2,outcolor=None,outcolor_err_nameformat='e(%s)',indices=None,color_formatter='{:.3f}'.format):
         indices = self.getindices(indices)  
         if len(indices)==0:
@@ -599,8 +712,8 @@ class pdastroclass:
         self.t.loc[indices,outcolor_err]= np.nan
 
         # Only use indices for which both filters have uncertainties, i.e. they are not upper limits
-        ix_good = self.ix_remove_null(df1,indices=indices)
-        ix_good = self.ix_remove_null(df2,indices=ix_good)
+        ix_good = self.ix_not_null(df1,indices=indices)
+        ix_good = self.ix_not_null(df2,indices=ix_good)
 
         self.t[outcolor] = self.t.loc[ix_good,f1] - self.t.loc[ix_good,f2]
         self.t[outcolor_err] = np.sqrt(np.square(self.t.loc[ix_good,df1]) + np.square(self.t.loc[ix_good,df2]))
@@ -613,6 +726,143 @@ class pdastroclass:
         
         return(0)
 
+    def radeccols_to_SkyCoord(self,racol=None,deccol=None,indices=None, frame='icrs',
+                              assert_0_360_limits=True,assert_pm90_limits=True):
+        if (racol is None) and (deccol is None):
+            raise RuntimeError('You need to specify at least one of racol or deccol')
+                
+        indices = self.getindices(indices)  
+        for col in [racol,deccol]:
+            if col is None: continue
+            ixs_null = self.ix_is_null(col,indices)
+            if len(ixs_null)>0:
+                self.write(indices=ixs_null)
+                raise RuntimeError(f'Null values for column {col} in above row(s)')
+        
+        if len(indices)==0:
+            print('Warning, trying to assert ra/dec columns are decimal for 0 rows')
+            return([],[])
+        
+        # fill ra and dec
+        ra = np.full(len(indices),np.nan)
+        dec = np.full(len(indices),np.nan)
+        if racol is not None: ra = np.array(self.t.loc[indices,racol])
+        if deccol is not None: dec = np.array(self.t.loc[indices,deccol])
+        
+        # check if all cols are already in numerical format. If yes, all good! This can speed things up!!
+        numflag=True
+        for col in [racol,deccol]:
+            if col is None: continue
+            if not(col in self.t.columns):
+                raise RuntimeError(f'Column {col} is not in columns {self.t.columns}')
+            if not(is_float_dtype(self.t[col]) or is_integer_dtype(self.t[col])):
+                numflag=False
+                
+        if numflag:
+            # no conversion needed!
+            # check ra dec limits if wanted
+            if (ra is not None) and assert_0_360_limits:
+                ra = np.where(ra<0.0,ra+360.0,ra)
+                ra = np.where(ra>=360.0,ra-360.0,ra)
+            if (dec is not None) and assert_pm90_limits:
+                dec = np.where(dec<-90.0,dec+180.0,dec)
+                dec = np.where(dec> 90.0,dec-180.0,dec)
+
+            coord = SkyCoord(ra, dec, frame=frame, unit=(u.deg,u.deg))
+        else:
+            # convert the strings into decimal degrees
+            unit = [u.deg,u.deg]
+
+            check_line_by_line = False
+            # check format of racol if necessary
+            if racol is not None:
+                hexagesimal = unique([(re.search(':',x) is not None) for x in ra])
+                if len(hexagesimal)==1:
+                    # if hexagesimal true, set unit of RA to hourangle!!
+                    if hexagesimal[0]:
+                        unit[0] = u.hourangle
+                elif len(hexagesimal)==2:
+                    # both formats? then check line by line!
+                    print('Warning: it looks like there are inconsistent formats in RA column {racol}! checking line by line for sexagesimal')
+                    check_line_by_line = True
+                else:
+                    raise RuntimeError('Something is wrong here when trying to determine if RA col {racol} is sexagesimal! ')
+
+                        
+            if check_line_by_line:
+                coord = np.full(len(indices),np.nan)
+                hexagesimal = [(re.search(':',x) is not None) for x in ra]
+                raunits=np.where(hexagesimal,u.hourangle,u.deg)
+                for i in range(len(ra)):
+                    coord[i] = SkyCoord(ra[i], dec[i], frame=frame, unit=(raunits[i],u.deg))
+            else:
+                coord = SkyCoord(ra, dec, frame=frame, unit=unit)
+            # no need to check ra dec limits, already done in SkyCoord
+                
+        return(indices,coord)
+
+
+    def assert_radec_cols_decimal_degrees(self,racol=None,deccol=None,
+                                          outracol=None,outdeccol=None,
+                                          indices=None,coordcol=None,
+                                          assert_0_360_limits=True,
+                                          assert_pm90_limits=True):
+        
+        (indices,coord) = self.radeccols_to_SkyCoord(racol=racol,deccol=deccol,indices=indices,
+                                                     assert_0_360_limits=assert_0_360_limits,assert_pm90_limits=assert_pm90_limits)
+
+        if outracol is None: outracol = racol
+        if outdeccol is None: outdeccol = deccol
+        if outracol is not None: self.t.loc[indices,outracol]=coord.ra.degree
+        if outdeccol is not None: self.t.loc[indices,outdeccol]=coord.dec.degree
+        if coordcol is not None: 
+            self.t.loc[indices,coordcol]=coord
+            # Don't write coordcol
+            if not (coordcol in self.skipcols): self.skipcols.append(coordcol)
+                
+        return(0)
+    
+    def assert_radec_cols_sexagesimal(self,racol=None,deccol=None,
+                                      outracol=None,outdeccol=None,
+                                      indices=None,coordcol=None,
+                                      precision=3,
+                                      assert_0_360_limits=True,
+                                      assert_pm90_limits=True):
+        
+        (indices,coord) = self.radeccols_to_SkyCoord(racol=racol,deccol=deccol,indices=indices,
+                                                     assert_0_360_limits=assert_0_360_limits,
+                                                     assert_pm90_limits=assert_pm90_limits)
+
+        if outracol is None: outracol = racol
+        if outdeccol is None: outdeccol = deccol
+
+        # list of ra/dec pairs        
+        hmsdms = map(lambda x: x.split(' '), coord.to_string(sep=':', style='hmsdms', precision=precision))
+        # unzip pairs into a list of ra and a list of dec
+        radeclist = list(zip(*hmsdms))
+
+        if outracol is not None: self.t.loc[indices,outracol]=radeclist[0]
+        if outdeccol is not None: self.t.loc[indices,outdeccol]=radeclist[1]
+        if coordcol is not None: 
+            self.t.loc[indices,coordcol]=coord
+            # Don't write coordcol
+            if not (coordcol in self.skipcols): self.skipcols.append(coordcol)
+                
+        return(0)
+
+
+    def radeccols_to_coord(self,racol,deccol,coordcol,indices=None,
+                           assert_0_360_limits=True,assert_pm90_limits=True):
+        
+        (indices,coord) = self.radeccols_to_SkyCoord(racol=racol,deccol=deccol,indices=indices,
+                                                     assert_0_360_limits=assert_0_360_limits,assert_pm90_limits=assert_pm90_limits)
+
+        self.t.loc[indices,coordcol]=coord
+        # Don't write coordcol
+        if not (coordcol in self.skipcols): self.skipcols.append(coordcol)
+                
+        return(0)
+        
     
     def flux2mag(self,fluxcol,dfluxcol,magcol,dmagcol,indices=None,
                  zpt=None,zptcol=None, upperlim_Nsigma=None):
@@ -634,7 +884,7 @@ class pdastroclass:
            # calculate the S/N
             self.t.loc[indices,'__tmp_SN']=self.t.loc[indices,fluxcol]/self.t.loc[indices,dfluxcol]
             # Get the indices with valid S/N
-            indices_validSN = self.ix_remove_null('__tmp_SN',indices=indices)
+            indices_validSN = self.ix_not_null('__tmp_SN',indices=indices)
  
             # get the indices for which the S/N>=upperlim_Nsigma
             indices_mag = self.ix_inrange(['__tmp_SN'],upperlim_Nsigma,indices=indices_validSN)
@@ -677,7 +927,7 @@ class pdastroclass:
             raise RuntimeError("spline: y column %s does not exist in table!" % ycol)
 
         # make sure there are no nan values
-        indices = self.ix_remove_null(colnames=[xcol,ycol])        
+        indices = self.ix_not_null(colnames=[xcol,ycol])        
 
         # initialize the spline and save it in self.spline with the key ycol
         self.spline[ycol]= interp1d(self.t.loc[indices,xcol],self.t.loc[indices,ycol],
@@ -968,14 +1218,12 @@ class pdastrostatsclass(pdastroclass):
             if not(noisecol is None): colnames.append(noisecol)
             if not(maskcol is None): colnames.append(maskcol)
             Ntot = len(indices)
-            indices = self.ix_remove_null(colnames,indices=indices)
+            indices = self.ix_not_null(colnames,indices=indices)
             self.statparams['Nnan']= Ntot-len(indices)
             if verbose>1: print('Keeping {:d} out of {:d}, skippin {:d} because of null values in columns {:s}'.format(len(indices),Ntot,Ntot-len(indices),",".join(colnames)))
         else:
             self.statparams['Nnan']= 0
             
-
-
         while ((self.statparams['i']<Nitmax) or (Nitmax==0)) and (not self.statparams['converged']):
             # median only in first iteration and if wanted
             medianflag = median_firstiteration and (self.statparams['i']==0) and (Nsigma!=None)
@@ -1007,7 +1255,8 @@ class pdastrostatsclass(pdastroclass):
                 self.statparams['converged']=False
                 break
             # Only do a sigma cut if wanted
-            if Nsigma == None or Nsigma == 0.0:
+            if Nsigma is None or Nsigma == 0.0:
+                if verbose: print('no iteration, exiting...')
                 self.statparams['converged']=True
                 break
             # No changes anymore? If yes converged!!!
@@ -1015,6 +1264,8 @@ class pdastrostatsclass(pdastroclass):
                 self.statparams['converged']=True
                 break
             self.statparams['i']+=1
+            if verbose>2:
+                print()
         
         if not(self.statparams['converged']):
             if self.verbose>1:
