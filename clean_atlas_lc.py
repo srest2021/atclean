@@ -968,7 +968,7 @@ class clean_atlas_lc():
 		return lc, avglc, output
 
 	# add simulated bump if necessary and apply rolling gaussian weighted sum to light curve
-	def apply_gaussian(self, avglc, control_index=0, simparams=None):
+	def apply_gaussian(self, avglc, control_index=0, simparams=None, filt=None):
 		bad_ix = avglc.lcs[control_index].ix_unmasked('Mask',self.flags['avg_badday'])
 
 		# make sure there are no lingering simulations
@@ -1012,7 +1012,7 @@ class clean_atlas_lc():
 		print(f'## Sigma (days): {self.gaussian_sigma:0.2f}; MJD bin size (days): {self.mjd_bin_size:0.2f}; sigma (bins): {gaussian_sigma:0.2f}; window size (bins): {windowsize}')
 
 		# calculate the rolling SNR sum
-
+		
 		dataindices = np.array(range(len(avglc.lcs[control_index].t)) + np.full(len(avglc.lcs[control_index].t), halfwindowsize))
 		
 		temp = pd.Series(np.zeros(len(avglc.lcs[control_index].t) + 2*halfwindowsize), name='SNR', dtype=np.float64)
@@ -1032,6 +1032,8 @@ class clean_atlas_lc():
 			temp[dataindices] = avglc.lcs[control_index].t['SNRsim']
 			SNRsimsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=gaussian_sigma)
 			avglc.lcs[control_index].t['SNRsimsum'] = list(SNRsimsum.loc[dataindices])
+		
+		avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 		return avglc
 
@@ -1265,7 +1267,7 @@ class clean_atlas_lc():
 								print(f'# Applying gaussian weighted rolling sum to SN light curve...')
 							else:
 								print(f'# Applying gaussian weighted rolling sum to control light curve {control_index:03d}...')
-							avglc = self.apply_gaussian(avglc, control_index=control_index)
+							avglc = self.apply_gaussian(avglc, control_index=control_index, filt=filt)
 
 						bumps_plot.set(lc=avglc, filt=filt)
 						bumps_plot.plot_sim_bumps()
