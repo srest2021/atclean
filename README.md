@@ -93,7 +93,8 @@ The last optional step of this procedure is to **check for any pre-SN eruptions*
 	- `-m` or `--mjd_bin_size`: set MJD bin size in days
 - `-b` or `--detect_bumps`: apply a rolling gaussian weighted sum to the SN's flux/dflux in order to amplify possible precursor bumps
 	- If you add this argument, the script will additionally apply the previously specified cuts and averaging to the control light curves, as these are needed to identify the detection limit for that particular SN. So **if you have not downloaded control light curves for this SN**, you must change the `apply_to_controls` field in `atlas_lc_settings.ini` to `False`. Additionally, **if you have not added the `-g` averaging argument to the command, this procedure will not execute**. 
-	- `--sim_gaussian`: comma-separated peakMJD list, peak_appmag, gaussian_sigma: add a gaussian at peakMJD with a peak apparent magnitude of peak_appmag and a sigma of gaussian_sigma in days
+	- `--sim_gaussian`: comma-separated peakMJD list, peak_appmag, gaussian_sigma
+		- This argument will allow you to add a gaussian at peakMJD with a peak apparent magnitude of peak_appmag and a sigma of gaussian_sigma in days.
 		- This argument will allow you to simulate a pre-SN eruption within your light curve and analyze whether or not the rolling gaussian weighted sum successfully amplifies it. 
 - `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `-ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.

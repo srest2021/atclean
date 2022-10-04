@@ -379,7 +379,7 @@ class download_atlas_lc:
 		print('\nDeleting %d rows with "duJy"==0 or "uJy"==NaN...' % (len(dflux_zero_ix) + len(flux_nan_ix)))
 		if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
 			lc.lcs[control_index].t = lc.lcs[control_index].t.drop(AorB(dflux_zero_ix,flux_nan_ix))
-
+			 
 		lc.lcs[control_index].flux2mag('uJy', 'duJy', 'm', 'dm', zpt=23.9, upperlim_Nsigma=self.flux2mag_sigmalimit)
 
 		return lc

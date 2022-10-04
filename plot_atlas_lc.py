@@ -3,18 +3,8 @@
 @author: Sofia Rest
 """
 
-import sys
-import pandas as pd
-import numpy as np
-
-from atlas_lc import atlas_lc
-from pdastro import pdastrostatsclass, AnotB
-
-# plotting
-import matplotlib
-import matplotlib.patches as mpatches
+from pdastro import AnotB
 import matplotlib.pyplot as plt
-import pylab as matlib
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
 warnings.filterwarnings("ignore")
@@ -28,7 +18,6 @@ plt.rc('ytick', labelsize=13)
 plt.rc('legend', fontsize=13)
 plt.rc('font', size=13)
 plt.rcParams['font.size'] = 12
-#plt.style.use('bmh')
 
 class plot_atlas_lc():
 	def __init__(self, tnsname, output_dir, args, add2filename=None, flags=None):

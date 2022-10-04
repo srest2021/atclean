@@ -149,10 +149,10 @@ class clean_atlas_lc():
 		self.chisquares = args.chisquares
 		if self.chisquares:
 			print(f'\nChi-square cut: {self.chisquares}')
-			if cfg['Chi-square cut settings']['override_cut'].isdigit():
-				self.chisquare_cut = cfg['Chi-square cut settings']['override_cut']
+			try:
+				self.chisquare_cut = float(cfg['Chi-square cut settings']['override_cut'])
 				print(f'# Overriding dynamic chi-square cut with manual cut of x2 = {self.chisquare_cut}')
-			else:
+			except:
 				self.stn_bound = float(cfg['Chi-square cut settings']['stn_bound'])
 				self.min_cut = int(cfg['Chi-square cut settings']['min_cut'])
 				self.max_cut = int(cfg['Chi-square cut settings']['max_cut'])
@@ -160,7 +160,7 @@ class clean_atlas_lc():
 				self.contam_lim = float(cfg['Chi-square cut settings']['contamination_limit'])
 				self.loss_lim = float(cfg['Chi-square cut settings']['loss_limit'])
 				self.lim_to_prioritize = cfg['Chi-square cut settings']['limit_to_prioritize']
-				if not(self.lim_to_prioritize == 'loss') and not(self.lim_to_prioritize == 'contamination'):
+				if not(self.lim_to_prioritize == 'loss' or self.lim_to_prioritize == 'contamination'):
 					raise RuntimeError(f'ERROR: Limit to prioritize (limit_to_prioritize in config file) must be set to \'contamination\' or \'loss\' but currently set to {self.lim_to_prioritize}!')
 				print(f'# abs(flux/dflux) bound that determines a "good" measurement vs. "bad" measurement: {self.stn_bound}')
 				print(f'# Cut range: [{self.min_cut}, {self.max_cut}], both ends inclusive, with step size {self.cut_step}')
