@@ -363,7 +363,7 @@ class clean_atlas_lc():
 	def drop_extra_columns(self, lc, control_index=0):
 		dropcols=[]
 
-		for col in ['Noffsetlc', 'duJy_new', 'uJy/duJy', '__tmp_SN']:
+		for col in ['Noffsetlc', 'duJy_new', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm']:
 			if col in lc.lcs[control_index].t.columns:
 				dropcols.append(col)
 		for col in lc.lcs[control_index].t.columns:

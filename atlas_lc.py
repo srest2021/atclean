@@ -86,27 +86,23 @@ class atlas_lc:
 		print(f'# Filename: {filename}')
 		return filename
 
-		# save a single light curve
-		if filt is None:
-			for filt_ in ['c','o']:
-				filt_ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
-				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=filt_ix, overwrite=overwrite)
-		else:
-			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), overwrite=overwrite)
-
 	# save a single light curve
 	def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True, keep_empty_bins=True):
-		# if not keeping empty bins in averaged lc, remove all null rows; else keep all
-		ix = self.lcs[control_index].getindices()
-		if self.is_averaged and not keep_empty_bins:
-			ix = self.lcs[control_index].ix_not_null(colnames=['uJy'])
-
 		if filt is None:
 			# split lc up by filt and save to two separate files
-			for filt_ in ['c','o']:
-				ix = AandB(ix, self.lcs[control_index].ix_equal(colnames=['F'],val=filt_))
+			for filt_ in ['o','c']:
+				# if not keeping empty bins in averaged lc, remove all null rows; else keep all
+				if self.is_averaged and not keep_empty_bins:
+					ix = AandB(self.lcs[control_index].ix_not_null(colnames=['uJy']), self.lcs[control_index].ix_equal(colnames=['F'],val=filt_))
+				else: 
+					ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
+				
 				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=ix, overwrite=overwrite)
 		else:
+			if self.is_averaged and not keep_empty_bins:
+				ix = self.lcs[control_index].ix_not_null(colnames=['uJy'])
+			else: 
+				ix = self.lcs[control_index].getindices()
 			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), indices=ix, overwrite=overwrite)
 
 	# save SN light curve and, if necessary, control light curves

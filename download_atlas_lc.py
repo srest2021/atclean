@@ -229,15 +229,15 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row
 			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
-			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,
-																  'ra':sn_ra.degree,
-																  'dec':sn_dec.degree,
-																  'ra_offset':0,
-																  'dec_offset':0,
-																  'radius':0,
-																  'n_detec':len(sn_lc.lcs[0].t),
-																  'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
-																  'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
+			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
+										'ra':sn_ra.degree,
+										'dec':sn_dec.degree,
+										'ra_offset':0,
+										'dec_offset':0,
+										'radius':0,
+										'n_detec':len(sn_lc.lcs[0].t),
+										'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
+										'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])})
 		else:
 			# coordinates of close bright object
 			cb_ra = Angle(RaInDeg(self.closebright_coords[0]), u.degree)
@@ -254,7 +254,7 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
 			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
-			self.control_coords.t = self.control_coords.t.append({'tnsname':sn_lc.tnsname,
+			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
 																  'ra':sn_ra.degree,
 																  'dec':sn_dec.degree,
 																  'ra_offset':np.nan,
@@ -284,7 +284,7 @@ class download_atlas_lc:
 					continue
 
 			# add RA and Dec coordinates to control_coords table
-			self.control_coords.t = self.control_coords.t.append({'tnsname':np.nan,
+			self.control_coords.newrow({'tnsname':np.nan,
 																  'ra':ra.degree,
 																  'dec':dec.degree,
 																  'ra_offset':ra_offset.degree,
@@ -292,7 +292,7 @@ class download_atlas_lc:
 																  'radius':r,
 																  'n_detec':np.nan,
 																  'n_detec_o':np.nan,
-																  'n_detec_c':np.nan},ignore_index=True)
+																  'n_detec_c':np.nan})
 
 	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, lc, control_index):
