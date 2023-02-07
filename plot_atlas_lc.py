@@ -56,8 +56,12 @@ class plot_atlas_lc():
 
 	# set the plot x and y axis limits automatically
 	def set_plot_lims(self):
-		self.xlim_lower = self.lc.discdate-200
-		self.xlim_upper = self.lc.discdate+800
+		if self.lc.discdate > 57000:
+			self.xlim_lower = self.lc.discdate-200
+			self.xlim_upper = self.lc.discdate+800
+		else:
+			self.xlim_lower = self.lc.lcs[0].t['MJD'].min()-100
+			self.xlim_upper = self.lc.lcs[0].t['MJD'].max()+100
 		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
 		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)
 
@@ -96,8 +100,8 @@ class plot_atlas_lc():
 	# plot SN light curve
 	def plot_og_lc(self, separate_baseline=True, add2title=None):
 		fig = plt.figure(figsize=(10,6), tight_layout=True)
-		plt.gca().spines['right'].set_visible(False)
-		plt.gca().spines['top'].set_visible(False)
+		#plt.gca().spines['right'].set_visible(False)
+		#plt.gca().spines['top'].set_visible(False)
 		plt.axhline(linewidth=1,color='k')
 		plt.ylabel('Flux (µJy)')
 		plt.xlabel('MJD')

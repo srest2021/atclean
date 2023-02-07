@@ -234,6 +234,22 @@ class clean_atlas_lc():
 	def get_Ndays(self, SN_region_index):
 		return 200 if SN_region_index == 2 else 40
 
+	def get_SNstart_region(self, discdate, tchange1, tchange2):
+		# find region SN starts in 
+		SN_region_index = None
+		if discdate <= tchange1:
+			SN_region_index = 0
+		elif discdate > tchange1 and discdate <= tchange2:
+			SN_region_index = 1
+		elif discdate > tchange2:
+			SN_region_index = 2
+		if SN_region_index is None:
+			raise RuntimeError('## ERROR: Something went wrong--could not find region with SN discovery date!')
+		else:
+			print('## SN discovery date located in template region t%d' % SN_region_index)
+		return SN_region_index
+
+
 	# get regions of a lc where no SN flux is present
 	def get_baseline_regions(self, lc, Ndays_min):
 		print('# Getting region indices around SN... ')
@@ -250,24 +266,34 @@ class clean_atlas_lc():
 		regions['b_t1'] = AandB(regions['t1'], baseline_ix)
 		regions['b_t2'] = AandB(regions['t2'], baseline_ix)
 
+		found_region_ix = []
 		for region_index in range(0,3):
 			if len(regions['t%d'%region_index]) > 0:
 				print('## TEMPLATE REGION t%d MJD RANGE: %0.2f - %0.2f' % (region_index, lc.lcs[0].t.loc[regions['t%d'%region_index][0],'MJD'], lc.lcs[0].t.loc[regions['t%d'%region_index][-1],'MJD']))
+				found_region_ix.append(region_index)
 			else:
 				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
+		
+		# cannot do flux correction?
+		if len(found_region_ix) <= 1:
+			print('WARNING: At least 2 template regions do not contain any data. Therefore, flux could not be corrected according to the ATLAS reference template changes. Skipping...')
+			
+			# try to get baseline flux
+			SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2) # find region with SN in it
+			if SN_region_index in found_region_ix: # SN discovery date is in one of the found regions
+				# get last Ndays days for baseline
+				lc.corrected_baseline_ix = lc.lcs[0].ix_inrange(colnames=['MJD'],
+																lowlim=lc.lcs[0].t.loc[regions['t%d'%SN_region_index][-1],'MJD'] - self.get_Ndays(SN_region_index),
+																uplim=lc.lcs[0].t.loc[regions['t%d'%SN_region_index][-1],'MJD'])
+			elif len(found_region_ix) == 1: # one template region has data
+				# get all of found template for baseline
+				lc.corrected_baseline_ix = regions[f't{found_region_ix[0]}']
+			else: # no template region has data, so basically no data... this is pretty bad but hopefully will not come to this
+				lc.corrected_baseline_ix = baseline_ix # will be None
+			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
+			return None, lc
 
-		# find region SN starts in 
-		SN_region_index = None
-		if lc.discdate <= tchange1:
-			SN_region_index = 0
-		elif lc.discdate > tchange1 and lc.discdate <= tchange2:
-			SN_region_index = 1
-		elif lc.discdate > tchange2:
-			SN_region_index = 2
-		if SN_region_index is None:
-			raise RuntimeError('## ERROR: Something went wrong--could not find region with SN discovery date!')
-		else:
-			print('## SN discovery date located in template region t%d' % SN_region_index)
+		SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2)
 
 		# for region with tail end of the SN, get last Ndays days and classify as baseline
 		adjust_region_index = SN_region_index
@@ -327,9 +353,14 @@ class clean_atlas_lc():
 	# more info here: https://fallingstar-data.com/forcedphot/faq/
 	def correct_for_template(self, lc):
 		print('\nCorrecting for potential flux in template due to template changes at MJD=58417,58882...')
+		output = ''
 		
 		# automatically define baseline regions according to discovery date
 		regions, lc = self.get_baseline_regions(lc, Ndays_min=6)
+		if regions is None:
+			# TODO: ADD SECTION TO README
+			output += 'Not enough data found in at least 2 template regions. Could not correct for template changes.'
+			return lc, output
 
 		# get indices of measurements with x2<=5 so that when getting median, use these indices if possible
 		b_goodx2_i = lc.lcs[0].ix_inrange(colnames=['chi/N'], uplim=5, indices=lc.corrected_baseline_ix)
@@ -349,6 +380,7 @@ class clean_atlas_lc():
 				print(f'## Subtracting median {median:0.1f} uJy of baseline flux with chi-square ≤ 5 from light curve flux due to potential flux in the template...')
 				lc.lcs[0].t.loc[regions['t%d'%region_index],'uJy'] -= median
 				print(f'## Baseline median now: {np.median(lc.lcs[0].t.loc[region_i,"uJy"])}')
+				output += f'\nCorrection applied to baseline region {region_index}: {median:0.1f} uJy subtracted'
 
 				if self.controls:
 					print(f'## Correcting control light curves for potential flux in template...')
@@ -357,13 +389,13 @@ class clean_atlas_lc():
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 
-		return lc
+		return lc, output
 
 	# drop mask column and any added columns from previous iterations
 	def drop_extra_columns(self, lc, control_index=0):
 		dropcols=[]
 
-		for col in ['Noffsetlc', 'duJy_new', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm']:
+		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum']:
 			if col in lc.lcs[control_index].t.columns:
 				dropcols.append(col)
 		for col in lc.lcs[control_index].t.columns:
@@ -382,6 +414,14 @@ class clean_atlas_lc():
 		for control_index in range(self.num_controls+1):
 			if control_index == 0:
 				print('\nNow estimating true uncertainties for SN light curve...')
+
+				if len(lc.corrected_baseline_ix) <= 0:
+					print('WARNING: No available baseline flux! Cannot proceed with true uncertainties estimation. Skipping...')
+					output += '\nNot enough available baseline flux! Could not proceed with true uncertainties estimation.'
+					for control_index in range(self.num_controls+1):
+						lc.dflux_colnames[control_index] = 'duJy'
+					return lc, output, False
+
 				clean_ix = AandB(lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[0].ix_inrange(colnames=['chi/N'],uplim=self.estimate_true_uncertainties_chisquare_cut,exclude_uplim=True))
 				clean_ix = AandB(lc.corrected_baseline_ix, clean_ix)
 			else:
@@ -393,29 +433,30 @@ class clean_atlas_lc():
 
 			median_dflux = np.median(lc.lcs[control_index].t.loc[clean_ix, 'duJy'])
 
-			print(f'# Median uncertainty: {median_dflux:0.2f}; true typical uncertainty: {sigma_true_typical:0.2f}')
-			output += ''
+			#print(f'# Median uncertainty: {median_dflux:0.2f}; true typical uncertainty: {sigma_true_typical:0.2f}')
+			#output += ''
 
 			if sigma_true_typical > median_dflux:
-				print(f'# True typical uncertainty greater the current median uncertainty. Proceeding with true uncertainties estimation...')
+				print(f'# True typical uncertainty {sigma_true_typical:0.2f} greater the current median uncertainty {median_dflux:0.2f}. Proceeding with true uncertainties estimation...')
 
 				# for following cuts, use updated uncertainty column for this light curve
 				lc.dflux_colnames[control_index] = 'duJy_new'
 
 				# add extra noise source to current noise in new column
 				sigma_extra = np.sqrt(sigma_true_typical*sigma_true_typical - median_dflux)
-				print(f'## Sigma extra calculated: {sigma_extra:0.4f}')
-				print('## Adding sigma_extra to new duJy column...')
+				#print(f'## Sigma extra calculated: {sigma_extra:0.4f}')
+				#print('# Adding sigma_extra {sigma_extra:0.4f} to new duJy column...')
+				lc.lcs[control_index].t['duJy_new'] = np.nan
 				lc.lcs[control_index].t['duJy_new'] = np.sqrt(lc.lcs[control_index].t['duJy']**2 + sigma_extra**2)
 
 				if control_index == 0:
-					output += f' An extra noise of sigma {sigma_extra:0.4f} was added to the uncertainties.'
+					output += f' An extra noise of sigma {sigma_extra:0.4f} was added to the uncertainties of the SN light curve and copied to the "duJy_new" column.'
+			
+				return lc, output, True
 			else:
 				print(f'# True typical uncertainty less than or equal to the current median uncertainty. Skipping true uncertainties estimation.')
-				if control_index == 0:
-					output += ''
+				return lc, output, False
 
-		return lc, output
 
 	# apply uncertainty cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
@@ -978,7 +1019,7 @@ class clean_atlas_lc():
 
 		return lc, avglc, output
 
-	# add simulated bump if necessary and apply rolling gaussian weighted ssm to light curve
+	# add simulated bump if necessary and apply rolling gaussian weighted sum to light curve
 	def apply_gaussian(self, avglc, control_index=0, simparams=None, filt=None):
 		if self.start_mjd is None:
 			self.start_mjd = avglc.lcs[control_index].t['MJDbin'].iloc[0]
@@ -1037,6 +1078,8 @@ class clean_atlas_lc():
 		
 		temp = pd.Series(np.zeros(len(avglc.lcs[control_index].t.loc[ix]) + 2*halfwindowsize), name='SNR', dtype=np.float64)
 		temp[dataindices] = avglc.lcs[control_index].t.loc[ix,'SNR']
+
+		#print('FUCK THIS STUPIUD FUCKING,NAWKBEQWAHFUEHJOIGWERRHEGJIPGJREIPJPEHRIGR BULLLLLLSHITTTTT',gaussian_sigma, windowsize, len(dataindices))
 		SNRsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=gaussian_sigma)
 		avglc.lcs[control_index].t.loc[ix,'SNRsum'] = list(SNRsum[dataindices])
 		
@@ -1080,8 +1123,13 @@ class clean_atlas_lc():
 		return f
 
 	# add information about each cut to output text file
-	def add_to_readme(self, f, lc, filt, final_cut=None, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, control_output=None, averaging_output=None):
+	def add_to_readme(self, f, lc, filt, final_cut=None, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, templates_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
+
+
+		f.write('\n\n### Correction for ATLAS reference template changes')
+		f.write(f'\nWe take into account ATLAS\'s periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882.')
+		f.write(templates_output)
 
 		if self.uncertainties:
 			f.write(f'\n\n### Uncertainty cut')
@@ -1090,7 +1138,7 @@ class clean_atlas_lc():
 
 		if self.estimate_true_uncertainties:
 			f.write(f'\n\n### Estimating true uncertainties')
-			f.write(f'\nThis procedure attempts to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this portion.')
+			f.write(f'\nThis procedure attempts to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly applying this extra noise to a new uncertainty column "duJy_new". This new uncertainty column will be used in the cuts following this portion.')
 			f.write(estimate_true_uncertainties_output)
 
 		if self.chisquares:
@@ -1185,7 +1233,7 @@ class clean_atlas_lc():
 
 				lc, snlist_index = self.get_lc_data(lc, snlist_index)
 				lc = self.drop_extra_columns(lc)
-				lc = self.correct_for_template(lc)
+				lc, templates_output = self.correct_for_template(lc)
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc()
@@ -1200,8 +1248,8 @@ class clean_atlas_lc():
 				# estimate true uncertainties
 				estimate_true_uncertainties_output = None
 				if self.estimate_true_uncertainties:
-					lc, estimate_true_uncertainties_output = self.apply_true_uncertainties(lc)
-					if args.plot:
+					lc, estimate_true_uncertainties_output, do_plot = self.apply_true_uncertainties(lc)
+					if args.plot and do_plot:
 						plot.plot_uncertainty_estimations()
 
 				# add flux/dflux column
@@ -1290,6 +1338,9 @@ class clean_atlas_lc():
 
 				# drop extra control lc cut columns
 				lc = self.drop_extra_columns(lc)
+				# drop extra columns in averaged lc
+				if self.averaging:
+					avglc = self.drop_extra_columns(avglc) 
 
 				# save lc with new 'Mask' column
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
@@ -1301,6 +1352,7 @@ class clean_atlas_lc():
 				f = self.add_to_readme(f, lc, filt, final_cut=final_cut, 
 													uncertainty_output=uncertainty_output,
 													estimate_true_uncertainties_output=estimate_true_uncertainties_output,
+													templates_output=templates_output,
 													chisquare_output=chisquare_output, 
 													control_output=control_output,
 													averaging_output=averaging_output)
@@ -1313,8 +1365,9 @@ class clean_atlas_lc():
 				bumps_plot.save()
 
 		# save snlist.txt with any new rows
-		print(f'Saving SN list at {self.snlist_filename}')
-		self.snlist.write(self.snlist_filename)
+		filename = f'{self.output_dir}/{self.snlist_filename}'
+		print(f'Saving SN list at filename')
+		self.snlist.write(filename)
 
 if __name__ == "__main__":
 	clean_atlas_lc = clean_atlas_lc()

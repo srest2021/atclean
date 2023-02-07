@@ -3,7 +3,7 @@
 Author: Sofia Rest
 """
 
-import json, requests, re, time, sys
+import json, requests, re, time, sys, os
 from collections import OrderedDict
 from astropy.time import Time
 import numpy as np
@@ -83,7 +83,7 @@ class atlas_lc:
 			filename += f'.{self.mjd_bin_size:0.2f}days'
 		filename += '.lc.txt'
 		
-		print(f'# Filename: {filename}')
+		#print(f'# Filename: {filename}')
 		return filename
 
 	# save a single light curve
@@ -139,6 +139,10 @@ class atlas_lc:
 			self.load_lc(output_dir, filt, is_averaged=is_averaged, control_index=control_index)
 
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
+
+	def exists(self, output_dir, filt, is_averaged=False, control_index=0):
+		filename = self.get_filename(filt, control_index, output_dir)
+		return os.path.isfile(filename)
 
 	# update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
 	def update_mask_col(self, flag, indices, control_index=0):

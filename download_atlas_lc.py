@@ -101,7 +101,7 @@ class download_atlas_lc:
 		else:
 			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
 
-		self.overwrite = not args.dont_overwrite
+		self.overwrite = not bool(args.dont_overwrite)
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
@@ -227,17 +227,29 @@ class download_atlas_lc:
 			ra_center = sn_ra
 			dec_center = sn_dec
 
+			# get SN light curve's o and c indices and lengths
+			if len(sn_lc.lcs) > 0: # SN lc has been downloaded
+				o_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='o'))
+				c_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='c'))
+			else: # SN lc has not been downloaded, so temporarily load both c and o lcs to get indices
+				temp_o = pdastrostatsclass()
+				temp_o.load_spacesep(sn_lc.get_filename('o', 0, self.output_dir), delim_whitespace=True)
+				o_len = len(temp_o.t)
+
+				temp_c = pdastrostatsclass()
+				temp_c.load_spacesep(sn_lc.get_filename('c', 0, self.output_dir), delim_whitespace=True)
+				c_len = len(temp_c.t)
+
 			# add SN coordinates as first row
-			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
 										'ra':sn_ra.degree,
 										'dec':sn_dec.degree,
 										'ra_offset':0,
 										'dec_offset':0,
 										'radius':0,
-										'n_detec':len(sn_lc.lcs[0].t),
-										'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
-										'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])})
+										'n_detec':o_len+c_len,
+										'n_detec_o':o_len,
+										'n_detec_c':c_len})
 		else:
 			# coordinates of close bright object
 			cb_ra = Angle(RaInDeg(self.closebright_coords[0]), u.degree)
@@ -252,17 +264,29 @@ class download_atlas_lc:
 			ra_center = cb_ra
 			dec_center = cb_dec
 
+			# get SN light curve's o and c indices and lengths
+			if len(sn_lc.lcs) > 0: # SN lc has been downloaded
+				o_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='o'))
+				c_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='c'))
+			else: # SN lc has not been downloaded, so temporarily load both c and o lcs to get indices
+				temp_o = pdastrostatsclass()
+				temp_o.load_spacesep(sn_lc.get_filename('o', 0, self.output_dir), delim_whitespace=True)
+				o_len = len(temp_o.t)
+
+				temp_c = pdastrostatsclass()
+				temp_c.load_spacesep(sn_lc.get_filename('c', 0, self.output_dir), delim_whitespace=True)
+				c_len = len(temp_c.t)
+
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
-			o_ix = sn_lc.lcs[0].ix_equal(colnames=['F'],val='o')
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
-																  'ra':sn_ra.degree,
-																  'dec':sn_dec.degree,
-																  'ra_offset':np.nan,
-																  'dec_offset':np.nan,
-																  'radius':np.nan,
-																  'n_detec':len(sn_lc.lcs[0].t),
-																  'n_detec_o':len(sn_lc.lcs[0].t.loc[o_ix]),
-																  'n_detec_c':len(sn_lc.lcs[0].t.loc[AnotB(sn_lc.lcs[0].getindices(),o_ix)])},ignore_index=True)
+										'ra':sn_ra.degree,
+										'dec':sn_dec.degree,
+										'ra_offset':np.nan,
+										'dec_offset':np.nan,
+										'radius':np.nan,
+										'n_detec':o_len+c_len,
+										'n_detec_o':o_len,
+										'n_detec_c':c_len},ignore_index=True)
 
 		for i in range(self.num_controls):
 			angle = Angle(i*360.0/self.num_controls, u.degree)
@@ -365,10 +389,16 @@ class download_atlas_lc:
 		print(f'Downloading forced photometry light curve at {RaInDeg(ra):0.8f}, {DecInDeg(dec):0.8f} from ATLAS')
 		lc.lcs[control_index] = pdastrostatsclass()
 
-		try:
-			lc.lcs[control_index].t = self.get_result(RaInDeg(ra), DecInDeg(dec), token, lookbacktime_days=self.lookbacktime_days)
-		except Exception as e:
-			raise RuntimeError('ERROR in get_result(): '+str(e))
+		while(True):
+			try:
+				lc.lcs[control_index].t = self.get_result(RaInDeg(ra), DecInDeg(dec), token, lookbacktime_days=self.lookbacktime_days)
+				break
+			except Exception as e:
+				#raise RuntimeError('ERROR in get_result(): '+str(e))
+				print('Exception caught: '+str(e))
+				print('Trying again in 20 seconds! Waiting...')
+				time.sleep(20)
+				continue
 
 		# sort data by mjd
 		lc.lcs[control_index].t = lc.lcs[control_index].t.sort_values(by=['MJD'],ignore_index=True)
@@ -384,14 +414,20 @@ class download_atlas_lc:
 
 		return lc
 
+
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token, snlist_index):
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		
 		lc = self.get_lc_data(args, lc, snlist_index)
-		lc = self.download_lc(args, token, lc, lc.ra, lc.dec)
-		lc.save_lc(self.output_dir, overwrite=self.overwrite)
+
+		# only download light curve if overwriting existing files
+		if not(self.overwrite) and lc.exists(self.output_dir, 'o') and lc.exists(self.output_dir, 'c'):
+			print(f'SN light curve files already exist and overwrite is set to {self.overwrite}! Skipping download...')
+		else:
+			lc = self.download_lc(args, token, lc, lc.ra, lc.dec)
+			lc.save_lc(self.output_dir, overwrite=self.overwrite)
 
 		if args.controls:
 			print('Control light curve downloading set to True')
@@ -402,13 +438,18 @@ class download_atlas_lc:
 
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):
-				print(f'\nDownloading control light curve {control_index:03d}...')
-				lc = self.download_lc(args, token, lc, 
-									  ra=self.control_coords.t.loc[control_index,'ra'], 
-									  dec=self.control_coords.t.loc[control_index,'dec'], 
-									  control_index=control_index)
-				self.update_control_coords(lc, control_index)
-				lc.save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
+				# only download control light curve if overwriting existing files
+				if not(self.overwrite) and lc.exists(self.output_dir, 'o', control_index=control_index) and lc.exists(self.output_dir, 'c', control_index=control_index):
+
+					print(f'Control light curve {control_index:03d} files already exist and overwrite is set to {self.overwrite}! Skipping download...')
+				else:
+					print(f'\nDownloading control light curve {control_index:03d}...')
+					lc = self.download_lc(args, token, lc, 
+										  ra=self.control_coords.t.loc[control_index,'ra'], 
+										  dec=self.control_coords.t.loc[control_index,'dec'], 
+										  control_index=control_index)
+					self.update_control_coords(lc, control_index)
+					lc.save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
 
 			# save control_coords table
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)

@@ -71,6 +71,9 @@ iterations = 10000
 # if more than one, use bitwise OR (this symbol: |) to combine them
 flags = 0x800000
 
+# add observation seasons' mjd ranges here
+valid_mjd_ranges = [[58000,58149], [58297,58510], [58587,58881], [58974,59244], [59354,59612], [59687,59910]]
+
 # optionally add a simulated pre-eruption to the loaded light curve
 # then apply a gaussian weighted rolling sum to the SNR
 def apply_gaussian(lc, gaussian_sigma, flag=0x800000, sim_gauss=False, sim_peakmjd=None, sim_appmag=None, sim_sigma=None, print_=True):
@@ -183,6 +186,12 @@ def save_tables(peaks, detected, detected_per_peak):
             detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/tables/detected_{gauss_sigma}_{peak:0.2f}.txt')
     detected_per_peak.write(filename=f'{source_dir}/tables/detected_per_peak.txt')
 
+def in_season(mjd, valid_mjd_ranges):
+    for mjd_range in valid_mjd_ranges:
+        if mjd >= mjd_range[0] and mjd <= mjd_range[1]:
+            return True
+    return False
+
 # fill lc_info and load SN and control lcs
 lc_info['tnsname'] = tnsname
 lc_info['discovery_date'] = discovery_date
@@ -227,6 +236,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         detected[f'{gauss_sigma}_{peak}'].t['peak_appmag'] = np.full(iterations, peak_appmag)
         
         for i in range(iterations):
+            # TODO: change to control lcs
             snlc = copy.deepcopy(lcs[0])
 
             # select random width in days
@@ -235,15 +245,21 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
 
             # select random peak MJD from start of lc to 50 days before discovery date
             peak_mjd = random.randrange(snlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
+            # TODO: THIS IS INEFFICIENT AF; FIX
+            # make sure peak MJD is within an observation season; else redraw
+            while not(in_season(peak_mjd, valid_mjd_ranges)):
+                # redraw random peak mjd
+                print('redrawing peak mjd')
+                peak_mjd = random.randrange(snlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'peak_mjd'] = peak_mjd
 
             snlc = apply_gaussian(snlc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
 
             # compare max SNRsimsum to detection limit 
             # only calculate max SNRsimsum from measurements within 1 sigma of the simulated bump
-            mjd_range = snlc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
-            if len(mjd_range > 0):
-                max_snrsimsum_ix = snlc.t.loc[mjd_range,'SNRsimsum'].idxmax()
+            sigma_ix = snlc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
+            if len(sigma_ix > 0):
+                max_snrsimsum_ix = snlc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = snlc.t.loc[max_snrsimsum_ix,'SNRsimsum']
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = snlc.t.loc[max_snrsimsum_ix,'MJD']
             else:
