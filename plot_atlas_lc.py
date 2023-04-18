@@ -71,10 +71,6 @@ class plot_atlas_lc():
 		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
 		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)
 
-		#print('XLIMITJFNFFJFJFJD FUCK YOU BTICH: ', self.lc.lcs[0].t['MJD'].min()-100, self.lc.lcs[0].t['MJD'].max()+100)
-		#print('XLIMITJFNFFJFJFJD FUCK YOU BTICH: ', self.xlim_lower, self.xlim_upper)
-		#print(self.lc.lcs[0].t['MJD'])
-
 	# plot averaged SN light curve with bad days flagged
 	def plot_averaged_lc(self):
 		if not self.lc.is_averaged:
@@ -380,7 +376,6 @@ class plot_atlas_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-
 		for control_index in self.lc.lcs:
 			label = None
 			if control_index == 0:

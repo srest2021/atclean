@@ -307,15 +307,6 @@ class clean_atlas_lc():
 		if adjust_region_index < 1: regions['b_t1'] = regions['t1']
 		if adjust_region_index < 2: regions['b_t2'] = regions['t2']
 
-		
-
-		# DELETE
-		#regions['b_t2'] = lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=58957.61, uplim=59150.23)
-
-
-
-
-
 		for region_index in range(0,3):
 			if len(regions['b_t%d'%region_index]) > 0:
 				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.lcs[0].t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.lcs[0].t.loc[regions['b_t%d'%region_index][-1],'MJD']))
