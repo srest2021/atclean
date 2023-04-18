@@ -112,7 +112,7 @@ class download_atlas_lc:
 		else:
 			print('Downloading full light curve(s)')
 		
-		self.controls = args.controls 
+		self.controls = bool(args.controls)
 		print(f'Control light curve status: {self.controls}')
 		if self.controls:
 			self.radius = float(cfg['Control light curve settings']['radius'])
@@ -147,7 +147,7 @@ class download_atlas_lc:
 		if not(lookbacktime_days is None):
 			lookbacktime_days = int(Time.now().mjd - lookbacktime_days)
 		else:
-			lookbacktime_days = int(Time.now().mjd - 1890)
+			lookbacktime_days = int(Time.now().mjd - 10000)
 		if not(mjd_max is None):
 			mjd_max = int(Time.now().mjd - mjd_max)
 		print(f'MJD min: {lookbacktime_days}; MJD max: {mjd_max}')

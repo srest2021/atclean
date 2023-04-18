@@ -56,14 +56,24 @@ class plot_atlas_lc():
 
 	# set the plot x and y axis limits automatically
 	def set_plot_lims(self):
-		if self.lc.discdate > 57000:
+		if self.lc.discdate > 58000:
 			self.xlim_lower = self.lc.discdate-200
-			self.xlim_upper = self.lc.discdate+800
+			self.xlim_upper = self.lc.discdate+900
+			if self.xlim_upper > 60100:
+				self.xlim_upper = 60100
 		else:
-			self.xlim_lower = self.lc.lcs[0].t['MJD'].min()-100
-			self.xlim_upper = self.lc.lcs[0].t['MJD'].max()+100
+			if self.lc.is_averaged:
+				self.xlim_lower = self.lc.lcs[0].t['MJDbin'].min()-100
+				self.xlim_upper = self.lc.lcs[0].t['MJDbin'].max()+100
+			else:
+				self.xlim_lower = self.lc.lcs[0].t['MJD'].min()-100
+				self.xlim_upper = self.lc.lcs[0].t['MJD'].max()+100
 		self.ylim_lower = 3*self.lc.get_xth_percentile_flux(1, indices=self.lc.during_sn_ix)
 		self.ylim_upper = 3*self.lc.get_xth_percentile_flux(97, indices=self.lc.during_sn_ix)
+
+		#print('XLIMITJFNFFJFJFJD FUCK YOU BTICH: ', self.lc.lcs[0].t['MJD'].min()-100, self.lc.lcs[0].t['MJD'].max()+100)
+		#print('XLIMITJFNFFJFJFJD FUCK YOU BTICH: ', self.xlim_lower, self.xlim_upper)
+		#print(self.lc.lcs[0].t['MJD'])
 
 	# plot averaged SN light curve with bad days flagged
 	def plot_averaged_lc(self):

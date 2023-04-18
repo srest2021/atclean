@@ -43,7 +43,7 @@ tnsname = '2020nxt'
 discovery_date = 59033.537
 
 # path to directory that contains SN and control light curves
-source_dir = '/Users/sofiarest/Desktop/Supernovae/data/new_test/2020nxt'
+source_dir = '/Users/sofiarest/Desktop/Supernovae/data.nosync/new_test/2020nxt'
 
 # number of control light curves to load
 n_controls = 8
@@ -61,11 +61,14 @@ gauss_sigmas = [5, 10, 15]
 peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
 
 # select range of possible simulated gaussian widths
-gauss_width_min = 3
-gauss_width_max = 50
+#gauss_width_min = 3
+#gauss_width_max = 50
+
+# select possible simulated gaussian sigmas
+gauss_widths = [10, 30, 50]
 
 # number of iterations of random width and peak mjd per peak
-iterations = 10000
+iterations = 100000 
 
 # define flag that defines bad measurements (to filter out bad days in lc)
 # if more than one, use bitwise OR (this symbol: |) to combine them
@@ -209,7 +212,7 @@ detected_per_peak.t['gauss_sigma'] = gauss_sigma_col
 
 print(f'\nGaussian sigmas in days: ', gauss_sigmas)
 print(f'Peaks in uJy: ', peaks)
-print(f'Range of possible simulated gaussian widths in days: {gauss_width_min} to {gauss_width_max}')
+print(f'Possible simulated gaussian widths in days: ', gauss_widths)
 print(f'Number of iterations per peak: {iterations}')
 print(f'Flag for bad days: {hex(flags)}')
 
@@ -236,32 +239,31 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         detected[f'{gauss_sigma}_{peak}'].t['peak_appmag'] = np.full(iterations, peak_appmag)
         
         for i in range(iterations):
-            # TODO: change to control lcs
-            snlc = copy.deepcopy(lcs[0])
+            # pick random control light curve
+            rand_control_index = random.randrange(1, 8, 1)
+            curlc = copy.deepcopy(lcs[rand_control_index])
 
             # select random width in days
-            width_days = random.randrange(gauss_width_min,gauss_width_max+1,1) 
+            width_days = random.choice(gauss_widths) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = width_days/2
 
             # select random peak MJD from start of lc to 50 days before discovery date
-            peak_mjd = random.randrange(snlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
-            # TODO: THIS IS INEFFICIENT AF; FIX
+            peak_mjd = random.randrange(curlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             # make sure peak MJD is within an observation season; else redraw
             while not(in_season(peak_mjd, valid_mjd_ranges)):
                 # redraw random peak mjd
-                print('redrawing peak mjd')
-                peak_mjd = random.randrange(snlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
+                peak_mjd = random.randrange(curlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'peak_mjd'] = peak_mjd
 
-            snlc = apply_gaussian(snlc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
+            curlc = apply_gaussian(curlc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
 
             # compare max SNRsimsum to detection limit 
             # only calculate max SNRsimsum from measurements within 1 sigma of the simulated bump
-            sigma_ix = snlc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
+            sigma_ix = curlc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
             if len(sigma_ix > 0):
-                max_snrsimsum_ix = snlc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
-                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = snlc.t.loc[max_snrsimsum_ix,'SNRsimsum']
-                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = snlc.t.loc[max_snrsimsum_ix,'MJD']
+                max_snrsimsum_ix = curlc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
+                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = curlc.t.loc[max_snrsimsum_ix,'SNRsimsum']
+                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = curlc.t.loc[max_snrsimsum_ix,'MJD']
             else:
                 # no valid measurements within this mjd range
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = np.nan

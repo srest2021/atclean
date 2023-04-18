@@ -307,6 +307,15 @@ class clean_atlas_lc():
 		if adjust_region_index < 1: regions['b_t1'] = regions['t1']
 		if adjust_region_index < 2: regions['b_t2'] = regions['t2']
 
+		
+
+		# DELETE
+		#regions['b_t2'] = lc.lcs[0].ix_inrange(colnames=['MJD'], lowlim=58957.61, uplim=59150.23)
+
+
+
+
+
 		for region_index in range(0,3):
 			if len(regions['b_t%d'%region_index]) > 0:
 				print('## TEMPLATE REGION t%d BASELINE MJD RANGE: %0.2f - %0.2f' % (region_index, lc.lcs[0].t.loc[regions['b_t%d'%region_index][0],'MJD'], lc.lcs[0].t.loc[regions['b_t%d'%region_index][-1],'MJD']))
@@ -1079,7 +1088,6 @@ class clean_atlas_lc():
 		temp = pd.Series(np.zeros(len(avglc.lcs[control_index].t.loc[ix]) + 2*halfwindowsize), name='SNR', dtype=np.float64)
 		temp[dataindices] = avglc.lcs[control_index].t.loc[ix,'SNR']
 
-		#print('FUCK THIS STUPIUD FUCKING,NAWKBEQWAHFUEHJOIGWERRHEGJIPGJREIPJPEHRIGR BULLLLLLSHITTTTT',gaussian_sigma, windowsize, len(dataindices))
 		SNRsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=gaussian_sigma)
 		avglc.lcs[control_index].t.loc[ix,'SNRsum'] = list(SNRsum[dataindices])
 		
@@ -1366,7 +1374,7 @@ class clean_atlas_lc():
 
 		# save snlist.txt with any new rows
 		filename = f'{self.output_dir}/{self.snlist_filename}'
-		print(f'Saving SN list at filename')
+		print(f'Saving SN list at {filename}')
 		self.snlist.write(filename)
 
 if __name__ == "__main__":
