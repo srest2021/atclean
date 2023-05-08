@@ -37,13 +37,13 @@ detected = {}
 detected_per_peak = pdastroclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
 
 # SN TNS name
-tnsname = '2020nxt'
+tnsname = '2021foa'
 
 # SN discovery date
-discovery_date = 59033.537
+discovery_date = 59268.45000 - 20.0
 
 # path to directory that contains SN and control light curves
-source_dir = '/Users/sofiarest/Desktop/Supernovae/data.nosync/new_test/2020nxt'
+source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc/2021foa'
 
 # number of control light curves to load
 n_controls = 8
@@ -55,17 +55,13 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with sigmas of gauss_sigmas days
-gauss_sigmas = [5, 10, 15]
+gauss_sigmas = [5, 10, 15, 30]
 
 # select range of peak fluxes to test 
 peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
 
-# select range of possible simulated gaussian widths
-#gauss_width_min = 3
-#gauss_width_max = 50
-
-# select possible simulated gaussian sigmas
-gauss_widths = [10, 30, 50]
+# select possible simulated gaussian widths in days
+gauss_widths = [5, 10, 30, 50] # width/2: [2.5, 5, 15, 25]
 
 # number of iterations of random width and peak mjd per peak
 iterations = 100000 
@@ -75,7 +71,7 @@ iterations = 100000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[58000,58149], [58297,58510], [58587,58881], [58974,59244], [59354,59612], [59687,59910]]
+valid_mjd_ranges = [[57406,57568], [57767,57980], [58092,58333], [58491,58705], [58828,59073], [59190,59430], [59560,59831], [59947,60055]]
 
 # optionally add a simulated pre-eruption to the loaded light curve
 # then apply a gaussian weighted rolling sum to the SNR
@@ -131,17 +127,13 @@ def apply_gaussian(lc, gaussian_sigma, flag=0x800000, sim_gauss=False, sim_peakm
     temp = pd.Series(np.zeros(len(lc.t.loc[ix]) + 2*halfwindowsize), name='SNR', dtype=np.float64)
     temp[dataindices] = lc.t.loc[ix,'SNR']
     SNRsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
-    #SNRsum_max = SNRsum /  temp.rolling(windowsize, center=True, win_type='gaussian').max()
     lc.t.loc[ix,'SNRsum'] = list(SNRsum[dataindices])
-    #lc.t.loc[ix,'SNRsum_max'] = list(SNRsum_max[dataindices])
     # normalize it
     norm_temp = pd.Series(np.zeros(len(lc.t.loc[ix]) + 2*halfwindowsize), name='norm', dtype=np.float64)
     norm_temp[np.array(range(len(lc.t.loc[ix])) + np.full(len(lc.t.loc[ix]), halfwindowsize))] = np.ones(len(lc.t.loc[ix]))
     norm_temp_sum = norm_temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
-    #norm_temp_sum_max = norm_temp_sum / norm_temp.rolling(windowsize, center=True, win_type='gaussian').max()
     lc.t.loc[ix,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
-    #lc.t.loc[ix,'SNRsumnorm_max'] = list(SNRsum_max.loc[dataindices] / norm_temp_sum_max.loc[dataindices] * max(norm_temp_sum_max.loc[dataindices]))
-
+    
     # calculate the rolling SNR sum for SNR with simflux
     if sim_gauss:
         temp = pd.Series(np.zeros(len(lc.t.loc[ix]) + 2*halfwindowsize), name='SNRsim', dtype=np.float64)
@@ -183,11 +175,24 @@ def load_lcs(source_dir, tnsname, n_controls):
     load_lc(source_dir, tnsname)
     load_control_lcs(source_dir, n_controls)
 
+def save_detected(gauss_sigma, peak):
+    print('Saving...')
+    detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/bump_analysis/tables2/detected_{gauss_sigma}_{peak:0.2f}.txt')
+
+def save_detected_per_peak(detected_per_peak):
+    detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')
+
+"""def save_tables(peaks, detected, detected_per_peak):
+    for gauss_sigma in gauss_sigmas: 
+        for peak in peaks:
+            detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/bump_analysis/tables2/detected_{gauss_sigma}_{peak:0.2f}.txt')
+    detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')"""
+
 def save_tables(peaks, detected, detected_per_peak):
     for gauss_sigma in gauss_sigmas: 
         for peak in peaks:
-            detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/tables/detected_{gauss_sigma}_{peak:0.2f}.txt')
-    detected_per_peak.write(filename=f'{source_dir}/tables/detected_per_peak.txt')
+            save_detected(gauss_sigma, peak)
+    save_detected_per_peak(detected_per_peak)
 
 def in_season(mjd, valid_mjd_ranges):
     for mjd_range in valid_mjd_ranges:
@@ -241,34 +246,36 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         for i in range(iterations):
             # pick random control light curve
             rand_control_index = random.randrange(1, 8, 1)
-            curlc = copy.deepcopy(lcs[rand_control_index])
+            cur_lc = copy.deepcopy(lcs[rand_control_index])
 
             # select random width in days
             width_days = random.choice(gauss_widths) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = width_days/2
 
             # select random peak MJD from start of lc to 50 days before discovery date
-            peak_mjd = random.randrange(curlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
+            peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             # make sure peak MJD is within an observation season; else redraw
             while not(in_season(peak_mjd, valid_mjd_ranges)):
                 # redraw random peak mjd
-                peak_mjd = random.randrange(curlc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
+                peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'peak_mjd'] = peak_mjd
 
-            curlc = apply_gaussian(curlc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
+            cur_lc = apply_gaussian(cur_lc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
 
             # compare max SNRsimsum to detection limit 
             # only calculate max SNRsimsum from measurements within 1 sigma of the simulated bump
-            sigma_ix = curlc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
+            sigma_ix = cur_lc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
             if len(sigma_ix > 0):
-                max_snrsimsum_ix = curlc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
-                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = curlc.t.loc[max_snrsimsum_ix,'SNRsimsum']
-                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = curlc.t.loc[max_snrsimsum_ix,'MJD']
+                max_snrsimsum_ix = cur_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
+                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = cur_lc.t.loc[max_snrsimsum_ix,'SNRsimsum']
+                detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = cur_lc.t.loc[max_snrsimsum_ix,'MJD']
             else:
                 # no valid measurements within this mjd range
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = np.nan
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum_mjd'] = np.nan
 
-detected_per_peak.write()
+        save_detected(gauss_sigma, peak)
 
-save_tables(peaks, detected, detected_per_peak)
+detected_per_peak.write() 
+save_detected_per_peak(detected_per_peak)
+#save_tables(peaks, detected, detected_per_peak)

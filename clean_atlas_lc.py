@@ -327,25 +327,41 @@ class clean_atlas_lc():
 		return regions, lc
 
 	# correct control light curves for atlas template changes at mjd=58417,58882 
-	# get median of same baseline regions as SN, then apply to entire region
 	def controls_correct_for_template(self, lc, control_index, regions, region_index):
-		b_goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
+		goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
 
-		lowlim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][0], 'MJD'] 
-		uplim= lc.lcs[0].t.loc[regions[f'b_t{region_index}'][-1], 'MJD']
-		b_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+		# get indices of control lc that match up with SN's baseline region
+		#lowlim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][0], 'MJD'] 
+		#uplim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][-1], 'MJD']
+		
+		# get indices of target template region
+		tchange1 = 58417
+		tchange2 = 58882
+		lowlim = None
+		uplim = None
+		if region_index == 0:
+			uplim = tchange1
+		elif region_index == 1:
+			lowlim = tchange1
+			uplim = tchange2
+		elif region_index == 2:
+			lowlim = tchange2
+		region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
 
-		if len(b_region_i) > 0:
-			if len(AandB(b_region_i,b_goodx2_i)) > 0:
-				median = np.median(lc.lcs[control_index].t.loc[AandB(b_region_i,b_goodx2_i),'uJy'])
+		if len(region_i) > 0:
+			# get median of template region
+			if len(AandB(region_i,goodx2_i)) > 0:
+				median = np.median(lc.lcs[control_index].t.loc[AandB(region_i,goodx2_i),'uJy'])
 			else:
-				median = np.median(lc.lcs[control_index].t.loc[b_region_i,'uJy'])
+				median = np.median(lc.lcs[control_index].t.loc[region_i,'uJy'])
 
-			lowlim = lc.lcs[0].t.loc[regions[f't{region_index}'][0], 'MJD']
-			uplim = lc.lcs[0].t.loc[regions[f't{region_index}'][-1], 'MJD']
-			t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
-			
-			lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
+			#lowlim = lc.lcs[0].t.loc[regions[f't{region_index}'][0], 'MJD']
+			#uplim = lc.lcs[0].t.loc[regions[f't{region_index}'][-1], 'MJD']
+			#t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
+			#lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
+
+			# subtract median from entire template region of control lc
+			lc.lcs[control_index].t.loc[region_i,'uJy'] -= median
 
 		return lc
 
@@ -382,6 +398,7 @@ class clean_atlas_lc():
 				print(f'## Baseline median now: {np.median(lc.lcs[0].t.loc[region_i,"uJy"])}')
 				output += f'\nCorrection applied to baseline region {region_index}: {median:0.1f} uJy subtracted'
 
+				# control lc correction
 				if self.controls:
 					print(f'## Correcting control light curves for potential flux in template...')
 					for control_index in range(1,self.num_controls+1):
@@ -389,6 +406,7 @@ class clean_atlas_lc():
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 
+		#sys.exit()
 		return lc, output
 
 	# drop mask column and any added columns from previous iterations
