@@ -158,7 +158,7 @@ class plot_atlas_lc():
 		
 		for control_index in range(1, num_controls+1):
 			plt.errorbar(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], yerr=self.lc.lcs[control_index].t[self.lc.dflux_colnames[control_index]], fmt='none',ecolor='blue',elinewidth=1,c='blue')
-			if control_index == 6:
+			if control_index == 1:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o',label=f'{num_controls} control light curves')
 			else:
 				plt.scatter(self.lc.lcs[control_index].t['MJD'], self.lc.lcs[control_index].t['uJy'], s=45,color='blue',marker='o')

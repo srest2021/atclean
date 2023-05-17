@@ -182,11 +182,13 @@ def save_detected(gauss_sigma, peak):
 def save_detected_per_peak(detected_per_peak):
     detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')
 
-"""def save_tables(peaks, detected, detected_per_peak):
+"""
+def save_tables(peaks, detected, detected_per_peak):
     for gauss_sigma in gauss_sigmas: 
         for peak in peaks:
             detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/bump_analysis/tables2/detected_{gauss_sigma}_{peak:0.2f}.txt')
-    detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')"""
+    detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')
+"""
 
 def save_tables(peaks, detected, detected_per_peak):
     for gauss_sigma in gauss_sigmas: 

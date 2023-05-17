@@ -22,7 +22,9 @@ Control light curve cut currently in progress of being implemented and added to 
 Open the config file `atlas_lc_settings.ini` and replace the following fields with your information.
 1. Replace `[ATLAS credentials]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
 2. Optionally replace `[TNS credentials]` `api_key` with your TNS API key.
-	- If given a TNS API key, the script will automatically fetch an object's RA, Dec, and discovery date from TNS. If you don't have a key, you just can ask Sofia to send you hers at <srest2021@gmail.com>, or you can manually add this information to a table in a text file titled `snlist.txt`. (You can change this file's name in `[Input/output settings]` `snlist_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
+	- If given a TNS API key, the script will automatically fetch an object's RA, Dec, and discovery date from TNS. If you don't have a key, you have two options:
+	- Your first option is to obtain your own key from TNS. A key is obtained automatically once you create a bot, which you can do [here](https://www.wis-tns.org/bots) (log in, then click '+Add bot').
+	- Your second option is to manually add this information to a table in a text file titled `snlist.txt`. (You can change this file's name in `[Input/output settings]` `snlist_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
 3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files and the `snlist.txt` file will be stored.
 4. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
@@ -97,7 +99,7 @@ The last optional step of this procedure is to **check for any pre-SN eruptions*
 		- This argument will allow you to add a gaussian at peakMJD with a peak apparent magnitude of peak_appmag and a sigma of gaussian_sigma in days.
 		- This argument will allow you to simulate a pre-SN eruption within your light curve and analyze whether or not the rolling gaussian weighted sum successfully amplifies it. 
 - `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
-	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `-ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
+	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `atlas_lc_settings.ini`)
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 - `-a` or `--tns_api_key`: override default TNS API key given in `atlas_lc_settings.ini` config file

@@ -406,7 +406,6 @@ class clean_atlas_lc():
 			else:
 				print(f'# No baseline region for region b_t{region_index}, skipping...')
 
-		#sys.exit()
 		return lc, output
 
 	# drop mask column and any added columns from previous iterations
@@ -1355,14 +1354,13 @@ class clean_atlas_lc():
 
 				# drop extra control lc cut columns
 				lc = self.drop_extra_columns(lc)
-				# drop extra columns in averaged lc
-				if self.averaging:
-					avglc = self.drop_extra_columns(avglc) 
-
 				# save lc with new 'Mask' column
 				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
+
+				# drop extra columns in averaged lc
 				if self.averaging:
+					avglc = self.drop_extra_columns(avglc) 
 					# save averaged light curve
 					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite, keep_empty_bins=self.keep_empty_bins)
 
