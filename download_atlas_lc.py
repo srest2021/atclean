@@ -66,7 +66,7 @@ class download_atlas_lc:
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
-		parser.add_argument('-f','--cfg_filename', default='atlas_lc_settings.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-f','--cfg_filename', default='params.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 

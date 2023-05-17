@@ -105,7 +105,7 @@ class clean_atlas_lc():
 		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
 		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
 
-		parser.add_argument('-f','--cfg_filename', default='atlas_lc_settings.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-f','--cfg_filename', default='params.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		
@@ -730,7 +730,7 @@ class clean_atlas_lc():
 			final_cut = self.get_final_chisquare_cut(contam_cut_data['cut'], loss_cut_data['cut'], contam_cut_data['case'], loss_cut_data['case'])
 
 			if np.isnan(final_cut):
-				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in atlas_lc_settings.ini.')
+				raise RuntimeError('\n# ERROR: Final suggested chi-square cut could not be determined according to given contamination and loss limits. We suggest resetting your limits in params.ini.')
 			else:
 				if final_cut == contam_cut_data['cut']:
 					Pcontamination = contam_cut_data['Pcontamination']
