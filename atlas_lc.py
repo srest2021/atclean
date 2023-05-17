@@ -35,7 +35,7 @@ class atlas_lc:
 
 	# get RA, Dec, and discovery date information from TNS
 	def get_tns_data(self, api_key, tns_id, bot_name):
-		print(f'Obtaining RA, Dec, and/or discovery date from TNS (TNS ID: {tns_id}; TNS bot name: {bot_name})...')
+		print(f'Obtaining RA, Dec, and/or discovery date from TNS (TNS ID: {tns_id}; TNS bot name: "{bot_name}")...')
 		if tns_id == "None" or bot_name == "None":
 			raise RuntimeError("# ERROR: Cannot query TNS without TNS ID and bot name! Specify these parameters in atlas_lc_settings.ini")
 
