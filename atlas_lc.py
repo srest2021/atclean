@@ -34,14 +34,14 @@ class atlas_lc:
 		return res
 
 	# get RA, Dec, and discovery date information from TNS
-	def get_tns_data(self, api_key):
-		print('Obtaining RA, Dec, and/or discovery date from TNS...')
+	def get_tns_data(self, api_key, tns_id, bot_name):
+		print(f'Obtaining RA, Dec, and/or discovery date from TNS (TNS ID: {tns_id}; TNS bot name: {bot_name})...')
 
 		try:
 			url = 'https://www.wis-tns.org/api/get/object'
 			json_file = OrderedDict([("objname",self.tnsname), ("objid",""), ("photometry","1"), ("spectra","1")])
 			data = {'api_key':api_key,'data':json.dumps(json_file)}
-			response = requests.post(url, data=data, headers={'User-Agent':'tns_marker{"tns_id":104739,"type": "bot", "name":"Name and Redshift Retriever"}'})
+			response = requests.post(url, data=data, headers={'User-Agent': 'tns_marker{"tns_id":"%s","type": "bot", "name":"%s"}' % (tns_id, bot_name)})
 			json_data = json.loads(response.text,object_pairs_hook=OrderedDict)
 			
 			if self.ra is None:

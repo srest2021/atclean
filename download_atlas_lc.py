@@ -32,6 +32,8 @@ class download_atlas_lc:
 		self.username = None
 		self.password = None
 		self.tns_api_key = None
+		self.tns_id = None
+		self.bot_name = None
 
 		# input/output
 		self.output_dir = None
@@ -88,6 +90,8 @@ class download_atlas_lc:
 		self.password = getpass(prompt='Enter ATLAS password: ')
 
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
+		self.tns_id = cfg['TNS credentials']['tns_id']
+		self.bot_name = cfg['TNS credentials']['bot_name']
 
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
@@ -354,7 +358,7 @@ class download_atlas_lc:
 					raise RuntimeError('ERROR: No TNS API key provided, no corresponding SN entry in snlist.txt, and not enough information provided in arguments! Please provide RA, Dec, and discovery date in --coords and --discdate arguments.')
 				else:
 					# get RA, Dec, and/or discovery date from TNS
-					lc.get_tns_data(self.tns_api_key)
+					lc.get_tns_data(self.tns_api_key, self.tns_id, self.bot_name)
 			else:
 				print(f'Getting RA, Dec, and/or discovery date from existing row in SN list...')
 
