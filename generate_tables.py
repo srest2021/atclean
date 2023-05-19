@@ -5,22 +5,6 @@ import sys,copy,random
 from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
 
-# plotting
-import matplotlib
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import pylab as matlib
-import warnings
-warnings.simplefilter('error', RuntimeWarning)
-warnings.filterwarnings("ignore")
-plt.rc('axes', titlesize=18)
-plt.rc('axes', labelsize=14)
-plt.rc('xtick', labelsize=13)
-plt.rc('ytick', labelsize=13)
-plt.rc('legend', fontsize=13)
-plt.rc('font', size=13)
-plt.rcParams['font.size'] = 12
-
 # for storing lc and control lcs 
 global lcs
 lcs = {}
@@ -35,6 +19,16 @@ detected = {}
 
 # final table
 detected_per_peak = pdastroclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
+
+# convert flux to magnitude 
+def flux2mag(flux):
+    return -2.5 * np.log10(flux) + 23.9
+
+# convert magnitude to flux
+def mag2flux(mag):
+    return 10 ** ((mag - 23.9) / -2.5)
+
+######### SETTINGS ######### 
 
 # SN TNS name
 tnsname = '2021foa'
@@ -54,11 +48,16 @@ filt = 'o'
 # MJD bin size in days of light curve to analyze
 mjd_bin_size = 1.0
 
-# search for pre-SN bumps with sigmas of gauss_sigmas days
+# search for pre-SN bumps with gaussian sigmas of gauss_sigmas days
 gauss_sigmas = [5, 10, 15, 30]
 
-# select range of peak fluxes to test 
-peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
+# select range of peak fluxes to simulate 
+#peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
+
+# select range of peak apparent magnitudes to simulate
+peak_mag_max = flux2mag(150) # brightest magnitude
+peak_mag_min = flux2mag(2) # faintest magnitude
+n_peaks = 20 # number of evenly spaced magnitudes to generate
 
 # select possible simulated gaussian widths in days
 gauss_widths = [5, 10, 30, 50] # width/2: [2.5, 5, 15, 25]
@@ -73,16 +72,20 @@ flags = 0x800000
 # add observation seasons' mjd ranges here
 valid_mjd_ranges = [[57406,57568], [57767,57980], [58092,58333], [58491,58705], [58828,59073], [59190,59430], [59560,59831], [59947,60055]]
 
+############################
+
+def generate_peaks(peak_mag_max, peak_mag_min, n_peaks):
+    peak_mags = list(np.linspace(peak_mag_max, peak_mag_min, num=20))
+    peak_fluxes = list(map(mag2flux, peak_mags))
+    return peak_mags, peak_fluxes
+
 # optionally add a simulated pre-eruption to the loaded light curve
 # then apply a gaussian weighted rolling sum to the SNR
 def apply_gaussian(lc, gaussian_sigma, flag=0x800000, sim_gauss=False, sim_peakmjd=None, sim_appmag=None, sim_sigma=None, print_=True):
     if len(lc_info['baseline_ix']) <= 0:
         print('ERROR: Not enough data in baseline flux (before SN start)!')
 
-    #ix = lc.ix_inrange(colnames=['MJDbin'],lowlim=None, uplim=lc_info['discovery_date'])
     ix = lc_info['baseline_ix'] # all pre-SN indices
-    #ix = lc.ix_inrange(colnames=['MJDbin'],lowlim=lc.t['MJDbin'].iloc[0], uplim=59000)
-    #print(f'# Applying detection to specified MJD bin range: {lc.t["MJDbin"].iloc[ix[0]]} to  {lc.t["MJDbin"].iloc[ix[-1]]}')
     good_ix = AandB(ix, lc.ix_unmasked('Mask', flag)) # all good pre-SN indices
 
     # make sure there are no lingering simulations
@@ -182,20 +185,13 @@ def save_detected(gauss_sigma, peak):
 def save_detected_per_peak(detected_per_peak):
     detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')
 
-"""
-def save_tables(peaks, detected, detected_per_peak):
-    for gauss_sigma in gauss_sigmas: 
-        for peak in peaks:
-            detected[f'{gauss_sigma}_{peak}'].write(filename=f'{source_dir}/bump_analysis/tables2/detected_{gauss_sigma}_{peak:0.2f}.txt')
-    detected_per_peak.write(filename=f'{source_dir}/bump_analysis/tables2/detected_per_peak.txt')
-"""
-
 def save_tables(peaks, detected, detected_per_peak):
     for gauss_sigma in gauss_sigmas: 
         for peak in peaks:
             save_detected(gauss_sigma, peak)
     save_detected_per_peak(detected_per_peak)
 
+# check if mjd is within valid mjd season
 def in_season(mjd, valid_mjd_ranges):
     for mjd_range in valid_mjd_ranges:
         if mjd >= mjd_range[0] and mjd <= mjd_range[1]:
@@ -209,6 +205,8 @@ lc_info['filt'] = filt
 lc_info['mjd_bin_size'] = mjd_bin_size
 load_lcs(source_dir, tnsname, n_controls)
 
+peak_mags, peaks = generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
+
 # fill in gauss_sigma column of final table
 gauss_sigma_col = np.full(len(peaks), gauss_sigmas[0])
 if len(gauss_sigmas) > 1:
@@ -218,7 +216,8 @@ if len(gauss_sigmas) > 1:
 detected_per_peak.t['gauss_sigma'] = gauss_sigma_col
 
 print(f'\nGaussian sigmas in days: ', gauss_sigmas)
-print(f'Peaks in uJy: ', peaks)
+print(f'Peak magnitudes: ', '['+', '.join('{:.2f}'.format(f) for f in peak_mags)+']')
+print(f'Peak fluxes (uJy): ', '['+', '.join('{:.2f}'.format(f) for f in peaks)+']')
 print(f'Possible simulated gaussian widths in days: ', gauss_widths)
 print(f'Number of iterations per peak: {iterations}')
 print(f'Flag for bad days: {hex(flags)}')
@@ -230,7 +229,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
 
     for peak_index in range(len(peaks)):
         peak = peaks[peak_index]
-        peak_appmag = -2.5 * np.log10(peak) + 23.9  # convert peak flux to peak apparent magnitude
+        peak_appmag = peak_mags[peak_index] #[len(peaks) - 1 - peak_index] #-2.5 * np.log10(peak) + 23.9  # convert peak flux to peak apparent magnitude
 
         peak_index += gauss_sigma_index * gauss_sigma_offset
         detected_per_peak.t.loc[peak_index, 'peak_flux'] = peak
@@ -280,4 +279,3 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
 
 detected_per_peak.write() 
 save_detected_per_peak(detected_per_peak)
-#save_tables(peaks, detected, detected_per_peak)
