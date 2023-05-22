@@ -23,7 +23,7 @@ global detected
 detected = {}
 
 # final table
-detected_per_peak = pdastroclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
+detected_per_peak = pdastrostatsclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
 
 # convert flux to magnitude 
 def flux2mag(flux):
@@ -53,29 +53,20 @@ filt = 'o'
 # MJD bin size in days of light curve to analyze
 mjd_bin_size = 1.0
 
-# search for pre-SN bumps with gaussian sigmas of gauss_sigmas days
-#gauss_sigmas = [5, 10, 15, 30]
-
 # search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
 gauss_sigma_max = 30
 gauss_sigma_min = 5
-n_gauss_sigmas = 4 
-
-# select range of peak fluxes to simulate 
-#peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
+n_gauss_sigmas = 4 # number of gaussian sigmas to generate in log space
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = flux2mag(150) # brightest magnitude
 peak_mag_min = flux2mag(2) # faintest magnitude
-n_peaks = 20 # number of evenly spaced magnitudes to generate
-
-# select possible simulated gaussian widths in days
-#gauss_widths = [5, 10, 30, 50] # width/2: [2.5, 5, 15, 25]
+n_peaks = 20 # number of magnitudes to generate in log space
 
 # search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
 sim_gauss_sigma_max = 25
 sim_gauss_sigma_min = 2.5
-n_sim_gauss_sigmas = 4 
+n_sim_gauss_sigmas = 4 # number of gaussian sigmas to generate in log space
 
 # number of iterations of random sigma and peak mjd per peak
 iterations = 100000 
