@@ -5,6 +5,11 @@ import sys,copy,random,math
 from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
 
+# suppress deprecation warnings
+import warnings
+warnings.simplefilter('error', RuntimeWarning)
+warnings.filterwarnings("ignore")
+
 # for storing lc and control lcs 
 global lcs
 lcs = {}
