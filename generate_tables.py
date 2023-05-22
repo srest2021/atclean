@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import pandas as pd
 import numpy as np
-import sys,copy,random
+import sys,copy,random,math
 from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
 
@@ -49,7 +49,12 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with gaussian sigmas of gauss_sigmas days
-gauss_sigmas = [5, 10, 15, 30]
+#gauss_sigmas = [5, 10, 15, 30]
+
+# search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
+gauss_sigma_max = 30
+gauss_sigma_min = 5
+n_gauss_sigmas = 4 
 
 # select range of peak fluxes to simulate 
 #peaks = [2, 5, 7, 10, 13, 15, 17, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150] 
@@ -60,9 +65,14 @@ peak_mag_min = flux2mag(2) # faintest magnitude
 n_peaks = 20 # number of evenly spaced magnitudes to generate
 
 # select possible simulated gaussian widths in days
-gauss_widths = [5, 10, 30, 50] # width/2: [2.5, 5, 15, 25]
+#gauss_widths = [5, 10, 30, 50] # width/2: [2.5, 5, 15, 25]
 
-# number of iterations of random width and peak mjd per peak
+# search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
+sim_gauss_sigma_max = 25
+sim_gauss_sigma_min = 2.5
+n_sim_gauss_sigmas = 4 
+
+# number of iterations of random sigma and peak mjd per peak
 iterations = 100000 
 
 # define flag that defines bad measurements (to filter out bad days in lc)
@@ -74,10 +84,16 @@ valid_mjd_ranges = [[57406,57568], [57767,57980], [58092,58333], [58491,58705], 
 
 ############################
 
-def generate_peaks(peak_mag_max, peak_mag_min, n_peaks):
-    peak_mags = list(np.linspace(peak_mag_max, peak_mag_min, num=20))
+def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
+    peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=20))
     peak_fluxes = list(map(mag2flux, peak_mags))
     return peak_mags, peak_fluxes
+
+def generate_gauss_sigmas(gauss_sigma_min, gauss_sigma_max, n_gauss_sigmas):
+    log_min = round(math.log2(gauss_sigma_min))
+    log_max = round(math.log2(gauss_sigma_max))
+    gauss_sigmas = list(np.logspace(log_min, log_max, num=n_gauss_sigmas, base=2))
+    return gauss_sigmas
 
 # optionally add a simulated pre-eruption to the loaded light curve
 # then apply a gaussian weighted rolling sum to the SNR
@@ -205,7 +221,12 @@ lc_info['filt'] = filt
 lc_info['mjd_bin_size'] = mjd_bin_size
 load_lcs(source_dir, tnsname, n_controls)
 
+# generate list of peaks
 peak_mags, peaks = generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
+# generate list of gaussian sigmas to look for
+gauss_sigmas = generate_gauss_sigmas(gauss_sigma_min, gauss_sigma_max, n_gauss_sigmas)
+# generate list of gaussian sigmas to simulate
+sim_gauss_sigmas = generate_gauss_sigmas(sim_gauss_sigma_min, sim_gauss_sigma_max, n_sim_gauss_sigmas)
 
 # fill in gauss_sigma column of final table
 gauss_sigma_col = np.full(len(peaks), gauss_sigmas[0])
@@ -215,10 +236,10 @@ if len(gauss_sigmas) > 1:
         gauss_sigma_col = np.concatenate((gauss_sigma_col, a), axis=None)
 detected_per_peak.t['gauss_sigma'] = gauss_sigma_col
 
-print(f'\nGaussian sigmas in days: ', gauss_sigmas)
+print(f'\nGaussian sigmas in days: ', '['+', '.join('{:.2f}'.format(f) for f in gauss_sigmas)+']')
 print(f'Peak magnitudes: ', '['+', '.join('{:.2f}'.format(f) for f in peak_mags)+']')
 print(f'Peak fluxes (uJy): ', '['+', '.join('{:.2f}'.format(f) for f in peaks)+']')
-print(f'Possible simulated gaussian widths in days: ', gauss_widths)
+print(f'Possible simulated gaussian sigmas in days: ', '['+', '.join('{:.2f}'.format(f) for f in sim_gauss_sigmas)+']')
 print(f'Number of iterations per peak: {iterations}')
 print(f'Flag for bad days: {hex(flags)}')
 
@@ -250,8 +271,8 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
             cur_lc = copy.deepcopy(lcs[rand_control_index])
 
             # select random width in days
-            width_days = random.choice(gauss_widths) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
-            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = width_days/2
+            sim_gauss_sigma = random.choice(sim_gauss_sigmas) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
+            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = sim_gauss_sigma
 
             # select random peak MJD from start of lc to 50 days before discovery date
             peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
@@ -261,11 +282,11 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
                 peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'peak_mjd'] = peak_mjd
 
-            cur_lc = apply_gaussian(cur_lc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=width_days/2, sim_appmag=peak_appmag, print_=False)
+            cur_lc = apply_gaussian(cur_lc, gauss_sigma, flag=flags, sim_gauss=True, sim_peakmjd=peak_mjd, sim_sigma=sim_gauss_sigma, sim_appmag=peak_appmag, print_=False)
 
             # compare max SNRsimsum to detection limit 
             # only calculate max SNRsimsum from measurements within 1 sigma of the simulated bump
-            sigma_ix = cur_lc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(width_days/2), uplim=peak_mjd+(width_days/2), indices=lc_info['baseline_ix'])
+            sigma_ix = cur_lc.ix_inrange(colnames=['MJD'], lowlim=peak_mjd-(sim_gauss_sigma), uplim=peak_mjd+(sim_gauss_sigma), indices=lc_info['baseline_ix'])
             if len(sigma_ix > 0):
                 max_snrsimsum_ix = cur_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
                 detected[f'{gauss_sigma}_{peak}'].t.loc[i,'max_SNRsimsum'] = cur_lc.t.loc[max_snrsimsum_ix,'SNRsimsum']
