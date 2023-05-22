@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 import sys,copy,random,math
-from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
+from pdastro import pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
 
 # suppress deprecation warnings
@@ -277,7 +277,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
 
             # select random width in days
             sim_gauss_sigma = random.choice(sim_gauss_sigmas) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
-            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = sim_gauss_sigma
+            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = f'{sim_gauss_sigma:0.1f}'
 
             # select random peak MJD from start of lc to 50 days before discovery date
             peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
