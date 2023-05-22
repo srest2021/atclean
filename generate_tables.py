@@ -256,7 +256,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         print(f'Simulating gaussians with peak flux {peak:0.2f} (peak appmag {peak_appmag:0.2f})')
 
         # initialize per-peak table
-        detected[f'{gauss_sigma}_{peak}'] = pdastroclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
+        detected[f'{gauss_sigma}_{peak}'] = pdastrostatsclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
         detected[f'{gauss_sigma}_{peak}'].t['gauss_sigma'] = np.full(iterations, gauss_sigma)
         detected[f'{gauss_sigma}_{peak}'].t['peak_flux'] = np.full(iterations, peak)
         detected[f'{gauss_sigma}_{peak}'].t['peak_appmag'] = np.full(iterations, peak_appmag)
