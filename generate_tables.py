@@ -272,7 +272,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         
         for i in range(iterations):
             # pick random control light curve
-            rand_control_index = random.randrange(1, 8, 1)
+            rand_control_index = random.randrange(1, n_controls, 1)
             cur_lc = copy.deepcopy(lcs[rand_control_index])
 
             # select random width in days
