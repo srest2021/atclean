@@ -241,16 +241,9 @@ class plot_atlas_lc():
 
 		cut.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,self.lc.dflux_colnames[0]], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
-		# stopiteration error here
-		#print('GOOD')
-		#self.lc.lcs[0].write(columns=['MJD','uJy','duJy'],indices=good_ix)
-		#print('BAD')
-		#self.lc.lcs[0].write(columns=['MJD','uJy','duJy'],indices=bad_ix)
-		#self.lc.lcs[0].t.loc[bad_ix,['MJD','uJy','duJy']]
 		if len(self.lc.lcs[0].ix_not_null(colnames='uJy', indices=bad_ix)) == 0:
 			# no data to plot; instead, add manual legend
 			handles, labels = cut.get_legend_handles_labels()
-			#patch = mpatches.Patch(facecolor='white',edgecolor=color,label='Cut measurements')
 			patch = mlines.Line2D([0], [0], marker='o', color='w', label='Cut measurements', markerfacecolor='white', markeredgecolor=color, markersize=9)
 			handles.append(patch)
 			fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2) 
