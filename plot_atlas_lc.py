@@ -5,10 +5,13 @@
 
 from pdastro import AnotB
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
+
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
 warnings.filterwarnings("ignore")
-from matplotlib.backends.backend_pdf import PdfPages
 
 # plotting styles
 plt.rc('axes', titlesize=18)
@@ -238,14 +241,28 @@ class plot_atlas_lc():
 
 		cut.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,self.lc.dflux_colnames[0]], fmt='none',ecolor=color,elinewidth=1,c=color)
 		cut.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
-		cut.errorbar(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[bad_ix,self.lc.dflux_colnames[0]], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
-		cut.scatter(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
+		# stopiteration error here
+		#print('GOOD')
+		#self.lc.lcs[0].write(columns=['MJD','uJy','duJy'],indices=good_ix)
+		#print('BAD')
+		#self.lc.lcs[0].write(columns=['MJD','uJy','duJy'],indices=bad_ix)
+		#self.lc.lcs[0].t.loc[bad_ix,['MJD','uJy','duJy']]
+		if len(self.lc.lcs[0].ix_not_null(colnames='uJy', indices=bad_ix)) == 0:
+			# no data to plot; instead, add manual legend
+			handles, labels = cut.get_legend_handles_labels()
+			#patch = mpatches.Patch(facecolor='white',edgecolor=color,label='Cut measurements')
+			patch = mlines.Line2D([0], [0], marker='o', color='w', label='Cut measurements', markerfacecolor='white', markeredgecolor=color, markersize=9)
+			handles.append(patch)
+			fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2) 
+		else:
+			cut.errorbar(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[bad_ix,self.lc.dflux_colnames[0]], fmt='none',mfc='white',ecolor=color,elinewidth=1,c=color)
+			cut.scatter(self.lc.lcs[0].t.loc[bad_ix,'MJD'], self.lc.lcs[0].t.loc[bad_ix,'uJy'], s=50,facecolors='white',edgecolors=color,marker='o',label='Cut measurements')
+			fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2)
+
 		cut.set_title('All measurements')
 		cut.axhline(linewidth=1,color='k')
 		cut.set_xlabel('MJD')
 		cut.set_ylabel('Flux (uJy)')
-
-		fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0),ncol=2)
 
 		clean.errorbar(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], yerr=self.lc.lcs[0].t.loc[good_ix,self.lc.dflux_colnames[0]], fmt='none',ecolor=color,elinewidth=1,c=color)
 		clean.scatter(self.lc.lcs[0].t.loc[good_ix,'MJD'], self.lc.lcs[0].t.loc[good_ix,'uJy'], s=50,color=color,marker='o',label='Kept measurements')
