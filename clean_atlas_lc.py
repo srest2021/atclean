@@ -291,6 +291,7 @@ class clean_atlas_lc():
 			else: # no template region has data, so basically no data... this is pretty bad but hopefully will not come to this
 				lc.corrected_baseline_ix = baseline_ix # will be None
 			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
+
 			return None, lc
 
 		SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2)
@@ -446,12 +447,10 @@ class clean_atlas_lc():
 				clean_ix = AandB(lc.lcs[control_index].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[control_index].ix_inrange(colnames=['chi/N'],uplim=self.estimate_true_uncertainties_chisquare_cut,exclude_uplim=True))
 
 			lc.lcs[control_index].calcaverage_sigmacutloop('uJy', indices=clean_ix, Nsigma=3.0, median_firstiteration=True, verbose=1)
+			#if control_index == 0: print(lc.lcs[control_index].statparams)
 			sigma_true_typical = lc.lcs[control_index].statparams['stdev']
 
 			median_dflux = np.median(lc.lcs[control_index].t.loc[clean_ix, 'duJy'])
-
-			#print(f'# Median uncertainty: {median_dflux:0.2f}; true typical uncertainty: {sigma_true_typical:0.2f}')
-			#output += ''
 
 			if sigma_true_typical > median_dflux:
 				print(f'# True typical uncertainty {sigma_true_typical:0.2f} greater the current median uncertainty {median_dflux:0.2f}. Proceeding with true uncertainties estimation...')
@@ -461,10 +460,12 @@ class clean_atlas_lc():
 
 				# add extra noise source to current noise in new column
 				sigma_extra = np.sqrt(sigma_true_typical*sigma_true_typical - median_dflux)
-				#print(f'## Sigma extra calculated: {sigma_extra:0.4f}')
+				print(f'# Sigma extra calculated: {sigma_extra:0.4f}')
 				#print('# Adding sigma_extra {sigma_extra:0.4f} to new duJy column...')
 				lc.lcs[control_index].t['duJy_new'] = np.nan
 				lc.lcs[control_index].t['duJy_new'] = np.sqrt(lc.lcs[control_index].t['duJy']**2 + sigma_extra**2)
+
+				#lc.lcs[control_index].t['uJy/duJy_new'] = lc.lcs[control_index].t['uJy']/lc.lcs[control_index].t['duJy_new']
 
 				if control_index == 0:
 					output += f' An extra noise of sigma {sigma_extra:0.4f} was added to the uncertainties of the SN light curve and copied to the "duJy_new" column.'
@@ -509,32 +510,37 @@ class clean_atlas_lc():
 			b_kept_i = lc.lcs[0].ix_inrange(colnames=['chi/N'], uplim=cut, indices=indices)
 			b_cut_i = AnotB(indices, b_kept_i)
 
-			# construct new row of limcuts table
-			df = pd.DataFrame([[cut, len(indices), # N
-							len(b_good_i), # Ngood
-							len(b_bad_i), # Nbad
-							len(b_kept_i), # Nkept
-							len(b_cut_i), # Ncut
-							len(AandB(b_good_i,b_kept_i)), # Ngood,kept
-							len(AandB(b_good_i,b_cut_i)), # Ngood,cut
-							len(AandB(b_bad_i,b_kept_i)), # Nbad,kept
-							len(AandB(b_bad_i,b_cut_i)), # Nbad,cut
-							100*len(AandB(b_good_i,b_kept_i))/len(indices), # Ngood,kept/Nbaseline
-							100*len(AandB(b_good_i,b_cut_i))/len(indices), # Ngood,cut/Nbaseline 
-							100*len(AandB(b_bad_i,b_kept_i))/len(indices), # Nbad,kept/Nbaseline
-							100*len(AandB(b_bad_i,b_cut_i))/len(indices), # Nbad,cut/Nbaseline
-							100*len(AandB(b_good_i,b_kept_i))/len(b_good_i), # Ngood,kept/Ngood
-							100*len(AandB(b_good_i,b_cut_i))/len(b_good_i), # Ngood,cut/Ngood = Loss
-							100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i), # Nbad,kept/Nkept = Contamination
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
-							len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
-							len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
-							]], columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
-										 'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
-										 'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
+			if 100*(len(b_kept_i)/len(indices)) < 10:
+ 				# less than 10% of measurements kept, so this chi-square cut not valid
+				print(f'# At cut {cut}, less than 10% of measurements are kept ({100*(len(b_kept_i)/len(indices)):0.2f}% kept)--skipping...')
+				continue
+			else: 
+				# construct new row of limcuts table
+				df = pd.DataFrame([[cut, len(indices), # N
+								len(b_good_i), # Ngood
+								len(b_bad_i), # Nbad
+								len(b_kept_i), # Nkept
+								len(b_cut_i), # Ncut
+								len(AandB(b_good_i,b_kept_i)), # Ngood,kept
+								len(AandB(b_good_i,b_cut_i)), # Ngood,cut
+								len(AandB(b_bad_i,b_kept_i)), # Nbad,kept
+								len(AandB(b_bad_i,b_cut_i)), # Nbad,cut
+								100*len(AandB(b_good_i,b_kept_i))/len(indices), # Ngood,kept/Nbaseline
+								100*len(AandB(b_good_i,b_cut_i))/len(indices), # Ngood,cut/Nbaseline 
+								100*len(AandB(b_bad_i,b_kept_i))/len(indices), # Nbad,kept/Nbaseline
+								100*len(AandB(b_bad_i,b_cut_i))/len(indices), # Nbad,cut/Nbaseline
+								100*len(AandB(b_good_i,b_kept_i))/len(b_good_i), # Ngood,kept/Ngood
+								100*len(AandB(b_good_i,b_cut_i))/len(b_good_i), # Ngood,cut/Ngood = Loss
+								100*len(AandB(b_bad_i,b_kept_i))/len(b_kept_i), # Nbad,kept/Nkept = Contamination
+								len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,cut 3<stn<=5
+								len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,cut 5<stn<=10
+								len(AandB(AandB(b_bad_i,b_cut_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,cut 10<stn 
+								len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=-3, uplim=5, exclude_lowlim=True))), # Nbad,kept 3<stn<=5
+								len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=5, uplim=10, exclude_lowlim=True))), # Nbad,kept 5<stn<=10
+								len(AandB(AandB(b_bad_i,b_kept_i), lc.lcs[0].ix_inrange(colnames=['uJy/duJy'], lowlim=10, exclude_lowlim=True))), # Nbad,kept 10<stn 
+								]], columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
+											 'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination',
+											 'Nbad,cut 3<stn<=5', 'Nbad,cut 5<stn<=10', 'Nbad,cut 10<stn', 'Nbad,kept 3<stn<=5', 'Nbad,kept 5<stn<=10', 'Nbad,kept 10<stn'])
 			limcuts.t = pd.concat([limcuts.t,df],ignore_index=True)
 		return limcuts 
 
@@ -635,7 +641,6 @@ class clean_atlas_lc():
 				# sort by cuts
 				b = limcuts.t.iloc[a]
 				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-				# get midpoint of contam1 and contam2 (two points on either side of lim)
 				contam1_i = np.where(limcuts.t['PSF Chi-Square Cut'] == c.loc[len(c)-1,'PSF Chi-Square Cut'])[0][0]
 				if limcuts.t.loc[contam1_i,'Pcontamination'] == self.contam_lim:
 					contam_cut = limcuts.t.loc[contam1_i,'PSF Chi-Square Cut']
@@ -646,7 +651,7 @@ class clean_atlas_lc():
 					loss_y = np.array([limcuts.t.loc[contam1_i,'Ploss'], limcuts.t.loc[contam2_i,'Ploss']])
 					contam_line = np.polyfit(x,contam_y,1)
 					loss_line = np.polyfit(x,loss_y,1)
-					contam_cut = (self.contam_lim-contam_line[1])/contam_line[0]
+					contam_cut = (self.contam_lim - contam_line[1])/contam_line[0]
 
 		loss_cut_data = self.get_limcuts_data(lc, 'loss_cut', loss_cut, loss_case)
 		contam_cut_data = self.get_limcuts_data(lc, 'contam_cut', contam_cut, contam_case)
