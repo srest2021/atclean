@@ -1193,7 +1193,7 @@ class clean_atlas_lc():
 
 	def get_lc_data(self, lc, snlist_index):
 		if snlist_index == -1:
-			lc.get_tns_data(self.tns_api_key)
+			lc.get_tns_data(self.tns_api_key, self.tns_id, self.bot_name)
 
 			# add row to self.snlist
 			self.snlist.newrow({'tnsname':lc.tnsname, 
