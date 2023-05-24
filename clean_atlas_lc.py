@@ -17,6 +17,8 @@ class clean_atlas_lc():
 	def __init__(self):
 		# credentials
 		self.tns_api_key = None
+		self.tns_id = None
+		self.bot_name = None
 
 		# input/output
 		self.output_dir = None
@@ -123,6 +125,8 @@ class clean_atlas_lc():
 			raise RuntimeError(f'ERROR: Could not load config file at {args.cfg_filename}!')
 
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
+		self.tns_id = cfg['TNS credentials']['tns_id']
+		self.bot_name = cfg['TNS credentials']['bot_name']
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 
