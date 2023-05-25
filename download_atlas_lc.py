@@ -43,7 +43,8 @@ class download_atlas_lc:
 		self.flux2mag_sigmalimit = None
 
 		# other
-		self.lookbacktime_days = None
+		self.mjd_min = None
+		self.mjd_max = None
 		self.controls = False
 		self.control_coords = pdastrostatsclass()
 		self.radius = None
@@ -67,8 +68,10 @@ class download_atlas_lc:
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
 		parser.add_argument('-f','--cfg_filename', default='params.ini', type=str, help='file name of ini file with settings for this class')
-		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time in days')
-		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
+		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time (days)')
+		parser.add_argument('--mjd_min', default=None, type=float, help='minimum MJD to download')
+		parser.add_argument('--mjd_max', default=None, type=float, help='maximum MJD to download')
+		parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
 
 		return parser
 
@@ -85,14 +88,17 @@ class download_atlas_lc:
 
 		print(f'List of transients to download: {args.tnsnames}')
 
+		# ATLAS credentials
 		self.username = cfg['ATLAS credentials']['username'] if args.username is None else args.username
 		print(f'ATLAS username: {self.username}')
 		self.password = getpass(prompt='Enter ATLAS password: ')
 
+		# TNS credentials
 		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
 		self.tns_id = cfg['TNS credentials']['tns_id']
 		self.bot_name = cfg['TNS credentials']['bot_name']
 
+		# data output directory
 		self.output_dir = cfg['Input/output settings']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 
@@ -105,17 +111,47 @@ class download_atlas_lc:
 		else:
 			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
 
-		self.overwrite = not bool(args.dont_overwrite)
+		# overwrite existing files?
+		self.overwrite = bool(args.overwrite)
 		print(f'Overwrite existing light curve files: {self.overwrite}')
+
+		# flux2mag sigma limit
 		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		
-		self.lookbacktime_days = args.lookbacktime_days
-		if not(self.lookbacktime_days is None): 
-			print(f'Lookback time in days: {self.lookbacktime_days}')
+		# mjd min and mjd max
+		if not(args.lookbacktime_days is None) and not(args.mjd_min is None):
+			raise RuntimeError('ERROR: Cannot specify minimum MJD and lookback time at the same time! Choose one argument only')
+		elif not(args.lookbacktime_days is None):
+			print(f'Lookback time (days): {args.lookbacktime_days}')
+			self.mjd_min = float(Time.now().mjd - args.lookbacktime_days)
+			print(f'Min MJD: {self.mjd_min}')
+		elif not(args.mjd_min is None):
+			self.mjd_min = float(args.mjd_min)
+			print(f'Min MJD: {self.mjd_min}')
 		else:
+			self.mjd_min = 50000
 			print('Downloading full light curve(s)')
+		if not(args.mjd_max is None): 
+			self.mjd_max = float(args.mjd_max)
+			print(f'Max MJD: {self.mjd_max}')
+		# else mjd_max is None
+
+		"""
+		if not(args.lookbacktime_days is None): 
+			#self.lookbacktime_days = int(args.lookbacktime_days)
+			#print(f'Lookback time (days): {self.lookbacktime_days}')
+			self.mjd_min = int(Time.now().mjd - args.lookbacktime_days)
+			print(f'Min MJD: {self.mjd_max}')
+		else:
+			self.mjd_min = 50000
+			print('Downloading full light curve(s)')
+		if not(args.mjd_max is None): 
+			self.mjd_max = float(args.mjd_max)
+			print(f'Max MJD: {self.mjd_max}')
+		"""
 		
+		# control lcs
 		self.controls = bool(args.controls)
 		print(f'Control light curve status: {self.controls}')
 		if self.controls:
@@ -147,20 +183,17 @@ class download_atlas_lc:
 		return headers
 
 	# API GUIDE: https://fallingstar-data.com/forcedphot/apiguide/
-	def get_result(self, ra, dec, headers, lookbacktime_days=None, mjd_max=None):
-		if not(lookbacktime_days is None):
-			lookbacktime_days = int(Time.now().mjd - lookbacktime_days)
+	def get_result(self, ra, dec, headers, mjd_min, mjd_max):
+		if mjd_min > mjd_max:
+			raise RuntimeError(f'ERROR: max MJD {mjd_max} less than min MJD {mjd_min}')
+			sys.exit()
 		else:
-			lookbacktime_days = int(Time.now().mjd - 10000)
-		if not(mjd_max is None):
-			mjd_max = int(Time.now().mjd - mjd_max)
-		print(f'MJD min: {lookbacktime_days}; MJD max: {mjd_max}')
-
+			print(f'Min MJD: {mjd_min}; max MJD: {mjd_max}')
 		baseurl = 'https://fallingstar-data.com/forcedphot'
 		task_url = None
 		while not task_url:
 			with requests.Session() as s:
-				resp = s.post(f"{baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":lookbacktime_days,"mjd_max":mjd_max})
+				resp = s.post(f"{baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":mjd_min,"mjd_max":mjd_max})
 				if resp.status_code == 201: 
 					task_url = resp.json()['url']
 					print(f'Task url: {task_url}')
@@ -313,14 +346,14 @@ class download_atlas_lc:
 
 			# add RA and Dec coordinates to control_coords table
 			self.control_coords.newrow({'tnsname':np.nan,
-																  'ra':ra.degree,
-																  'dec':dec.degree,
-																  'ra_offset':ra_offset.degree,
-																  'dec_offset':dec_offset.degree,
-																  'radius':r,
-																  'n_detec':np.nan,
-																  'n_detec_o':np.nan,
-																  'n_detec_c':np.nan})
+										'ra':ra.degree,
+										'dec':dec.degree,
+										'ra_offset':ra_offset.degree,
+										'dec_offset':dec_offset.degree,
+										'radius':r,
+										'n_detec':np.nan,
+										'n_detec_o':np.nan,
+										'n_detec_c':np.nan})
 
 	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, lc, control_index):
@@ -395,10 +428,9 @@ class download_atlas_lc:
 
 		while(True):
 			try:
-				lc.lcs[control_index].t = self.get_result(RaInDeg(ra), DecInDeg(dec), token, lookbacktime_days=self.lookbacktime_days)
+				lc.lcs[control_index].t = self.get_result(RaInDeg(ra), DecInDeg(dec), token, self.mjd_min, self.mjd_max)
 				break
 			except Exception as e:
-				#raise RuntimeError('ERROR in get_result(): '+str(e))
 				print('Exception caught: '+str(e))
 				print('Trying again in 20 seconds! Waiting...')
 				time.sleep(20)
