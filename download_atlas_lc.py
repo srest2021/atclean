@@ -136,7 +136,6 @@ class download_atlas_lc:
 		else:
 			self.mjd_max = float(Time.now().mjd)
 		print(f'Max MJD: {self.mjd_max:0.2f}')
-		# else mjd_max is None
 		
 		# control lcs
 		self.controls = bool(args.controls)
