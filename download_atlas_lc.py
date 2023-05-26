@@ -119,37 +119,24 @@ class download_atlas_lc:
 		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		
-		# mjd min and mjd max
+		# mjd min
 		if not(args.lookbacktime_days is None) and not(args.mjd_min is None):
 			raise RuntimeError('ERROR: Cannot specify minimum MJD and lookback time at the same time! Choose one argument only')
 		elif not(args.lookbacktime_days is None):
 			print(f'Lookback time (days): {args.lookbacktime_days}')
 			self.mjd_min = float(Time.now().mjd - args.lookbacktime_days)
-			print(f'Min MJD: {self.mjd_min}')
 		elif not(args.mjd_min is None):
 			self.mjd_min = float(args.mjd_min)
-			print(f'Min MJD: {self.mjd_min}')
 		else:
-			self.mjd_min = 50000
-			print('Downloading full light curve(s)')
+			self.mjd_min = 50000.0
+		print(f'Min MJD: {self.mjd_min:0.2f}')
+		# mjd max
 		if not(args.mjd_max is None): 
 			self.mjd_max = float(args.mjd_max)
-			print(f'Max MJD: {self.mjd_max}')
+		else:
+			self.mjd_max = float(Time.now().mjd)
+		print(f'Max MJD: {self.mjd_max:0.2f}')
 		# else mjd_max is None
-
-		"""
-		if not(args.lookbacktime_days is None): 
-			#self.lookbacktime_days = int(args.lookbacktime_days)
-			#print(f'Lookback time (days): {self.lookbacktime_days}')
-			self.mjd_min = int(Time.now().mjd - args.lookbacktime_days)
-			print(f'Min MJD: {self.mjd_max}')
-		else:
-			self.mjd_min = 50000
-			print('Downloading full light curve(s)')
-		if not(args.mjd_max is None): 
-			self.mjd_max = float(args.mjd_max)
-			print(f'Max MJD: {self.mjd_max}')
-		"""
 		
 		# control lcs
 		self.controls = bool(args.controls)
@@ -189,6 +176,7 @@ class download_atlas_lc:
 			sys.exit()
 		else:
 			print(f'Min MJD: {mjd_min}; max MJD: {mjd_max}')
+		
 		baseurl = 'https://fallingstar-data.com/forcedphot'
 		task_url = None
 		while not task_url:
