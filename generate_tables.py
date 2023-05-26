@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 import sys,copy,random,math
-from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
+from pdastro import pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
@@ -21,7 +21,7 @@ global detected
 detected = {}
 
 # final table
-detected_per_peak = pdastroclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
+detected_per_peak = pdastrostatsclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
 
 # convert flux to magnitude 
 def flux2mag(flux):
@@ -259,7 +259,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         print(f'Simulating gaussians with peak flux {peak:0.2f} (peak appmag {peak_appmag:0.2f})')
 
         # initialize per-peak table
-        detected[f'{gauss_sigma}_{peak}'] = pdastroclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
+        detected[f'{gauss_sigma}_{peak}'] = pdastrostatsclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
         detected[f'{gauss_sigma}_{peak}'].t['gauss_sigma'] = np.full(iterations, gauss_sigma)
         detected[f'{gauss_sigma}_{peak}'].t['peak_flux'] = np.full(iterations, peak)
         detected[f'{gauss_sigma}_{peak}'].t['peak_appmag'] = np.full(iterations, peak_appmag)
@@ -270,7 +270,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
             cur_lc = copy.deepcopy(lcs[rand_control_index])
 
             # select random width in days
-            sim_gauss_sigma = random.choice(sim_gauss_sigmas) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
+            sim_gauss_sigma = random.choice(sim_gauss_sigmas)
             detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = sim_gauss_sigma
 
             # select random peak MJD from start of lc to 50 days before discovery date
