@@ -27,14 +27,14 @@ Open the config file `params.ini` and replace the following fields with your inf
 		1. Obtain your own key from TNS. A key is obtained automatically once you create a bot, which you can do [here](https://www.wis-tns.org/bots) (log in, then click '+Add bot'). 
 		2. Manually add this information to a table in a text file titled `snlist.txt`. (You can change this file's name in `[Input/output settings]` `snlist_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
 
-		Example `snlist.txt` file:
-		```
-		tnsname           ra          dec  discovery_date  closebright_ra  closebright_dec
-		2023bee 8:56:11.6303 -3:19:32.095    59956.749940             NaN              NaN
-		2017fra 15:31:51.530 +37:24:44.71    57939.340000             NaN              NaN
-		2022oqm 15:09:08.211 +52:32:05.14    59751.190000             NaN              NaN
-		2021foa 13:17:12.354 -17:15:25.77    59268.450000             NaN              NaN
-		```
+			Example `snlist.txt` file:
+			```
+			tnsname           ra          dec  discovery_date  closebright_ra  closebright_dec
+			2023bee 8:56:11.6303 -3:19:32.095    59956.749940             NaN              NaN
+			2017fra 15:31:51.530 +37:24:44.71    57939.340000             NaN              NaN
+			2022oqm 15:09:08.211 +52:32:05.14    59751.190000             NaN              NaN
+			2021foa 13:17:12.354 -17:15:25.77    59268.450000             NaN              NaN
+			```
 3. Replace `[Input/output settings]` `output_dir` with the directory address in which the light curve files and the `snlist.txt` file will be stored.
 4. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
