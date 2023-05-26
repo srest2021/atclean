@@ -2,10 +2,8 @@
 import pandas as pd
 import numpy as np
 import sys,copy,random,math
-from pdastro import pdastrostatsclass, AandB, AnotB, AorB
+from pdastro import pdastroclass, pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
-
-# suppress deprecation warnings
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
 warnings.filterwarnings("ignore")
@@ -23,7 +21,7 @@ global detected
 detected = {}
 
 # final table
-detected_per_peak = pdastrostatsclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
+detected_per_peak = pdastroclass(columns=['gauss_sigma','peak_flux', 'peak_appmag'])
 
 # convert flux to magnitude 
 def flux2mag(flux):
@@ -36,16 +34,16 @@ def mag2flux(mag):
 ######### SETTINGS ######### 
 
 # SN TNS name
-tnsname = '2021foa'
+tnsname = '2023ixf'
 
 # SN discovery date
-discovery_date = 59268.45000 - 20.0
+discovery_date = 60063.727257 - 20.0
 
 # path to directory that contains SN and control light curves
-source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc/2021foa'
+source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc/2023ixf_'
 
 # number of control light curves to load
-n_controls = 8
+n_controls = 16
 
 # filter of light curve to analyze
 filt = 'o'
@@ -54,19 +52,19 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
-gauss_sigma_max = 30
-gauss_sigma_min = 5
-n_gauss_sigmas = 4 # number of gaussian sigmas to generate in log space
+gauss_sigma_max = 140
+gauss_sigma_min = 2.5
+n_gauss_sigmas = 6
 
 # select range of peak apparent magnitudes to simulate
-peak_mag_max = flux2mag(150) # brightest magnitude
-peak_mag_min = flux2mag(2) # faintest magnitude
-n_peaks = 20 # number of magnitudes to generate in log space
+peak_mag_max = 16 #flux2mag(150) # brightest magnitude
+peak_mag_min = 22 #flux2mag(2) # faintest magnitude
+n_peaks = 20 # number of evenly spaced magnitudes to generate
 
 # search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
-sim_gauss_sigma_max = 25
+sim_gauss_sigma_max = 140
 sim_gauss_sigma_min = 2.5
-n_sim_gauss_sigmas = 4 # number of gaussian sigmas to generate in log space
+n_sim_gauss_sigmas = 6
 
 # number of iterations of random sigma and peak mjd per peak
 iterations = 100000 
@@ -76,19 +74,24 @@ iterations = 100000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57406,57568], [57767,57980], [58092,58333], [58491,58705], [58828,59073], [59190,59430], [59560,59831], [59947,60055]]
+valid_mjd_ranges = [[57365,57621], [57762,57983], [58120,58383], [58494,58741], [58822,59093], [59184,59445], [59566,59836]]
 
 ############################
 
 def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
     peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=20))
     peak_fluxes = list(map(mag2flux, peak_mags))
+
+    peak_mags = [round(item, 2) for item in peak_mags]
+    peak_fluxes = [round(item, 2) for item in peak_fluxes]
+
     return peak_mags, peak_fluxes
 
 def generate_gauss_sigmas(gauss_sigma_min, gauss_sigma_max, n_gauss_sigmas):
     log_min = round(math.log2(gauss_sigma_min))
     log_max = round(math.log2(gauss_sigma_max))
     gauss_sigmas = list(np.logspace(log_min, log_max, num=n_gauss_sigmas, base=2))
+    gauss_sigmas = [round(item) for item in gauss_sigmas]
     return gauss_sigmas
 
 # optionally add a simulated pre-eruption to the loaded light curve
@@ -232,10 +235,10 @@ if len(gauss_sigmas) > 1:
         gauss_sigma_col = np.concatenate((gauss_sigma_col, a), axis=None)
 detected_per_peak.t['gauss_sigma'] = gauss_sigma_col
 
-print(f'\nGaussian sigmas in days: ', '['+', '.join('{:.2f}'.format(f) for f in gauss_sigmas)+']')
-print(f'Peak magnitudes: ', '['+', '.join('{:.2f}'.format(f) for f in peak_mags)+']')
-print(f'Peak fluxes (uJy): ', '['+', '.join('{:.2f}'.format(f) for f in peaks)+']')
-print(f'Possible simulated gaussian sigmas in days: ', '['+', '.join('{:.2f}'.format(f) for f in sim_gauss_sigmas)+']')
+print(f'\nGaussian sigmas in days: ', gauss_sigmas)
+print(f'Peak magnitudes: ', peak_mags)
+print(f'Peak fluxes (uJy): ', peaks)
+print(f'Possible simulated gaussian sigmas in days: ', sim_gauss_sigmas)
 print(f'Number of iterations per peak: {iterations}')
 print(f'Flag for bad days: {hex(flags)}')
 
@@ -256,7 +259,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
         print(f'Simulating gaussians with peak flux {peak:0.2f} (peak appmag {peak_appmag:0.2f})')
 
         # initialize per-peak table
-        detected[f'{gauss_sigma}_{peak}'] = pdastrostatsclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
+        detected[f'{gauss_sigma}_{peak}'] = pdastroclass(columns=['gauss_sigma','peak_flux','peak_appmag','peak_mjd','sigma_days','max_SNRsimsum','detection_limit','detected'])
         detected[f'{gauss_sigma}_{peak}'].t['gauss_sigma'] = np.full(iterations, gauss_sigma)
         detected[f'{gauss_sigma}_{peak}'].t['peak_flux'] = np.full(iterations, peak)
         detected[f'{gauss_sigma}_{peak}'].t['peak_appmag'] = np.full(iterations, peak_appmag)
@@ -268,7 +271,7 @@ for gauss_sigma_index in range(len(gauss_sigmas)):
 
             # select random width in days
             sim_gauss_sigma = random.choice(sim_gauss_sigmas) #random.randrange(gauss_width_min,gauss_width_max+1,1) 
-            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = f'{sim_gauss_sigma:0.1f}'
+            detected[f'{gauss_sigma}_{peak}'].t.loc[i,'sigma_days'] = sim_gauss_sigma
 
             # select random peak MJD from start of lc to 50 days before discovery date
             peak_mjd = random.randrange(cur_lc.t['MJDbin'].iloc[0]-0.5, int(discovery_date)-50, 1) + 0.5
