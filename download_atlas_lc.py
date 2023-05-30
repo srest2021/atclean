@@ -239,7 +239,7 @@ class download_atlas_lc:
 
 	# get RA and Dec coordinates of control light curves in a circle pattern around SN location and add to control_coords table
 	def get_control_coords(self, sn_lc):
-		self.control_coords.t = pd.DataFrame(columns=['tnsname','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
+		self.control_coords.t = pd.DataFrame(columns=['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
 
 		sn_ra = Angle(RaInDeg(sn_lc.ra), u.degree)
 		sn_dec = Angle(DecInDeg(sn_lc.dec), u.degree)
@@ -266,6 +266,7 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
+										'control_id':0,
 										'ra': f'{sn_ra.degree:0.8f}',
 										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':0,
@@ -303,6 +304,7 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
+										'control_id':0,
 										'ra': f'{sn_ra.degree:0.8f}',
 										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':np.nan,
@@ -333,6 +335,7 @@ class download_atlas_lc:
 
 			# add RA and Dec coordinates to control_coords table
 			self.control_coords.newrow({'tnsname':np.nan,
+										'control_id':i,
 										'ra': f'{ra.degree:0.8f}',
 										'dec': f'{dec.degree:0.8f}',
 										'ra_offset': f'{ra_offset.degree:0.8f}',
@@ -457,7 +460,7 @@ class download_atlas_lc:
 			
 			self.get_control_coords(lc)
 			with pd.option_context('display.float_format', '{:,.8f}'.format):
-				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','ra','dec','ra_offset','dec_offset','radius']])
+				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):

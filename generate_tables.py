@@ -61,7 +61,7 @@ peak_mag_max = 16 #flux2mag(150) # brightest magnitude
 peak_mag_min = 22 #flux2mag(2) # faintest magnitude
 n_peaks = 20 # number of evenly spaced magnitudes to generate
 
-# search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
+# select range of gaussian sigmas to simulate
 sim_gauss_sigma_max = 140
 sim_gauss_sigma_min = 2.5
 n_sim_gauss_sigmas = 6
