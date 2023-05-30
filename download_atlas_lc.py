@@ -266,8 +266,8 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
-										'ra':sn_ra.degree,
-										'dec':sn_dec.degree,
+										'ra': f'{sn_ra.degree:0.8f}',
+										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':0,
 										'dec_offset':0,
 										'radius':0,
@@ -303,8 +303,8 @@ class download_atlas_lc:
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
-										'ra':sn_ra.degree,
-										'dec':sn_dec.degree,
+										'ra': f'{sn_ra.degree:0.8f}',
+										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':np.nan,
 										'dec_offset':np.nan,
 										'radius':np.nan,
@@ -333,10 +333,10 @@ class download_atlas_lc:
 
 			# add RA and Dec coordinates to control_coords table
 			self.control_coords.newrow({'tnsname':np.nan,
-										'ra':ra.degree,
-										'dec':dec.degree,
-										'ra_offset':ra_offset.degree,
-										'dec_offset':dec_offset.degree,
+										'ra': f'{ra.degree:0.8f}',
+										'dec': f'{dec.degree:0.8f}',
+										'ra_offset': f'{ra_offset.degree:0.8f}',
+										'dec_offset': f'{dec_offset.degree:0.8f}',
 										'radius':r,
 										'n_detec':np.nan,
 										'n_detec_o':np.nan,
@@ -346,8 +346,8 @@ class download_atlas_lc:
 	def update_control_coords(self, lc, control_index):
 		o_ix = lc.lcs[control_index].ix_equal(colnames=['F'],val='o')
 		self.control_coords.t.loc[control_index,'n_detec'] = len(lc.lcs[control_index].t)
-		self.control_coords.t.loc[control_index,'n_detec_o'] = len(lc.lcs[control_index].t.loc[o_ix])
-		self.control_coords.t.loc[control_index,'n_detec_c'] = len(lc.lcs[control_index].t.loc[AnotB(lc.lcs[control_index].getindices(),o_ix)])
+		self.control_coords.t.loc[control_index,'n_detec_o'] = len(o_ix)
+		self.control_coords.t.loc[control_index,'n_detec_c'] = len(AnotB(lc.lcs[control_index].getindices(),o_ix))
 
 	def get_lc_data(self, args, lc, snlist_index):
 		# get RA, Dec, and discovery date from command line if available
@@ -463,7 +463,6 @@ class download_atlas_lc:
 			for control_index in range(1,len(self.control_coords.t)):
 				# only download control light curve if overwriting existing files
 				if not(self.overwrite) and lc.exists(self.output_dir, 'o', control_index=control_index) and lc.exists(self.output_dir, 'c', control_index=control_index):
-
 					print(f'Control light curve {control_index:03d} files already exist and overwrite is set to {self.overwrite}! Skipping download...')
 				else:
 					print(f'\nDownloading control light curve {control_index:03d}...')
