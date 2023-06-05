@@ -4,6 +4,8 @@ import numpy as np
 import sys,copy,random,math
 from pdastro import pdastrostatsclass, AandB, AnotB, AorB
 from asym_gaussian import gauss2lc
+
+# suppress deprecation warnings
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
 warnings.filterwarnings("ignore")
@@ -34,16 +36,16 @@ def mag2flux(mag):
 ######### SETTINGS ######### 
 
 # SN TNS name
-tnsname = '2023ixf'
+tnsname = '2017fra'
 
 # SN discovery date
-discovery_date = 60063.727257 - 20.0
+discovery_date = 57939.34 - 20.0
 
 # path to directory that contains SN and control light curves
-source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc/2023ixf_'
+source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc/2017fra'
 
 # number of control light curves to load
-n_controls = 16
+n_controls = 8
 
 # filter of light curve to analyze
 filt = 'o'
@@ -54,27 +56,27 @@ mjd_bin_size = 1.0
 # search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
 gauss_sigma_max = 140
 gauss_sigma_min = 2.5
-n_gauss_sigmas = 6
+n_gauss_sigmas = 6 # number of gaussian sigmas to generate in log space
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 #flux2mag(150) # brightest magnitude
 peak_mag_min = 22 #flux2mag(2) # faintest magnitude
-n_peaks = 20 # number of evenly spaced magnitudes to generate
+n_peaks = 20 # number of magnitudes to generate in log space
 
-# select range of gaussian sigmas to simulate
+# search for pre-SN bumps with gaussian sigmas APPROXIMATELY within the following range
 sim_gauss_sigma_max = 140
 sim_gauss_sigma_min = 2.5
-n_sim_gauss_sigmas = 6
+n_sim_gauss_sigmas = 6 # number of gaussian sigmas to generate in log space
 
 # number of iterations of random sigma and peak mjd per peak
-iterations = 100000 
+iterations = 50000 
 
 # define flag that defines bad measurements (to filter out bad days in lc)
 # if more than one, use bitwise OR (this symbol: |) to combine them
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57365,57621], [57762,57983], [58120,58383], [58494,58741], [58822,59093], [59184,59445], [59566,59836]]
+valid_mjd_ranges = [[57463,57622], [57762,58047], [58117,58408], [58473,58773], [58846,59131], [59214,59509], [59566,59862], [59958,60085]]
 
 ############################
 

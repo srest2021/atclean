@@ -871,8 +871,8 @@ class clean_atlas_lc():
 		print('\nNow applying control light curve cut...')
 
 		# clear any previous flags in control light curves' 'Mask' columns
-		for control_index in range(1,self.num_controls+1):
-			lc.lcs[control_index].t['Mask'] = 0
+		#for control_index in range(1,self.num_controls+1):
+			#lc.lcs[control_index].t['Mask'] = 0
 
 		#lc = self.verify_mjds(lc)
 		lc = self.get_control_stats(lc)
