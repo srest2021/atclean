@@ -42,9 +42,10 @@ class download_atlas_lc:
 		self.overwrite = True
 		self.flux2mag_sigmalimit = None
 
-		# other
 		self.mjd_min = None
 		self.mjd_max = None
+
+		# other
 		self.controls = False
 		self.control_coords = pdastrostatsclass()
 		self.radius = None
@@ -52,6 +53,7 @@ class download_atlas_lc:
 		self.closebright = False
 		self.closebright_coords = None
 		self.closebright_min_dist = None
+		self.control_coords_filename = None
 
 	# define command line arguments
 	def define_args(self, parser=None, usage=None, conflict_handler='resolve'):
@@ -64,6 +66,7 @@ class download_atlas_lc:
 
 		parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
 		parser.add_argument('--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
+		parser.add_argument('--ctrl_coords', type=str, default=None, help='file name of text file in output_dir containing table of control light curve coordinates')
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
@@ -141,20 +144,26 @@ class download_atlas_lc:
 		self.controls = bool(args.controls)
 		print(f'Control light curve status: {self.controls}')
 		if self.controls:
-			self.radius = float(cfg['Control light curve settings']['radius'])
-			self.num_controls = int(cfg['Control light curve settings']['num_controls'])
-			print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
-			if args.closebright:
-				self.closebright = True
-				if len(args.tnsnames) > 1:
-					raise RuntimeError('ERROR: Only one SN allowed when specifying close bright object coordinates in command line!')
-				self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
-				if len(self.closebright_coords) > 2:
-					raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
-				print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+			if args.ctrl_coords is None:
+				self.radius = float(cfg['Control light curve settings']['radius'])
+				self.num_controls = int(cfg['Control light curve settings']['num_controls'])
+				print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
 				
-				self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
-				print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
+				if args.closebright:
+					self.closebright = True
+					if len(args.tnsnames) > 1:
+						raise RuntimeError('ERROR: Only one SN allowed when specifying close bright object coordinates in command line!')
+					
+					self.closebright_coords = [coord.strip() for coord in args.closebright.split(",")]
+					if len(self.closebright_coords) > 2:
+						raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
+					print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
+					
+					self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
+					print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
+			else:
+				self.control_coords_filename = f'{self.output_dir}/{args.ctrl_coords}'
+				print(f'# Path name of txt file with control light curve coordinates: {self.control_coords_filename}')
 			
 	def connect_atlas(self):
 		baseurl = 'https://fallingstar-data.com/forcedphot'
@@ -237,32 +246,76 @@ class download_atlas_lc:
 		
 		return dfresult
 
+	def get_filt_lens(self, sn_lc):
+		if len(sn_lc.lcs) > 0: # SN lc has been downloaded
+			return sn_lc.get_filt_lens()
+		else: # SN lc has not been downloaded, so temporarily load both c and o lcs to get indices
+			temp_o = pdastrostatsclass()
+			temp_o.load_spacesep(sn_lc.get_filename('o', 0, self.output_dir), delim_whitespace=True)
+			o_len = len(temp_o.t)
+
+			temp_c = pdastrostatsclass()
+			temp_c.load_spacesep(sn_lc.get_filename('c', 0, self.output_dir), delim_whitespace=True)
+			c_len = len(temp_c.t)
+			return o_len, c_len
+
+	# convert ra string to angle
+	def ra_str2angle(self, ra):
+		return Angle(RaInDeg(ra), u.degree)
+
+	# convert dec string to angle
+	def dec_str2angle(self, dec):
+		return Angle(DecInDeg(dec), u.degree)
+
+	# get distance between 2 locations specified by ra and dec angles
+	def get_distance(self, ra1, dec1, ra2, dec2):
+		c1 = SkyCoord(ra1, dec1, frame='fk5')
+		c2 = SkyCoord(ra2, dec2, frame='fk5')
+		return c1.separation(c2)
+
+	def read_coords_from_file(self, sn_ra, sn_dec):
+		print(f'Loading control coordinates file at {self.control_coords_filename}...')
+		temp = pdastrostatsclass()
+		temp.load_spacesep(self.control_coords_filename, delim_whitespace=True)
+
+		if len(temp.t) < 1:
+			raise RuntimeError(f'ERROR: no rows in {self.control_coords_filename}--must have at least one control lc location!')
+
+		for i in range(len(temp.t)):
+			ra = self.ra_str2angle(temp.t.loc[i,'ra'])
+			dec = self.dec_str2angle(temp.t.loc[i,'dec'])
+			r = self.get_distance(sn_ra, sn_dec, ra, dec)
+
+			self.control_coords.newrow({'tnsname':np.nan,
+										'control_id':i,
+										'ra': f'{ra.degree:0.8f}',
+										'dec': f'{dec.degree:0.8f}',
+										'ra_offset': np.nan,
+										'dec_offset': np.nan,
+										'radius':r.arcsecond,
+										'n_detec':np.nan,
+										'n_detec_o':np.nan,
+										'n_detec_c':np.nan})
+
+		with pd.option_context('display.float_format', '{:,.8f}'.format):
+			print('Control light curve coordinates read from txt file: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
+
 	# get RA and Dec coordinates of control light curves in a circle pattern around SN location and add to control_coords table
 	def get_control_coords(self, sn_lc):
 		self.control_coords.t = pd.DataFrame(columns=['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
 
-		sn_ra = Angle(RaInDeg(sn_lc.ra), u.degree)
-		sn_dec = Angle(DecInDeg(sn_lc.dec), u.degree)
+		sn_ra = self.ra_str2angle(sn_lc.ra)
+		sn_dec = self.dec_str2angle(sn_lc.dec)
+		o_len, c_len = self.get_filt_lens(sn_lc)
 
-		if not self.closebright:
-			r = Angle(self.radius, u.arcsec)
+		# set first row of control_coords table according to closebright status
+		if not self.closebright: # pattern around SN location
+			if self.control_coords_filename is None:
+				r = Angle(self.radius, u.arcsec)
 
 			# circle pattern center is SN location
 			ra_center = sn_ra
 			dec_center = sn_dec
-
-			# get SN light curve's o and c indices and lengths
-			if len(sn_lc.lcs) > 0: # SN lc has been downloaded
-				o_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='o'))
-				c_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='c'))
-			else: # SN lc has not been downloaded, so temporarily load both c and o lcs to get indices
-				temp_o = pdastrostatsclass()
-				temp_o.load_spacesep(sn_lc.get_filename('o', 0, self.output_dir), delim_whitespace=True)
-				o_len = len(temp_o.t)
-
-				temp_c = pdastrostatsclass()
-				temp_c.load_spacesep(sn_lc.get_filename('c', 0, self.output_dir), delim_whitespace=True)
-				c_len = len(temp_c.t)
 
 			# add SN coordinates as first row
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
@@ -275,32 +328,18 @@ class download_atlas_lc:
 										'n_detec':o_len+c_len,
 										'n_detec_o':o_len,
 										'n_detec_c':c_len})
-		else:
+		
+		else: # pattern around close bright object
 			# coordinates of close bright object
-			cb_ra = Angle(RaInDeg(self.closebright_coords[0]), u.degree)
-			cb_dec = Angle(DecInDeg(self.closebright_coords[1]), u.degree)
+			cb_ra = self.ra_str2angle(self.closebright_coords[0])
+			cb_dec = self.dec_str2angle(self.closebright_coords[1])
 
 			# circle pattern radius is distance between SN and bright object
-			c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
-			c2 = SkyCoord(cb_ra, cb_dec, frame='fk5')
-			r = c1.separation(c2)
+			r = self.get_distance(sn_ra, sn_dec, cb_ra, cb_dec).arcsecond
 
 			# circle pattern center is close bright object location
 			ra_center = cb_ra
 			dec_center = cb_dec
-
-			# get SN light curve's o and c indices and lengths
-			if len(sn_lc.lcs) > 0: # SN lc has been downloaded
-				o_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='o'))
-				c_len = len(sn_lc.lcs[0].ix_equal(colnames=['F'],val='c'))
-			else: # SN lc has not been downloaded, so temporarily load both c and o lcs to get indices
-				temp_o = pdastrostatsclass()
-				temp_o.load_spacesep(sn_lc.get_filename('o', 0, self.output_dir), delim_whitespace=True)
-				o_len = len(temp_o.t)
-
-				temp_c = pdastrostatsclass()
-				temp_c.load_spacesep(sn_lc.get_filename('c', 0, self.output_dir), delim_whitespace=True)
-				c_len = len(temp_c.t)
 
 			# add SN coordinates as first row; columns like ra_offset, dec_offset, etc. do not apply here
 			self.control_coords.newrow({'tnsname':sn_lc.tnsname,
@@ -314,36 +353,40 @@ class download_atlas_lc:
 										'n_detec_o':o_len,
 										'n_detec_c':c_len},ignore_index=True)
 
-		for i in range(self.num_controls):
-			angle = Angle(i*360.0/self.num_controls, u.degree)
-			
-			ra_distance = Angle(r.degree*math.cos(angle.radian), u.degree)
-			ra_offset = Angle(ra_distance.degree*(1.0/math.cos(dec_center.radian)), u.degree)
-			ra = Angle(ra_center.degree + ra_offset.degree, u.degree)
+		if not(self.control_coords_filename is None): # read in control lc coordinates from txt file
+			self.read_coords_from_file(sn_ra, sn_dec)
+		
+		else: # calculate control lc coordinates
+			for i in range(self.num_controls):
+				angle = Angle(i*360.0 / self.num_controls, u.degree)
+				
+				ra_distance = Angle(r.degree * math.cos(angle.radian), u.degree)
+				ra_offset = Angle(ra_distance.degree * (1.0/math.cos(dec_center.radian)), u.degree)
+				ra = Angle(ra_center.degree + ra_offset.degree, u.degree)
 
-			dec_offset = Angle(r.degree*math.sin(angle.radian), u.degree)
-			dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
+				dec_offset = Angle(r.degree * math.sin(angle.radian), u.degree)
+				dec = Angle(dec_center.degree + dec_offset.degree, u.degree)
 
-			if self.closebright:
-				# check to see if control light curve location is within minimum distance from SN location
-				c1 = SkyCoord(sn_ra, sn_dec, frame='fk5')
-				c2 = SkyCoord(ra, dec, frame='fk5')
-				offset_sep = c1.separation(c2).arcsecond
-				if offset_sep < self.closebright_min_dist:
-					print(f'Control light curve {i+1:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
-					continue
+				if self.closebright: # check to see if control light curve location is within minimum distance from SN location
+					offset_sep = self.get_distance(sn_ra, sn_dec, ra, dec).arcsecond
+					if offset_sep < self.closebright_min_dist:
+						print(f'Control light curve {i+1:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
+						continue
 
-			# add RA and Dec coordinates to control_coords table
-			self.control_coords.newrow({'tnsname':np.nan,
-										'control_id':i,
-										'ra': f'{ra.degree:0.8f}',
-										'dec': f'{dec.degree:0.8f}',
-										'ra_offset': f'{ra_offset.degree:0.8f}',
-										'dec_offset': f'{dec_offset.degree:0.8f}',
-										'radius':r,
-										'n_detec':np.nan,
-										'n_detec_o':np.nan,
-										'n_detec_c':np.nan})
+				# add RA and Dec coordinates to control_coords table
+				self.control_coords.newrow({'tnsname':np.nan,
+											'control_id':i,
+											'ra': f'{ra.degree:0.8f}',
+											'dec': f'{dec.degree:0.8f}',
+											'ra_offset': f'{ra_offset.degree:0.8f}',
+											'dec_offset': f'{dec_offset.degree:0.8f}',
+											'radius':r,
+											'n_detec':np.nan,
+											'n_detec_o':np.nan,
+											'n_detec_c':np.nan})
+
+			with pd.option_context('display.float_format', '{:,.8f}'.format):
+				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
 
 	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, lc, control_index):
@@ -440,7 +483,6 @@ class download_atlas_lc:
 
 		return lc
 
-
 	# download SN light curve and, if necessary, control light curves, then save
 	def download_lcs(self, args, tnsname, token, snlist_index):
 		lc = atlas_lc(tnsname=tnsname)
@@ -459,8 +501,6 @@ class download_atlas_lc:
 			print('Control light curve downloading set to True')
 			
 			self.get_control_coords(lc)
-			with pd.option_context('display.float_format', '{:,.8f}'.format):
-				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
 
 			# download control light curves
 			for control_index in range(1,len(self.control_coords.t)):
@@ -477,6 +517,8 @@ class download_atlas_lc:
 					lc.save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
 
 			# save control_coords table
+			#self.control_coords.write()
+			#self.control_coords.default_formatters = {'ra':'{:.8f}'.format,'dec':'{:.8d}'.format,'ra_offset':'{:.8d}'.format,'dec_offset':'{:.8d}'.format}
 			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 
 	# loop through each SN given and download light curves

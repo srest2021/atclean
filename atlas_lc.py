@@ -159,3 +159,8 @@ class atlas_lc:
 		if indices is None or len(indices)==0:
 			indices = self.lcs[0].getindices()
 		return np.percentile(self.lcs[0].t.loc[indices, 'uJy'], percentile)
+
+	def get_filt_lens(self, control_index=0):
+		o_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='o'))
+		c_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='c'))
+		return o_len, c_len

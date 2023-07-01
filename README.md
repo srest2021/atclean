@@ -49,6 +49,7 @@ This script allows you to download ATLAS light curve(s) using [ATLAS's REST API]
 - `-c` or `--controls`: download control light curves in addition to SN light curve
 - `--closebright`: manually input comma-separated RA and Dec coordinates of a close bright object interfering with the target SN's light curve and use as the center of the circle of control light curves
 	- If you are downloading multiple SNe at once and have multiple sets of coordinates, they must be manually input to the SN list text file instead of this argument, as they cannot be automatically fetched from TNS.
+- `--ctrl_coords`: manually input file name of txt file located within `output_dir` that contains control light curve coordinates; this txt file need only contain two space-separated columns titled "ra" and "dec" with the RA and Dec coordinates of the controls
 - `-u` or `--username`: override default username given in `params.ini` config file
 - `-a` or `--tns_api_key`: override default TNS API key given in `params.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `params.ini`)

@@ -486,6 +486,16 @@ class clean_atlas_lc():
 
 		# update SN mask column with final chi-square cut and apply same cut to control light curves
 		for control_index in range(self.num_controls+1):
+			# DELETE ME
+			"""
+			if control_index == 0:
+				print('kdjdjdjdjdjdjdjdjjdjdjdjd')
+				mjd_ix = lc.lcs[0].ix_inrange(colnames=['MJD'], uplim=60086, exclude_uplim=True)
+				print('LAST MJD',lc.lcs[0].t.loc[mjd_ix[-1],'MJD'])
+				cut_ix = lc.lcs[control_index].ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
+				cut_ix = AandB(mjd_ix, cut_ix)
+			else:
+			"""
 			cut_ix = lc.lcs[control_index].ix_inrange(colnames=['duJy'], lowlim=self.uncertainty_cut, exclude_lowlim=True)
 			lc.update_mask_col(self.flags['uncertainty'], cut_ix, control_index=control_index)
 			if control_index == 0:
@@ -763,6 +773,16 @@ class clean_atlas_lc():
 
 		# update SN mask column with final chi-square cut and apply same cut to control light curves
 		for control_index in range(self.num_controls+1):
+			# DELETE ME
+			"""
+			if control_index == 0:
+				print('kdjdjdjdjdjdjdjdjjdjdjdjd')
+				mjd_ix = lc.lcs[0].ix_inrange(colnames=['MJD'], uplim=60086, exclude_uplim=True)
+				print('LAST MJD',lc.lcs[0].t.loc[mjd_ix[-1],'MJD'])
+				cut_ix = lc.lcs[0].ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
+				cut_ix = AandB(mjd_ix, cut_ix)
+			else:
+			"""
 			cut_ix = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], lowlim=final_cut, exclude_lowlim=True)
 			lc.update_mask_col(self.flags['chisquare'], cut_ix, control_index=control_index)
 			if control_index == 0:

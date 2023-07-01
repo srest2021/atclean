@@ -381,9 +381,7 @@ class pdastroclass:
                 if self.t[hexcol].dtype == object and isinstance(self.t.at[0,hexcol],str):
                     if not(hexpattern.search(self.t.at[0,hexcol]) is None):
                          self.t[hexcol] = self.t[hexcol].apply(int, base=16)
-               
-                
-            
+
         return(0)
     
     def getindices(self,indices=None):
