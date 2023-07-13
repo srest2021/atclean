@@ -280,6 +280,7 @@ class download_atlas_lc:
 
 		if len(temp.t) < 1:
 			raise RuntimeError(f'ERROR: no rows in {self.control_coords_filename}--must have at least one control lc location!')
+		self.num_controls = len(temp.t)
 
 		for i in range(len(temp.t)):
 			ra = self.ra_str2angle(temp.t.loc[i,'ra'])

@@ -954,7 +954,7 @@ class clean_atlas_lc():
 
 				# get average mjd
 				# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-				lc.lcs[control_index].calcaverage_sigmacutloop('MJD', noisecol=lc.dflux_colnames[control_index], indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+				lc.lcs[control_index].calcaverage_sigmacutloop('MJD', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
 				avg_mjd = lc.lcs[control_index].statparams['mean']
 
 				# add row and flag
