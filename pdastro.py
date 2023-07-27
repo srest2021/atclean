@@ -982,8 +982,8 @@ class pdastrostatsclass(pdastroclass):
         
         
 
-    def calcaverage_errorcut(self,datacol, noisecol, indices=None, 
-                             mean=None,Nsigma=None,medianflag=False,
+    def calcaverage_errorcut(self, datacol, noisecol, indices=None, 
+                             mean=None, Nsigma=None, medianflag=False,
                              return_ix=False, verbose=0):
 
         # get the indices based on input.
