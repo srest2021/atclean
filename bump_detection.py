@@ -440,12 +440,19 @@ class EfficiencyTable:
                         if sim_erup_sigma is None:
                             raise RuntimeError('ERROR: None element in sim_sigmas array, but no sim_erup_sigma passed')
                         df.loc[j, 'sim_erup_sigma'] = sim_erup_sigma
-                        j += 1
                     else: 
                         df.loc[j, 'sim_gauss_sigma'] = sim_sigma
-                        j += 1
+                    j += 1
             self.t = pd.concat([self.t, df], ignore_index=True)
     
+    def load(self, tables_dir, filename):
+        print(f'Loading efficiency table {filename}...')
+        filename = f'{tables_dir}/{filename}'
+        try:
+            self.t = pd.read_table(filename,delim_whitespace=True)
+        except Exception as e:
+            raise RuntimeError(f'ERROR: Could not load efficiency table at {filename}: {str(e)}')
+
     def reset(self):
         for col in self.t.columns:
             if re.search('^pct_detec_',col):
@@ -476,7 +483,6 @@ class EfficiencyTable:
                 for fom_limit in self.fom_limits[gauss_sigma]:
                     self.t.loc[i,f'pct_detec_{fom_limit}'] = sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
                                                                                                                                  sim_sigma=sim_sigma)
-
     
     def save(self, tables_dir):
         filename = f'{tables_dir}/efficiencies.txt'
@@ -615,10 +621,11 @@ if __name__ == "__main__":
 
             sd[key].save(tables_dir)
 
-    print()
-    print(sd.keys())
+    #print()
+    #print(sd.keys())
+    print('Success')
 
     #e.set_fom_limits([[2, 5], [6, 8]])
     #e.get_efficiencies(sd)
     #print(e.t.to_string())
-    e.save(tables_dir)
+    #e.save(tables_dir)
