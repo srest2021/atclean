@@ -505,24 +505,32 @@ class EfficiencyTable:
                                                                                                                                  sim_sigma=sim_sigma)
 
     def get_subset(self, gauss_sigma=None, fom_limit=None, sim_sigma=None, erup=False):
-        if gauss_sigma is None:
-            ix = get_ix(self.t)
-        else:
+        colnames = ['gauss_sigma', 'peak_appmag', 'peak_flux']
+        
+        ix = get_ix(self.t)
+        if not(gauss_sigma is None):
             ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) #self.get_gauss_sigma_ix(gauss_sigma)
 
-        if not(sim_sigma is None): 
+        if sim_sigma is None:
+            colnames += ['sim_gauss_sigma', 'sim_erup_sigma']
+        else: 
             if erup:
                 sim_sigma_colname = 'sim_erup_sigma'
             else:
                 sim_sigma_colname = 'sim_gauss_sigma'
+            colnames.append(sim_sigma_colname)
             ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) #self.get_sim_sigma_ix(sim_sigma, sim_sigma_colname))
-        
-        if not(fom_limit is None):
-            colnames = ['gauss_sigma','peak_appmag','peak_flux','sim_gauss_sigma', 'sim_erup_sigma', f'pct_detec_{fom_limit}']
-            return self.t.loc[ix, colnames]
-        else:
-            return self.t.loc[ix,:]
 
+        if not(fom_limit is None):
+            try: 
+                colnames.append(f'pct_detec_{fom_limit}')
+            except Exception as e:
+                raise RuntimeError(f'ERROR: no matching FOM limit {fom_limit}: {str(e)}')
+        else:
+            for col in self.t.columns:
+                colnames.append(col)
+        
+        return self.t.loc[ix,colnames]
 
 """
 MISCELLANEOUS
