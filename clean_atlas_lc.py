@@ -107,6 +107,7 @@ class clean_atlas_lc():
 		parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
 		parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
 
+		parser.add_argument('--skip_tc', default=False, action='store_true', help='skip correction for ATLAS template changes')
 		parser.add_argument('-f','--cfg_filename', default='params.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('--dont_overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
@@ -142,8 +143,11 @@ class clean_atlas_lc():
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 		self.num_controls = int(cfg['Control light curve settings']['num_controls'])
 		print(f'Number of control light curves: {self.num_controls}')
-		self.plot = args.plot
+		self.plot = bool(args.plot)
 		print(f'Plotting: {self.plot}')
+		self.skip_tc = bool(args.skip_tc)
+		if self.skip_tc:
+			print(f'Skipping correction for ATLAS template changes: {self.skip_tc}')
 
 		self.estimate_true_uncertainties = cfg['True uncertainties estimation settings']['estimate_true_uncertainties']=='True'
 		self.estimate_true_uncertainties_chisquare_cut = float(cfg['True uncertainties estimation settings']['estimate_true_uncertainties_chisquare_cut'])
@@ -279,9 +283,9 @@ class clean_atlas_lc():
 				print('## TEMPLATE REGION t%d MJD RANGE: not found' % region_index)
 		
 		# cannot do flux correction?
-		if len(found_region_ix) <= 1:
+		if len(found_region_ix) <= 1 or self.skip_tc:
 			print('WARNING: At least 2 template regions do not contain any data. Therefore, flux could not be corrected according to the ATLAS reference template changes. Skipping...')
-			
+			"""
 			# try to get baseline flux
 			SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2) # find region with SN in it
 			if SN_region_index in found_region_ix: # SN discovery date is in one of the found regions
@@ -296,6 +300,12 @@ class clean_atlas_lc():
 				lc.corrected_baseline_ix = baseline_ix # will be None
 			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
 
+			print(len(lc.corrected_baseline_ix), lc.corrected_baseline_ix)
+			print(len(lc.during_sn_ix), lc.during_sn_ix)
+			sys.exit()
+			"""
+			lc.corrected_baseline_ix = baseline_ix
+			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
 			return None, lc
 
 		SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2)
@@ -379,8 +389,7 @@ class clean_atlas_lc():
 		# automatically define baseline regions according to discovery date
 		regions, lc = self.get_baseline_regions(lc, Ndays_min=6)
 		if regions is None:
-			# TODO: ADD SECTION TO README
-			output += 'Not enough data found in at least 2 template regions. Could not correct for template changes.'
+			output += 'Either correction was skipped, or not enough data found in at least 2 template regions. Could not correct for template changes.'
 			return lc, output
 
 		# get indices of measurements with x2<=5 so that when getting median, use these indices if possible
@@ -1152,9 +1161,10 @@ class clean_atlas_lc():
 		f.write(f'\n\n## FILTER: {filt}')
 
 
-		f.write('\n\n### Correction for ATLAS reference template changes')
-		f.write(f'\nWe take into account ATLAS\'s periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882.')
-		f.write(templates_output)
+		if not(self.skip_tc):
+			f.write('\n\n### Correction for ATLAS reference template changes')
+			f.write(f'\nWe take into account ATLAS\'s periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882.')
+			f.write(templates_output)
 
 		if self.uncertainties:
 			f.write(f'\n\n### Uncertainty cut')

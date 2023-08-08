@@ -132,17 +132,17 @@ class atlas_lc:
 		self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
-	def load(self, output_dir, filt, is_averaged=False, num_controls=0):
+	def load(self, output_dir, filt, num_controls=0):
 		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
 		print(output)
 
-		self.load_lc(output_dir, filt, is_averaged=is_averaged)
+		self.load_lc(output_dir, filt, is_averaged=self.is_averaged)
 		for control_index in range(1, num_controls+1):
-			self.load_lc(output_dir, filt, is_averaged=is_averaged, control_index=control_index)
+			self.load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index)
 
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
 
-	def exists(self, output_dir, filt, is_averaged=False, control_index=0):
+	def exists(self, output_dir, filt, control_index=0):
 		filename = self.get_filename(filt, control_index, output_dir)
 		return os.path.isfile(filename)
 

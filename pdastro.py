@@ -1064,7 +1064,7 @@ class pdastrostatsclass(pdastroclass):
         # get the indices based on input.
         indices=self.getindices(indices)
         if len(indices)==0:
-            print('Warning!! no data passed for sigma cut!')
+            print('WARNING: no data passed for sigma cut')
             self.reset()
             return(2)
         
