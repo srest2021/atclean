@@ -14,10 +14,6 @@ import warnings
 warnings.simplefilter('error', RuntimeWarning)
 warnings.filterwarnings("ignore")
 
-# TODO: FIX
-S1 = 5
-S2 = 10
-
 """
 SETTINGS
 """
@@ -47,12 +43,17 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [S1, S2] #[5, 10, 20] #[5, 80, 200]
+gauss_sigmas = [15, 3] #[5, 10, 20] #[5, 80, 200]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[S1, S2, None], [S1, S2, None]] #[[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]]
+sim_sigmas = [[15, 3, None], [15, 3, None]] #[[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]]
+
+# OPTIONAL: select FOM limits to calculate efficiencies 
+# where each list corresponds to its matching entry in gauss_sigmas
+# if using a simulated eruption, add None entry
+fom_limits = [[6, 10], [2, 4]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -60,7 +61,7 @@ peak_mag_min = 22 # faintest magnitude
 n_peaks = 20 # number of magnitudes to generate in log space
 
 # number of iterations of random sigma and peak mjd per peak
-iterations = 20 #50000 
+iterations = 50000 
 
 # define flag that defines bad measurements (to filter out bad days in lc)
 # if more than one, use bitwise OR (this symbol: |) to combine them
@@ -85,10 +86,24 @@ def AorB(A,B):
 def not_AandB(A,B):
     return np.setxor1d(A,B)
 
+# Adapted from A. Rest
 # get all indices of a dataframe
 def get_ix(df):
     return df.index.values
 
+# Adapted from A. Rest
+def ix_equals(df, colname, val, indices=None):
+    if indices is None:
+        ix = get_ix(df)
+    else:
+        ix = indices
+
+    (keep,) = np.where(df.loc[ix,colname].eq(val))
+    ix = ix[keep] 
+    
+    return ix 
+
+# Adapted from A. Rest
 def ix_inrange(df, colname, lowlim=None, uplim=None, indices=None, exclude_lowlim=False, exclude_uplim=False):
     if indices is None:
         ix = get_ix(df)
@@ -308,15 +323,11 @@ class LightCurve(atlas_lc):
                 print(f'# Adding simulated eruption: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {peak_appmag:0.2f}; sigma = {eruption.sigma:0.2f} days')
 
         lc.t.loc[good_ix,'uJysim'] = lc.t.loc[good_ix,'uJy']
-        #lc.t.loc[ix,'simLC'] = 0.0
         if not(gaussian is None):
             simflux = gaussian.gauss2fn(lc.t.loc[good_ix,'MJD'], peak_mjd) # get simulated gaussian flux
-            #simflux_all = gaussian.gauss2fn(lc.t.loc[ix,'MJDbin'], peak_mjd)
         else:
             simflux = eruption.erup2fn(lc.t.loc[good_ix,'MJD'], peak_mjd, peak_appmag) # get simulated eruption flux
-            #simflux_all = eruption.erup2fn(lc.t.loc[ix,'MJDbin'], peak_mjd, peak_appmag)
         lc.t.loc[good_ix,'uJysim'] += simflux # add simulated flux to good indices
-        #lc.t.loc[good_ix,'simLC'] += simflux_all
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         lc.t.loc[ix,'SNRsim'] = 0.0
@@ -453,6 +464,15 @@ class EfficiencyTable:
         except Exception as e:
             raise RuntimeError(f'ERROR: Could not load efficiency table at {filename}: {str(e)}')
 
+    def save(self, tables_dir, filename=None):
+        if filename is None:
+            print(f'Saving efficiency table efficiencies.txt...')
+            filename = f'{tables_dir}/efficiencies.txt'
+        else:
+            print(f'Saving efficiency table {filename}...')
+            filename = f'{tables_dir}/{filename}'
+        self.t.to_string(filename, index=False)
+
     def reset(self):
         for col in self.t.columns:
             if re.search('^pct_detec_',col):
@@ -483,11 +503,26 @@ class EfficiencyTable:
                 for fom_limit in self.fom_limits[gauss_sigma]:
                     self.t.loc[i,f'pct_detec_{fom_limit}'] = sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
                                                                                                                                  sim_sigma=sim_sigma)
-    
-    def save(self, tables_dir):
-        filename = f'{tables_dir}/efficiencies.txt'
-        print(f'Saving efficiency table efficiencies.txt...')
-        self.t.to_string(filename, index=False)
+
+    def get_subset(self, gauss_sigma=None, fom_limit=None, sim_sigma=None, erup=False):
+        if gauss_sigma is None:
+            ix = get_ix(self.t)
+        else:
+            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) #self.get_gauss_sigma_ix(gauss_sigma)
+
+        if not(sim_sigma is None): 
+            if erup:
+                sim_sigma_colname = 'sim_erup_sigma'
+            else:
+                sim_sigma_colname = 'sim_gauss_sigma'
+            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) #self.get_sim_sigma_ix(sim_sigma, sim_sigma_colname))
+        
+        if not(fom_limit is None):
+            colnames = ['gauss_sigma','peak_appmag','peak_flux','sim_gauss_sigma', 'sim_erup_sigma', f'pct_detec_{fom_limit}']
+            return self.t.loc[ix, colnames]
+        else:
+            return self.t.loc[ix,:]
+
 
 """
 MISCELLANEOUS
@@ -523,7 +558,7 @@ if __name__ == "__main__":
     if not(erup_filename is None):
         erup = Eruption(erup_filename)
 
-    # check if table_dir exists; if not, create new
+    # check if tables_dir exists; if not, create new
     if not os.path.exists(tables_dir):
         os.mkdir(tables_dir)
 
@@ -546,7 +581,7 @@ if __name__ == "__main__":
     print(f'Flag for bad days: {hex(flags)}')
     print(f'\nSimulating eruptions only within the following MJD seasons: ', valid_mjd_ranges)
     
-    # construct dictionary of simdetec tables
+    # construct blank dictionary of simdetec tables
     sd = {}
 
     # construct blank efficiency table
@@ -563,12 +598,11 @@ if __name__ == "__main__":
             peak_appmag = peak_appmags[peak_index]
             peak_flux = peak_fluxes[peak_index]
 
+            # construct new simulation detection table
             key = sd_key(gauss_sigma, peak_appmag)
-            sd[key] = SimDetecTable(gauss_sigma=gauss_sigma, 
-                                    iterations=iterations, 
-                                    peak_appmag=peak_appmag)
+            sd[key] = SimDetecTable(gauss_sigma=gauss_sigma, iterations=iterations, peak_appmag=peak_appmag)
 
-            # construct gaussians for each sim gauss sigma
+            # construct list of gaussians for each sim_gauss_sigma
             gaussians = []
             for k in range(len(sim_sigmas[i])):
                 if not(sim_sigmas[i][k] is None):
@@ -623,9 +657,11 @@ if __name__ == "__main__":
 
     #print()
     #print(sd.keys())
-    print('Success')
+    print('\nSuccess')
 
-    #e.set_fom_limits([[2, 5], [6, 8]])
-    #e.get_efficiencies(sd)
-    #print(e.t.to_string())
-    #e.save(tables_dir)
+    if not(fom_limits is None):
+        print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
+        e.set_fom_limits(fom_limits)
+        e.get_efficiencies(sd)
+        #print(e.t.to_string())
+    e.save(tables_dir)
