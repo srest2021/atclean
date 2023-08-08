@@ -491,18 +491,19 @@ class EfficiencyTable:
         
         for i in range(len(self.t)):
             gauss_sigma = self.t.loc[i,'gauss_sigma']
-
+            
             if pd.isnull(self.t.loc[i,'sim_gauss_sigma']):
                 sim_sigma = self.t.loc[i,'sim_erup_sigma']
-                for fom_limit in self.fom_limits[gauss_sigma]:
-                    self.t.loc[i,f'pct_detec_{fom_limit}'] = sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
-                                                                                                                                 sim_sigma=sim_sigma, 
-                                                                                                                                 erup=True)
+                erup = True
             else:
                 sim_sigma = self.t.loc[i,'sim_gauss_sigma']
-                for fom_limit in self.fom_limits[gauss_sigma]:
-                    self.t.loc[i,f'pct_detec_{fom_limit}'] = sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
-                                                                                                                                 sim_sigma=sim_sigma)
+                erup = False
+            
+            for fom_limit in self.fom_limits[gauss_sigma]:
+                self.t.loc[i,f'pct_detec_{fom_limit}'] = \
+                    sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
+                                                                                        sim_sigma=sim_sigma, 
+                                                                                        erup=erup)
 
     def get_subset(self, gauss_sigma=None, fom_limit=None, sim_sigma=None, erup=False):
         colnames = ['gauss_sigma', 'peak_appmag', 'peak_flux']
@@ -528,7 +529,9 @@ class EfficiencyTable:
                 raise RuntimeError(f'ERROR: no matching FOM limit {fom_limit}: {str(e)}')
         else:
             for col in self.t.columns:
-                colnames.append(col)
+                if re.search('^pct_detec_',col):
+                    colnames.append(col)
+            #colnames += self.t.columns
         
         return self.t.loc[ix,colnames]
 
