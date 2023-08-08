@@ -8,11 +8,6 @@ from astropy.modeling.functional_models import Gaussian1D
 
 from pdastro import pdastrostatsclass
 from atlas_lc import atlas_lc
-#from asym_gaussian import gauss2lc
-
-import warnings
-warnings.simplefilter('error', RuntimeWarning)
-warnings.filterwarnings("ignore")
 
 """
 SETTINGS
@@ -666,13 +661,11 @@ if __name__ == "__main__":
 
             sd[key].save(tables_dir)
 
-    #print()
-    #print(sd.keys())
     print('\nSuccess')
 
     if not(fom_limits is None):
         print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
         e.set_fom_limits(fom_limits)
         e.get_efficiencies(sd)
-        #print(e.t.to_string())
+        print(e.t.to_string())
     e.save(tables_dir)
