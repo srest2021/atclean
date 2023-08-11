@@ -9,6 +9,11 @@ from astropy.modeling.functional_models import Gaussian1D
 from pdastro import pdastrostatsclass
 from atlas_lc import atlas_lc
 
+# suppress deprecation warnings
+import warnings
+warnings.simplefilter('error', RuntimeWarning)
+warnings.filterwarnings("ignore")
+
 """
 SETTINGS
 """
@@ -26,7 +31,7 @@ source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc'
 tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
 
 # OPTIONAL: path to text file with light curve of simulated eruption to add
-erup_filename = f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
+erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
 
 # number of control light curves to load
 num_controls = 16
@@ -38,17 +43,17 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [15, 3] #[5, 10, 20] #[5, 80, 200]
+gauss_sigmas = [5, 80, 200] #[15, 3] #[5, 10, 20] #[5, 80, 200]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[15, 3, None], [15, 3, None]] #[[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]]
+sim_sigmas = [[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]] #[[15, 3, None], [15, 3, None]] #[[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]]
 
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-fom_limits = [[6, 10], [2, 4]]
+fom_limits = [[3, 5], [15, 25], [25, 42]] #[[6, 10], [2, 4]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -436,8 +441,8 @@ class EfficiencyTable:
             
             df = pd.DataFrame(columns=['gauss_sigma', 'peak_appmag', 'peak_flux', 'sim_gauss_sigma', 'sim_erup_sigma'])
             df['gauss_sigma'] = np.full(n, gauss_sigma)
-            df['peak_appmag'] = np.repeat(self.peak_appmags, 3)
-            df['peak_flux'] = np.repeat(self.peak_fluxes, 3)
+            df['peak_appmag'] = np.repeat(self.peak_appmags, len(sim_sigmas[i]))
+            df['peak_flux'] = np.repeat(self.peak_fluxes, len(sim_sigmas[i]))
             
             j = 0
             while(j < n):
@@ -573,11 +578,13 @@ if __name__ == "__main__":
     
     # print settings
     print(f'\nRolling sum sigmas in days: ', gauss_sigmas)
+    sim_erup_sigma=None
     for i in range(len(gauss_sigmas)):
         gauss_sigma = gauss_sigmas[i]
         print(f'For rolling sum sigma {gauss_sigma}, simulating: ')
         for sim_sigma in sim_sigmas[i]:
             if sim_sigma is None:
+                sim_erup_sigma = erup.sigma
                 print(f'- eruption from file with sigma {erup.sigma}')
             else:
                 print(f'- gaussian with sigma {sim_sigma}')
@@ -591,7 +598,7 @@ if __name__ == "__main__":
     sd = {}
 
     # construct blank efficiency table
-    e = EfficiencyTable(gauss_sigmas, peak_appmags, peak_fluxes, sim_sigmas, sim_erup_sigma=erup.sigma)
+    e = EfficiencyTable(gauss_sigmas, peak_appmags, peak_fluxes, sim_sigmas, sim_erup_sigma=sim_erup_sigma)
 
     for i in range(len(gauss_sigmas)):
         gauss_sigma = gauss_sigmas[i]
