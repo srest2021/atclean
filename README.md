@@ -68,6 +68,8 @@ This script allows you to download ATLAS light curve(s) using [ATLAS's REST API]
 #### (applies all cuts - chi-squares, uncertainties, control light curves - and averages light curves)
 Using the default settings in `params.ini`, load previously downloaded light curves and apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
+We first take into account ATLAS's periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882. More information can be found here: https://fallingstar-data.com/forcedphot/faq/. After estimating where the SN starts and ends, we use the baseline flux (non-SN flux) to correct for any of these step discontinuities. We first calculate the median of the baseline flux of each template region, then add that flux to the entire region. These medians are recorded and saved in the README.md file within each SN output directory.
+
 The **uncertainty cut** is a static procedure currently set at a constant value of 160. To change, set the `cut` field in `params.ini` to a different value.
 
 We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. This procedure can be turned off or back on in `params.ini` through the `estimate_true_uncertainties` field. Here is the exact procedure we use:
@@ -113,6 +115,7 @@ The last optional step of this procedure is to **check for any pre-SN eruptions*
 		- This argument will allow you to simulate a pre-SN eruption within your light curve and analyze whether or not the rolling gaussian weighted sum successfully amplifies it. 
 - `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
+- `--skip_tc`: skip correction for ATLAS template changes
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `params.ini`)
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 - `-a` or `--tns_api_key`: override default TNS API key given in `params.ini` config file
