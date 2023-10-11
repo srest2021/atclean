@@ -19,10 +19,10 @@ SETTINGS
 """
 
 # SN TNS name
-tnsname = '2023ixf'
+tnsname = '2020nxt'
 
 # SN discovery date
-discovery_date = 60063.727257 - 20.0
+discovery_date = 59013.537 - 20.0
 
 # path to directory that contains SN, control, and other light curves
 source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc'
@@ -34,7 +34,7 @@ tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
 erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
 
 # number of control light curves to load
-num_controls = 16
+num_controls = 8
 
 # filter of light curve to analyze
 filt = 'o'
@@ -43,17 +43,17 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [5, 80, 200] #[15, 3] #[5, 10, 20] #[5, 80, 200]
+gauss_sigmas = [5, 20, 40, 70] #[5, 80, 200] #[15, 3] #[5, 10, 20] #[5, 80, 200]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]] #[[15, 3, None], [15, 3, None]] #[[2, 5, 13], [30, 80, 120], [150, 200, 250, 300]]
+sim_sigmas = [[3, 20, 40, 70], [3, 20, 40, 70], [3, 20, 40, 70], [3, 20, 40, 70]] 
 
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-fom_limits = [[3, 5], [15, 25], [25, 42]] #[[6, 10], [2, 4]]
+fom_limits = [[3, 6], [8, 14], [13, 22], [19, 32]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -68,7 +68,10 @@ iterations = 50000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57762,57983], [58120,58383], [58494,58741-41], [58822+28,59093], [59184,59445], [59566,59835], [59901,60085]] #excluding [57463,57622]
+valid_mjd_ranges = [[57300,57386], [57524,57738], [57877,58148], [58297,58509], [58587,58882], [58974,59244], [59354,59612], [59687,59965], [60069,60219]]
+
+# skip any messy control light curves (leave empty list [] if not skipping any)
+skip_ctrl = [5]
 
 """
 UTILITY
@@ -428,25 +431,25 @@ class EfficiencyTable:
         self.peak_fluxes = peak_fluxes
 
         self.t = None
-        self.sd = None
+        #self.sd = None
 
-        self.setup(sim_erup_sigma)
+        self.setup(sim_erup_sigma=sim_erup_sigma)
 
     def setup(self, sim_erup_sigma=None):
         self.t = pd.DataFrame(columns=['gauss_sigma', 'peak_appmag', 'peak_flux', 'sim_gauss_sigma', 'sim_erup_sigma'])
 
         for i in range(len(self.gauss_sigmas)):
-            gauss_sigma = gauss_sigmas[i]
-            n = len(self.peak_appmags) * len(sim_sigmas[i])
+            gauss_sigma = self.gauss_sigmas[i]
+            n = len(self.peak_appmags) * len(self.sim_sigmas[i])
             
             df = pd.DataFrame(columns=['gauss_sigma', 'peak_appmag', 'peak_flux', 'sim_gauss_sigma', 'sim_erup_sigma'])
             df['gauss_sigma'] = np.full(n, gauss_sigma)
-            df['peak_appmag'] = np.repeat(self.peak_appmags, len(sim_sigmas[i]))
-            df['peak_flux'] = np.repeat(self.peak_fluxes, len(sim_sigmas[i]))
+            df['peak_appmag'] = np.repeat(self.peak_appmags, len(self.sim_sigmas[i]))
+            df['peak_flux'] = np.repeat(self.peak_fluxes, len(self.sim_sigmas[i]))
             
             j = 0
             while(j < n):
-                for sim_sigma in sim_sigmas[i]:
+                for sim_sigma in self.sim_sigmas[i]:
                     if sim_sigma is None:
                         if sim_erup_sigma is None:
                             raise RuntimeError('ERROR: None element in sim_sigmas array, but no sim_erup_sigma passed')
@@ -479,11 +482,12 @@ class EfficiencyTable:
                 self.t[col] = np.full(len(self.t), np.nan)
 
     def set_fom_limits(self, fom_limits):
-        if not(len(gauss_sigmas) == len(sim_sigmas)):
+        if not len(self.gauss_sigmas) == len(self.sim_sigmas) or not len(fom_limits) == len(self.gauss_sigmas):
             raise RuntimeError('ERROR: Each entry in gauss_sigmas must have a matching list in fom_limits')
+        
         self.fom_limits = {}
-        for i in range(len(gauss_sigmas)):
-            self.fom_limits[gauss_sigmas[i]] = fom_limits[i]
+        for i in range(len(self.gauss_sigmas)):
+            self.fom_limits[self.gauss_sigmas[i]] = fom_limits[i]
 
     def get_efficiencies(self, sd):
         if self.fom_limits is None:
@@ -534,6 +538,18 @@ class EfficiencyTable:
             #colnames += self.t.columns
         
         return self.t.loc[ix,colnames]
+    
+    def merge(self, other):
+        if not isinstance(other, EfficiencyTable):
+            raise RuntimeError(f'ERROR: Cannot merge with object: {type(other)}')
+        
+        self.gauss_sigmas += other.gauss_sigmas
+        self.sim_sigmas += other.sim_sigmas
+        if not self.fom_limits is None:
+            self.fom_limits.update(other.fom_limits)
+
+        self.t = pd.concat([self.t, other.t], ignore_index=True)
+
 
 """
 MISCELLANEOUS
@@ -593,6 +609,8 @@ if __name__ == "__main__":
     print(f'Number of iterations per peak: {iterations}')
     print(f'Flag for bad days: {hex(flags)}')
     print(f'\nSimulating eruptions only within the following MJD seasons: ', valid_mjd_ranges)
+    valid_ctrls = [i for i in range(1, num_controls+1) if not i in skip_ctrl]
+    print(f'\nSimulating eruptions only within the following control light curves: ', valid_ctrls)
     
     # construct blank dictionary of simdetec tables
     sd = {}
@@ -628,7 +646,7 @@ if __name__ == "__main__":
                 sd[key].t.loc[j, ['peak_mjd', 'sim_gauss_sigma', 'sim_erup_sigma', 'max_fom', 'max_fom_mjd']] = np.full(5, np.nan)
 
                 # pick random control light curve
-                rand_control_index = random.randrange(1, num_controls+1, 1)
+                rand_control_index = random.choice(valid_ctrls)
                 
                 # select random peak MJD from start of lc to 50 days before discovery date
                 peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, int(lc.discdate)-50, 1) + 0.5
@@ -662,8 +680,6 @@ if __name__ == "__main__":
                     # no valid measurements within this range
                     continue
 
-                #if j % (iterations/20) == 0:
-                    #print(f'{j+1}/{iterations} ...', end=' ')
                 j += 1
 
             sd[key].save(tables_dir)

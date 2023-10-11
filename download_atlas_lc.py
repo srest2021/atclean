@@ -358,7 +358,7 @@ class download_atlas_lc:
 			self.read_coords_from_file(sn_ra, sn_dec)
 		
 		else: # calculate control lc coordinates
-			for i in range(self.num_controls):
+			for i in range(1,self.num_controls+1):
 				angle = Angle(i*360.0 / self.num_controls, u.degree)
 				
 				ra_distance = Angle(r.degree * math.cos(angle.radian), u.degree)
