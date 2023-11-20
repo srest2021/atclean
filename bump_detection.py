@@ -489,6 +489,14 @@ class EfficiencyTable:
         for i in range(len(self.gauss_sigmas)):
             self.fom_limits[self.gauss_sigmas[i]] = fom_limits[i]
 
+    def get_fom_limit(self, gauss_sigma, sigma):
+        if sigma == 3:
+          return self.fom_limits[gauss_sigma][0]
+        elif sigma == 5:
+          return self.fom_limits[gauss_sigma][1]
+        else:
+          raise RuntimeError('ERROR: when obtaining an FOM limit for given gauss_sigma, sigma must be 3 or 5')
+
     def get_efficiencies(self, sd):
         if self.fom_limits is None:
             raise RuntimeError('ERROR: fom_limits is None')

@@ -518,9 +518,8 @@ class download_atlas_lc:
 					lc.save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
 
 			# save control_coords table
-			#self.control_coords.write()
-			#self.control_coords.default_formatters = {'ra':'{:.8f}'.format,'dec':'{:.8d}'.format,'ra_offset':'{:.8d}'.format,'dec_offset':'{:.8d}'.format}
-			self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
+			if self.overwrite:
+				self.control_coords.write(filename=f'{self.output_dir}/{lc.tnsname}/controls/{lc.tnsname}_control_coords.txt', overwrite=self.overwrite)
 
 	# loop through each SN given and download light curves
 	def download_loop(self):

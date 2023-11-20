@@ -488,6 +488,33 @@ class clean_atlas_lc():
 				print(f'# True typical uncertainty less than or equal to the current median uncertainty. Skipping true uncertainties estimation.')
 				return lc, output, False
 
+	def skip_true_uncertainties(self, lc, filt, uncert_est_info):
+		print('\nSkipping application of true uncertainties estimation; adding to uncert_est_info table instead...')
+
+		df = pd.DataFrame(columns=['tnsname', 'filter', 'sigma_true_typical', 'median_dflux', 'recommend_apply'])
+		df.loc[0,'tnsname'] = lc.tnsname
+		df.loc[0,'filter'] = filt
+		df.loc[0,'sigma_true_typical'] = np.nan
+		df.loc[0,'median_dflux'] = np.nan
+		df.loc[0,'recommend_apply'] = False
+
+		if len(lc.corrected_baseline_ix) <= 0:
+			uncert_est_info = pd.concat([uncert_est_info, df], ignore_index=True)
+			return uncert_est_info
+
+		clean_ix = AandB(lc.lcs[0].ix_unmasked('Mask',maskval=self.flags['uncertainty']), lc.lcs[0].ix_inrange(colnames=['chi/N'],uplim=self.estimate_true_uncertainties_chisquare_cut,exclude_uplim=True))
+		clean_ix = AandB(lc.corrected_baseline_ix, clean_ix)
+
+		lc.lcs[0].calcaverage_sigmacutloop('uJy', indices=clean_ix, Nsigma=3.0, median_firstiteration=True, verbose=1)
+		
+		df.loc[0,'sigma_true_typical'] = lc.lcs[0].statparams['stdev']
+		df.loc[0,'median_dflux'] = np.median(lc.lcs[0].t.loc[clean_ix, 'duJy'])
+
+		if df.loc[0,'sigma_true_typical'] > df.loc[0,'median_dflux']:
+			df.loc[0,'recommend_apply'] = True
+
+		uncert_est_info = pd.concat([uncert_est_info, df], ignore_index=True)
+		return uncert_est_info
 
 	# apply uncertainty cut to SN light curve and update mask column with flag
 	def apply_uncertainty_cut(self, lc):
@@ -1048,7 +1075,7 @@ class clean_atlas_lc():
 
 			lc, avglc = self.average_lc(lc, avglc, control_index)
 
-		s = 'Total percent of data flagged: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.lcs[0].t))
+		s = 'Total percent of binned data flagged: %0.2f%%' % (100*len(lc.lcs[0].ix_masked('Mask',maskval=self.flags['avg_badday']))/len(avglc.lcs[0].t))
 		print(f'# {s}')
 		output = f'\n\n{s}.'
 
@@ -1192,6 +1219,9 @@ class clean_atlas_lc():
 			f.write(control_output)
 
 		f.write(f'\n\n### After the uncertainty, chi-square, and control light curve cuts are applied, the light curves are resaved with the new "Mask" column.')
+		
+		percent_flagged = len(lc.get_masked_ix(self.flags)) * 100 / len(lc.lcs[0].t)
+		f.write(f'Total \% of data flagged: {percent_flagged:0.2f}')
 
 		if self.averaging:
 			f.write(f'\n\n### Averaging light curves and cutting bad days')
@@ -1229,6 +1259,8 @@ class clean_atlas_lc():
 	def cut_loop(self):
 		args = self.define_args().parse_args()
 		self.load_settings(args)
+
+		uncert_est_info = pd.DataFrame(columns=['tnsname', 'filter', 'sigma_true_typical', 'median_dflux', 'recommend_apply'])
 
 		for obj_index in range(0,len(args.tnsnames)):
 			print(f'\nCOMMENCING LOOP FOR SN {args.tnsnames[obj_index]}')
@@ -1286,6 +1318,10 @@ class clean_atlas_lc():
 					lc, estimate_true_uncertainties_output, do_plot = self.apply_true_uncertainties(lc)
 					if args.plot and do_plot:
 						plot.plot_uncertainty_estimations()
+				# otherwise, save the estimate of the true uncertainties and the median of the uncertainties in a table
+				else:
+					uncert_est_info = self.skip_true_uncertainties(lc, filt, uncert_est_info)
+
 
 				# add flux/dflux column
 				print('Adding uJy/duJy column to light curve...')
@@ -1402,6 +1438,11 @@ class clean_atlas_lc():
 		filename = f'{self.output_dir}/{self.snlist_filename}'
 		print(f'Saving SN list at {filename}')
 		self.snlist.write(filename)
+
+		print(f'Saving table of recommendations for true uncertainty estimation...')
+		if self.skip_true_uncertainties:
+			print(uncert_est_info)
+			uncert_est_info.to_string(f'{self.output_dir}/uncert_est_info.txt')
 
 if __name__ == "__main__":
 	clean_atlas_lc = clean_atlas_lc()
