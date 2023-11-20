@@ -3,15 +3,15 @@
 Author: Sofia Rest
 """
 
-import json, requests, re, time, sys, os
+import json, requests, re, time, sys, os, math
 from collections import OrderedDict
 from astropy.time import Time
+from datetime import datetime
 import numpy as np
 from pdastro import pdastrostatsclass, AandB, AnotB
 
 class atlas_lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjd_bin_size=None, discdate=None, ra=None, dec=None):
-		#self.pdastro = pdastrostatsclass()
 		self.lcs = {}
 
 		self.tnsname = tnsname
@@ -129,6 +129,8 @@ class atlas_lc:
 
 		self.lcs[control_index] = pdastrostatsclass()
 		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True)
+		
+        # clear previous 'Mask' column
 		self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
@@ -171,4 +173,82 @@ class atlas_lc:
 
 	def get_unmasked_ix(self, flags, control_index=0):
 		flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
-		return self.lcs[control_index].ix_unmasked('Mask',maskval=flags)
+		return self.lcs[control_index].ix_unmasked('Mask',maskval=flags_)
+
+	def get_pre_SN_ix(self, control_index=0):
+		return self.lcs[control_index].ix_inrange(uplim=self.discdate)
+	
+	def get_post_SN_ix(self, control_index=0):
+		return self.lcs[control_index].ix_inrange(lowlim=self.discdate)
+	
+	def get_offset(self, offset_ix):
+		self.lcs[0].calcaverage_sigmacutloop('uJy', noisecol='duJy', Nsigma=3, indices=offset_ix, median_firstiteration=True)
+		offset = abs(self.lcs[0].statparams['mean'])
+		return offset
+	
+	def template_correction(self):
+		print('\nCorrecting light curve flux due to template changes...')
+		if self.discdate is None:
+			raise RuntimeError(f'ERROR: discovery date cannot be set to None')
+
+		t1, t2, t3 = 57500, 58417, 58882
+		today = Time(datetime.now(), format='datetime').mjd
+		
+		output = ''
+
+		if t3 < self.discdate:
+			output += f'\nDiscovery date greater than last template change; no baseline correction needed; skipping...'
+			print(output)
+			self.corrected_baseline_ix = self.get_pre_SN_ix()
+			self.during_sn_ix = self.get_post_SN_ix()
+			return output
+        
+		t1_ix = self.lcs[0].ix_inrange('MJD', lowlim=t1, uplim=t2)
+		t2_ix = self.lcs[0].ix_inrange('MJD', lowlim=t2, uplim=t3)
+		t3_ix = self.lcs[0].ix_inrange('MJD', lowlim=t3)
+		
+		if t2 < self.discdate and self.discdate < t3:
+			#print('# t2 < discdate < t3')
+			offset_ix = self.lcs[0].ix_inrange('MJD', lowlim=today-365)
+			offset = self.get_offset(offset_ix)
+			#print(f'## offset for t3: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t3_ix, 'uJy'] += offset
+				output += f'Correction applied to T3 region; {offset:0.2f} uJy added\n'
+        
+		elif t1 < self.discdate and self.discdate < t2:
+			#print('# t1 < discdate < t2')
+            
+			offset = self.get_offset(t3_ix)
+			#print(f'## offset for t3: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t3_ix, 'uJy'] += offset
+				output += f'Correction applied to T3 region; {offset:0.2f} uJy added\n'
+
+			offset = self.get_offset(t2_ix[-40:])
+			#print(f'## offset for t2: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t2_ix, 'uJy'] += offset
+				output += f'Correction applied to T2 region; {offset:0.2f} uJy added\n'
+        
+		elif self.discdate < t1:
+			#print('# discdate < t1')
+			offset = self.get_offset(t3_ix)
+			#print(f'## offset for t3: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t3_ix, 'uJy'] += offset
+				output += f'Correction applied to T3 region; {offset:0.2f} uJy added\n'
+
+			offset = self.get_offset(t2_ix)
+			#print(f'## offset for t2: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t2_ix, 'uJy'] += offset
+				output += f'Correction applied to T2 region; {offset:0.2f} uJy added\n'
+
+			offset = self.get_offset(t1_ix[-40:])
+			#print(f'## offset for t1: {offset}')
+			if not offset is None:
+				self.lcs[0].t.loc[t1_ix, 'uJy'] += offset
+				output += f'Correction applied to T1 region; {offset:0.2f} uJy added\n'
+				
+		return output

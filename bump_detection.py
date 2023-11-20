@@ -373,10 +373,6 @@ class LightCurve(atlas_lc):
 SIMULATION DETECTION AND EFFICIENCY TABLES
 """
 
-# get simulation detection dictionary (sd) key for a gauss_sigma peak_appmag pair
-def sd_key(gauss_sigma, peak_appmag):
-    return f'{gauss_sigma}_{peak_appmag:0.2f}'
-
 # simulation detection table for a gauss_sigma peak_appmag pair
 class SimDetecTable:
     def __init__(self, gauss_sigma, iterations=None, peak_appmag=None, peak_flux=None):
@@ -443,6 +439,10 @@ class SimDetecTable:
         detected_ix = ix_inrange(self.t, 'max_fom', lowlim=fom_limit, indices=sim_sigma_ix)
         efficiency = len(detected_ix)/len(sim_sigma_ix) * 100
         return efficiency
+    
+# get simulation detection dictionary (sd) key for a gauss_sigma peak_appmag pair
+def sd_key(gauss_sigma, peak_appmag):
+    return f'{gauss_sigma}_{peak_appmag:0.2f}'
     
 def load_sd_dict(gauss_sigmas, peak_appmags, tables_dir):
     sd = {}
@@ -564,7 +564,7 @@ class EfficiencyTable:
         
         ix = get_ix(self.t)
         if not(gauss_sigma is None):
-            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) #self.get_gauss_sigma_ix(gauss_sigma)
+            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) 
 
         if sim_sigma is None:
             colnames += ['sim_gauss_sigma', 'sim_erup_sigma']
@@ -574,7 +574,7 @@ class EfficiencyTable:
             else:
                 sim_sigma_colname = 'sim_gauss_sigma'
             colnames.append(sim_sigma_colname)
-            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) #self.get_sim_sigma_ix(sim_sigma, sim_sigma_colname))
+            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) 
 
         if not(fom_limit is None):
             try: 
@@ -585,7 +585,6 @@ class EfficiencyTable:
             for col in self.t.columns:
                 if re.search('^pct_detec_',col):
                     colnames.append(col)
-            #colnames += self.t.columns
         
         return self.t.loc[ix,colnames]
     
@@ -738,7 +737,7 @@ if __name__ == "__main__":
     print('\nSuccess')
 
     if not(fom_limits is None):
-        print(f'\nUsing FOM limits {fom_limits} and valid MJD ranges to calculate efficiencies...')
+        print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
         e.set_fom_limits(fom_limits)
         e.get_efficiencies(sd)
         print(e.t.to_string())

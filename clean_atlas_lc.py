@@ -285,25 +285,6 @@ class clean_atlas_lc():
 		# cannot do flux correction?
 		if len(found_region_ix) <= 1 or self.skip_tc:
 			print('WARNING: At least 2 template regions do not contain any data. Therefore, flux could not be corrected according to the ATLAS reference template changes. Skipping...')
-			"""
-			# try to get baseline flux
-			SN_region_index = self.get_SNstart_region(lc.discdate, tchange1, tchange2) # find region with SN in it
-			if SN_region_index in found_region_ix: # SN discovery date is in one of the found regions
-				# get last Ndays days for baseline
-				lc.corrected_baseline_ix = lc.lcs[0].ix_inrange(colnames=['MJD'],
-																lowlim=lc.lcs[0].t.loc[regions['t%d'%SN_region_index][-1],'MJD'] - self.get_Ndays(SN_region_index),
-																uplim=lc.lcs[0].t.loc[regions['t%d'%SN_region_index][-1],'MJD'])
-			elif len(found_region_ix) == 1: # one template region has data
-				# get all of found template for baseline
-				lc.corrected_baseline_ix = regions[f't{found_region_ix[0]}']
-			else: # no template region has data, so basically no data... this is pretty bad but hopefully will not come to this
-				lc.corrected_baseline_ix = baseline_ix # will be None
-			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
-
-			print(len(lc.corrected_baseline_ix), lc.corrected_baseline_ix)
-			print(len(lc.during_sn_ix), lc.during_sn_ix)
-			sys.exit()
-			"""
 			lc.corrected_baseline_ix = baseline_ix
 			lc.during_sn_ix = AnotB(lc.lcs[0].getindices(), lc.corrected_baseline_ix)
 			return None, lc
@@ -344,10 +325,6 @@ class clean_atlas_lc():
 	# correct control light curves for atlas template changes at mjd=58417,58882 
 	def controls_correct_for_template(self, lc, control_index, regions, region_index):
 		goodx2_i = lc.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=5)
-
-		# get indices of control lc that match up with SN's baseline region
-		#lowlim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][0], 'MJD'] 
-		#uplim = lc.lcs[0].t.loc[regions[f'b_t{region_index}'][-1], 'MJD']
 		
 		# get indices of target template region
 		tchange1 = 58417
@@ -369,11 +346,6 @@ class clean_atlas_lc():
 				median = np.median(lc.lcs[control_index].t.loc[AandB(region_i,goodx2_i),'uJy'])
 			else:
 				median = np.median(lc.lcs[control_index].t.loc[region_i,'uJy'])
-
-			#lowlim = lc.lcs[0].t.loc[regions[f't{region_index}'][0], 'MJD']
-			#uplim = lc.lcs[0].t.loc[regions[f't{region_index}'][-1], 'MJD']
-			#t_region_i = lc.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=lowlim, uplim=uplim, exclude_uplim=True)
-			#lc.lcs[control_index].t.loc[t_region_i,'uJy'] -= median
 
 			# subtract median from entire template region of control lc
 			lc.lcs[control_index].t.loc[region_i,'uJy'] -= median
@@ -1187,7 +1159,6 @@ class clean_atlas_lc():
 	def add_to_readme(self, f, lc, filt, final_cut=None, estimate_true_uncertainties_output=None, chisquare_output=None, uncertainty_output=None, templates_output=None, control_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {filt}')
 
-
 		if not(self.skip_tc):
 			f.write('\n\n### Correction for ATLAS reference template changes')
 			f.write(f'\nWe take into account ATLAS\'s periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882.')
@@ -1300,7 +1271,8 @@ class clean_atlas_lc():
 
 				lc, snlist_index = self.get_lc_data(lc, snlist_index)
 				lc = self.drop_extra_columns(lc)
-				lc, templates_output = self.correct_for_template(lc)
+				#lc, templates_output = self.correct_for_template(lc)
+				templates_output = lc.template_correction()
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc()
@@ -1321,7 +1293,6 @@ class clean_atlas_lc():
 				# otherwise, save the estimate of the true uncertainties and the median of the uncertainties in a table
 				else:
 					uncert_est_info = self.skip_true_uncertainties(lc, filt, uncert_est_info)
-
 
 				# add flux/dflux column
 				print('Adding uJy/duJy column to light curve...')
