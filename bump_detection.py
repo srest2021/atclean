@@ -28,7 +28,9 @@ discovery_date = 59013.537 - 20.0
 source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc'
 
 # path to directory where generated tables should be stored
-tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
+#tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables_test_modmjdrange1'
+# for tables_test_modmjdrange2
+tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables_test_allmjd'
 
 # OPTIONAL: path to text file with light curve of simulated eruption to add
 erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
@@ -43,17 +45,23 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [5, 20, 40, 70] #[5, 80, 200] #[15, 3] #[5, 10, 20] #[5, 80, 200]
+gauss_sigmas = [5, 20, 40, 70]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[3, 20, 40, 70], [3, 20, 40, 70], [3, 20, 40, 70], [3, 20, 40, 70]] 
+sim_sigmas = [[3, 20, 40, 70], 
+              [3, 20, 40, 70], 
+              [3, 20, 40, 70], 
+              [3, 20, 40, 70]] 
 
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-fom_limits = [[3, 6], [8, 14], [13, 22], [19, 32]]
+fom_limits = [[3.46, 5.77], 
+              [8.28, 13.8], 
+              [13.34, 22.24], 
+              [19.24, 32.07]] #[[3, 6], [8, 14], [13, 22], [19, 32]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -68,7 +76,15 @@ iterations = 50000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57300,57386], [57524,57738], [57877,58148], [58297,58509], [58587,58882], [58974,59244], [59354,59612], [59687,59965], [60069,60219]]
+valid_mjd_ranges = [[57300,57386], 
+                    [57524,57738], 
+                    [57877,58148], 
+                    [58297,58509], 
+                    [58587,58882], 
+                    [58974,59244], 
+                    [59354,59612], 
+                    [59687,59965], 
+                    [60069,60219]]
 
 # skip any messy control light curves (leave empty list [] if not skipping any)
 skip_ctrl = [5]
@@ -363,7 +379,7 @@ def sd_key(gauss_sigma, peak_appmag):
 
 # simulation detection table for a gauss_sigma peak_appmag pair
 class SimDetecTable:
-    def __init__(self, gauss_sigma, iterations, peak_appmag=None, peak_flux=None):
+    def __init__(self, gauss_sigma, iterations=None, peak_appmag=None, peak_flux=None):
         self.gauss_sigma = gauss_sigma
         
         if peak_appmag is None and peak_flux is None:
@@ -377,7 +393,8 @@ class SimDetecTable:
 
         self.t = None
 
-        self.setup(iterations)
+        if not iterations is None:
+            self.setup(iterations)
 
     def get_filename(self, tables_dir):
         return f'{tables_dir}/simdetec_{sd_key(self.gauss_sigma, self.peak_appmag)}.txt'
@@ -402,22 +419,41 @@ class SimDetecTable:
         self.t['peak_appmag'] = np.full(iterations, self.peak_appmag)
         self.t['peak_flux'] = np.full(iterations, self.peak_flux)
     
-    def get_efficiency(self, fom_limit, sim_sigma=None, erup=False):
+    def get_efficiency(self, fom_limit, mjd_ranges=None, sim_sigma=None, erup=False):
         if sim_sigma is None: # get efficiency for all sim_sigmas (entire table)
             sim_sigma_ix = get_ix(self.t)
         elif pd.isnull(sim_sigma):
             return np.nan
-        elif erup: 
+        elif erup: # simulated eruption
             sim_sigma_ix = np.where(self.t['sim_erup_sigma'] == sim_sigma)[0]
-        else: # gaussian
+        else: # simulated gaussian
             sim_sigma_ix = np.where(self.t['sim_gauss_sigma'] == sim_sigma)[0]
         if len(sim_sigma_ix) < 1:
             print(f'WARNING: No sim sigma matches for {sim_sigma}, where erup={erup}; returning NaN...')
             return np.nan
         
+        if not mjd_ranges is None:
+            # get efficiency for simulations only occurring within mjd_ranges
+            mjd_ix = []
+            for i in range(len(self.t)):
+                if in_valid_season(self.t.loc[i,'peak_mjd'], mjd_ranges):
+                    mjd_ix.append(i)
+            sim_sigma_ix = AandB(sim_sigma_ix, mjd_ix)
+        
         detected_ix = ix_inrange(self.t, 'max_fom', lowlim=fom_limit, indices=sim_sigma_ix)
         efficiency = len(detected_ix)/len(sim_sigma_ix) * 100
         return efficiency
+    
+def load_sd_dict(gauss_sigmas, peak_appmags, tables_dir):
+    sd = {}
+    for i in range(len(gauss_sigmas)):
+        gauss_sigma = gauss_sigmas[i]
+        for peak_index in range(len(peak_appmags)):
+            peak_appmag = peak_appmags[peak_index]
+            key = sd_key(gauss_sigma, peak_appmag)
+            sd[key] = SimDetecTable(gauss_sigma=gauss_sigma, peak_appmag=peak_appmag)
+            sd[key].load(tables_dir)
+    return sd
 
 class EfficiencyTable:
     def __init__(self, gauss_sigmas, peak_appmags, peak_fluxes, sim_sigmas, sim_erup_sigma=None):
@@ -479,7 +515,12 @@ class EfficiencyTable:
     def reset(self):
         for col in self.t.columns:
             if re.search('^pct_detec_',col):
-                self.t[col] = np.full(len(self.t), np.nan)
+                self.t.drop(col, axis=1, inplace=True)
+
+        for i in range(len(self.gauss_sigmas)):
+            fom_limits = self.fom_limits[gauss_sigmas[i]]
+            self.t[f'pct_detec_{fom_limits[0]}'] = np.full(len(self.t), np.nan)
+            self.t[f'pct_detec_{fom_limits[1]}'] = np.full(len(self.t), np.nan)
 
     def set_fom_limits(self, fom_limits):
         if not len(self.gauss_sigmas) == len(self.sim_sigmas) or not len(fom_limits) == len(self.gauss_sigmas):
@@ -497,7 +538,7 @@ class EfficiencyTable:
         else:
           raise RuntimeError('ERROR: when obtaining an FOM limit for given gauss_sigma, sigma must be 3 or 5')
 
-    def get_efficiencies(self, sd):
+    def get_efficiencies(self, sd, mjd_ranges=None):
         if self.fom_limits is None:
             raise RuntimeError('ERROR: fom_limits is None')
         
@@ -510,10 +551,11 @@ class EfficiencyTable:
             else:
                 sim_sigma = self.t.loc[i,'sim_gauss_sigma']
                 erup = False
-            
+
             for fom_limit in self.fom_limits[gauss_sigma]:
                 self.t.loc[i,f'pct_detec_{fom_limit}'] = \
                     sd[sd_key(gauss_sigma, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
+                                                                                        mjd_ranges=mjd_ranges,
                                                                                         sim_sigma=sim_sigma, 
                                                                                         erup=erup)
 
@@ -563,13 +605,14 @@ class EfficiencyTable:
 MISCELLANEOUS
 """
 
-# check if mjd is within valid mjd season
-def in_season(mjd, valid_mjd_ranges):
-    for mjd_range in valid_mjd_ranges:
-        if mjd >= mjd_range[0] and mjd <= mjd_range[1]:
-            return True
-    return False
-    
+# check if MJD is within valid MJD season
+def in_valid_season(mjd, valid_seasons):
+    in_season = False
+    for season in valid_seasons:
+        if mjd <= season[1] and mjd >= season[0]:
+            in_season = True
+    return in_season
+
 # generate list of peak fluxes and app mags
 def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
     peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=20))
@@ -618,7 +661,7 @@ if __name__ == "__main__":
     print(f'Flag for bad days: {hex(flags)}')
     print(f'\nSimulating eruptions only within the following MJD seasons: ', valid_mjd_ranges)
     valid_ctrls = [i for i in range(1, num_controls+1) if not i in skip_ctrl]
-    print(f'\nSimulating eruptions only within the following control light curves: ', valid_ctrls)
+    print(f'Simulating eruptions only within the following control light curves: ', valid_ctrls)
     
     # construct blank dictionary of simdetec tables
     sd = {}
@@ -659,7 +702,7 @@ if __name__ == "__main__":
                 # select random peak MJD from start of lc to 50 days before discovery date
                 peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, int(lc.discdate)-50, 1) + 0.5
                 # make sure peak MJD is within an observation season; else redraw
-                while not(in_season(peak_mjd, valid_mjd_ranges)):
+                while not in_valid_season(peak_mjd, valid_mjd_ranges):
                     # redraw random peak mjd
                     peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, int(lc.discdate)-50, 1) + 0.5
                 sd[key].t.loc[j, 'peak_mjd'] = peak_mjd
@@ -695,7 +738,7 @@ if __name__ == "__main__":
     print('\nSuccess')
 
     if not(fom_limits is None):
-        print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
+        print(f'\nUsing FOM limits {fom_limits} and valid MJD ranges to calculate efficiencies...')
         e.set_fom_limits(fom_limits)
         e.get_efficiencies(sd)
         print(e.t.to_string())
