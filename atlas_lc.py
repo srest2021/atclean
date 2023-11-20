@@ -59,7 +59,7 @@ class atlas_lc:
 		time = list(discoverydate.partition(' '))[2]
 		dateobjects = Time(date+"T"+time, format='isot', scale='utc')
 		if self.discdate is None:
-			self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices
+			self.discdate = dateobjects.mjd - 20 # make sure no SN flux before discovery date in baseline indices	
 
 	# get baseline indices (any indices before the SN discovery date)
 	def get_baseline_ix(self):
@@ -164,3 +164,11 @@ class atlas_lc:
 		o_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='o'))
 		c_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='c'))
 		return o_len, c_len
+
+	def get_masked_ix(self, flags, control_index=0):
+		flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
+		return self.lcs[control_index].ix_masked('Mask',maskval=flags_)
+
+	def get_unmasked_ix(self, flags, control_index=0):
+		flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
+		return self.lcs[control_index].ix_unmasked('Mask',maskval=flags)
