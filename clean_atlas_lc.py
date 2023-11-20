@@ -1115,8 +1115,9 @@ class clean_atlas_lc():
 
 				lc, snlist_index = self.get_lc_data(lc, snlist_index)
 				lc = self.drop_extra_columns(lc)
-				#lc, templates_output = self.correct_for_template(lc)
 				templates_output = lc.template_correction()
+				lc.corrected_baseline_ix = lc.get_pre_SN_ix()
+				lc.during_sn_ix = lc.get_post_SN_ix()
 				if args.plot:
 					plot.set(lc=lc, filt=filt)
 					plot.plot_og_lc()
