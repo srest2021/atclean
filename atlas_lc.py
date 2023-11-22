@@ -186,6 +186,8 @@ class atlas_lc:
 		offset = self.lcs[0].statparams['mean']
 		if not offset is None:
 			offset = abs(offset)
+		else:
+			offset = abs(np.median(self.lcs[0].t.loc[offset_ix, 'uJy']))
 		return offset
 	
 	def template_correction(self):
