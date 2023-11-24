@@ -19,18 +19,16 @@ SETTINGS
 """
 
 # SN TNS name
-tnsname = '2020nxt'
+tnsname = ''
 
 # SN discovery date
-discovery_date = 59013.537 - 20.0
+#discovery_date = None
 
 # path to directory that contains SN, control, and other light curves
-source_dir = '/Users/sofiarest/Desktop/Supernovae/data/misc'
+source_dir = ''
 
 # path to directory where generated tables should be stored
-#tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables_test_modmjdrange1'
-# for tables_test_modmjdrange2
-tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables_test_allmjd'
+tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
 
 # OPTIONAL: path to text file with light curve of simulated eruption to add
 erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
@@ -45,27 +43,29 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [5, 20, 40, 70]
+gauss_sigmas = [5, 15, 25, 40, 80, 130, 200, 256, 300]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[3, 20, 40, 70], 
-              [3, 20, 40, 70], 
-              [3, 20, 40, 70], 
-              [3, 20, 40, 70]] 
+sim_sigmas = [[2, 5, 20, 40, 80, 120], # 5
+              [2, 5, 20, 40, 80, 120], # 15
+              [2, 5, 20, 40, 80, 120], # 15
+              [5, 20, 40, 80, 110, 150, 200, 250], # 40
+              [5, 20, 40, 80, 110, 150, 200, 250], # 80
+              [20, 40, 80, 110, 150, 200, 250, 300], # 130
+              [20, 40, 80, 110, 150, 200, 250, 300], # 200
+              [20, 40, 80, 110, 150, 200, 250, 300], # 256
+              [20, 40, 80, 110, 150, 200, 250, 300]] # 300
 
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-fom_limits = [[3.46, 5.77], 
-              [8.28, 13.8], 
-              [13.34, 22.24], 
-              [19.24, 32.07]] #[[3, 6], [8, 14], [13, 22], [19, 32]]
+fom_limits = [[3.0, 5.0], [10.4, 17.4], [15.1, 25.1], [20.0, 33.4], [25.3, 42.2], [29.0, 48.4], [33.1, 55.2]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
-peak_mag_min = 22 # faintest magnitude
+peak_mag_min = 23 # faintest magnitude
 n_peaks = 20 # number of magnitudes to generate in log space
 
 # number of iterations of random sigma and peak mjd per peak
@@ -76,18 +76,17 @@ iterations = 50000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57300,57386], 
-                    [57524,57738], 
-                    [57877,58148], 
-                    [58297,58509], 
-                    [58587,58882], 
-                    [58974,59244], 
-                    [59354,59612], 
-                    [59687,59965], 
-                    [60069,60219]]
+valid_mjd_ranges = [[57365,57622],
+                    [57762,57983], 
+                    [58120,58383], 
+                    [58494,58741-41], 
+                    [58822+28,59093], 
+                    [59184,59445], 
+                    [59566,59835], 
+                    [59901,60085]]
 
 # skip any messy control light curves (leave empty list [] if not skipping any)
-skip_ctrl = [5]
+skip_ctrl = []
 
 """
 UTILITY
@@ -194,7 +193,7 @@ class Eruption:
         self.peak_appmag = None
         self.sigma = sigma
 
-        self.t = None #pdastrostatsclass()
+        self.t = None 
         self.load(filename)
 
     def load(self, filename):
@@ -373,6 +372,10 @@ class LightCurve(atlas_lc):
 SIMULATION DETECTION AND EFFICIENCY TABLES
 """
 
+# get simulation detection dictionary (sd) key for a gauss_sigma peak_appmag pair
+def sd_key(gauss_sigma, peak_appmag):
+    return f'{gauss_sigma}_{peak_appmag:0.2f}'
+
 # simulation detection table for a gauss_sigma peak_appmag pair
 class SimDetecTable:
     def __init__(self, gauss_sigma, iterations=None, peak_appmag=None, peak_flux=None):
@@ -439,10 +442,6 @@ class SimDetecTable:
         detected_ix = ix_inrange(self.t, 'max_fom', lowlim=fom_limit, indices=sim_sigma_ix)
         efficiency = len(detected_ix)/len(sim_sigma_ix) * 100
         return efficiency
-    
-# get simulation detection dictionary (sd) key for a gauss_sigma peak_appmag pair
-def sd_key(gauss_sigma, peak_appmag):
-    return f'{gauss_sigma}_{peak_appmag:0.2f}'
     
 def load_sd_dict(gauss_sigmas, peak_appmags, tables_dir):
     sd = {}
@@ -564,7 +563,7 @@ class EfficiencyTable:
         
         ix = get_ix(self.t)
         if not(gauss_sigma is None):
-            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) 
+            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) #self.get_gauss_sigma_ix(gauss_sigma)
 
         if sim_sigma is None:
             colnames += ['sim_gauss_sigma', 'sim_erup_sigma']
@@ -574,7 +573,7 @@ class EfficiencyTable:
             else:
                 sim_sigma_colname = 'sim_gauss_sigma'
             colnames.append(sim_sigma_colname)
-            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) 
+            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) #self.get_sim_sigma_ix(sim_sigma, sim_sigma_colname))
 
         if not(fom_limit is None):
             try: 
@@ -585,6 +584,7 @@ class EfficiencyTable:
             for col in self.t.columns:
                 if re.search('^pct_detec_',col):
                     colnames.append(col)
+            #colnames += self.t.columns
         
         return self.t.loc[ix,colnames]
     
@@ -628,7 +628,7 @@ GENERATE AND SAVE SIMULATED DETECTION AND EFFICIENCY TABLES
 
 if __name__ == "__main__":
     # load SN and control light currves
-    lc = LightCurve(tnsname, mjd_bin_size=mjd_bin_size, discdate=discovery_date)
+    lc = LightCurve(tnsname, mjd_bin_size=mjd_bin_size)#, discdate=discovery_date)
     lc.load(source_dir, filt=filt, num_controls=num_controls)
 
     # load simulated eruption
@@ -737,7 +737,7 @@ if __name__ == "__main__":
     print('\nSuccess')
 
     if not(fom_limits is None):
-        print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
+        print(f'\nUsing FOM limits {fom_limits} and valid MJD ranges to calculate efficiencies...')
         e.set_fom_limits(fom_limits)
         e.get_efficiencies(sd)
         print(e.t.to_string())
