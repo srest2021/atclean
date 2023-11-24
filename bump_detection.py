@@ -563,7 +563,7 @@ class EfficiencyTable:
         
         ix = get_ix(self.t)
         if not(gauss_sigma is None):
-            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) #self.get_gauss_sigma_ix(gauss_sigma)
+            ix = ix_equals(self.t, 'gauss_sigma', gauss_sigma) 
 
         if sim_sigma is None:
             colnames += ['sim_gauss_sigma', 'sim_erup_sigma']
@@ -573,7 +573,7 @@ class EfficiencyTable:
             else:
                 sim_sigma_colname = 'sim_gauss_sigma'
             colnames.append(sim_sigma_colname)
-            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix) #self.get_sim_sigma_ix(sim_sigma, sim_sigma_colname))
+            ix = ix_equals(self.t, sim_sigma_colname, sim_sigma, indices=ix)
 
         if not(fom_limit is None):
             try: 
@@ -584,7 +584,6 @@ class EfficiencyTable:
             for col in self.t.columns:
                 if re.search('^pct_detec_',col):
                     colnames.append(col)
-            #colnames += self.t.columns
         
         return self.t.loc[ix,colnames]
     
@@ -614,7 +613,7 @@ def in_valid_season(mjd, valid_seasons):
 
 # generate list of peak fluxes and app mags
 def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
-    peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=20))
+    peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
     peak_fluxes = list(map(mag2flux, peak_mags))
 
     peak_mags = [round(item, 2) for item in peak_mags]
@@ -628,7 +627,7 @@ GENERATE AND SAVE SIMULATED DETECTION AND EFFICIENCY TABLES
 
 if __name__ == "__main__":
     # load SN and control light currves
-    lc = LightCurve(tnsname, mjd_bin_size=mjd_bin_size)#, discdate=discovery_date)
+    lc = LightCurve(tnsname, mjd_bin_size=mjd_bin_size)
     lc.load(source_dir, filt=filt, num_controls=num_controls)
 
     # load simulated eruption
@@ -737,7 +736,7 @@ if __name__ == "__main__":
     print('\nSuccess')
 
     if not(fom_limits is None):
-        print(f'\nUsing FOM limits {fom_limits} and valid MJD ranges to calculate efficiencies...')
+        print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
         e.set_fom_limits(fom_limits)
         e.get_efficiencies(sd)
         print(e.t.to_string())
