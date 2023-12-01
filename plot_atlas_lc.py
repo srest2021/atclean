@@ -35,6 +35,7 @@ class plot_atlas_lc():
 			self.pdf = PdfPages(f'{output_dir}/{tnsname}/{tnsname}_plots_{add2filename}.pdf')
 
 		# ATLAS template change dates in MJD
+		self.tchange0 = 57500
 		self.tchange1 = 58417
 		self.tchange2 = 58882
 
@@ -118,7 +119,8 @@ class plot_atlas_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange0, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange1, color='magenta')
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		color = 'orange' if self.filt == 'o' else 'cyan'
@@ -156,7 +158,8 @@ class plot_atlas_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange0, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange1, color='magenta')
 		plt.axvline(x=self.tchange2, color='magenta')
 		
 		for control_index in range(1, num_controls+1):
@@ -318,7 +321,8 @@ class plot_atlas_lc():
 		if not(add2title is None):
 			title += add2title
 		plt.title(title)
-		plt.axvline(x=self.tchange1, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange0, color='magenta', label='ATLAS template change')
+		plt.axvline(x=self.tchange1, color='magenta')
 		plt.axvline(x=self.tchange2, color='magenta')
 
 		color = 'orange' if self.filt == 'o' else 'cyan'

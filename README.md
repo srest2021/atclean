@@ -2,7 +2,7 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc.v2.ipynb`](#clean_atlas_lcv2ipynb) (for one SN, apply all cuts - chi-squares, uncertainties, control light curves - and average light curve)
+	- [`clean_atlas_lc.v3.ipynb`](#clean_atlas_lcv3ipynb) (for one SN, apply all cuts - chi-squares, uncertainties, control light curves - and average light curve)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `parans.ini`](#quick-setup-in-paramsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
@@ -10,7 +10,7 @@
 
 ## Jupyter Notebooks
 
-### `clean_atlas_lc.v2.ipynb`
+### `clean_atlas_lc.v3.ipynb`
 #### (applies all cuts--chi-squares, uncertainties, and control light curves--and applies averaging)
 Using an already downloaded light curve, determine the best chi-square cut, apply the chi-square cut and an uncertainty cut, and average the light curve with bad day flagging. Then, save the light curve with the flags.
 
@@ -82,7 +82,7 @@ We also attempt to **account for an extra noise source** in the data by estimati
     - `duJy_new = sqrt(duJy^2 + sigma_extra^2)`
 6. Repeat for each control light curve. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
-The **chi-square cut** procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.v2.ipynb`**.
+The **chi-square cut** procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `override_cut` parameter in the `Chi-square cut settings` section to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.v3.ipynb`**.
 
 The **control light curve cut** uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. We thus examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `params.ini` under the correct section):
 - A returned chi-square > 2.5 (to change, set field `x2_max`)

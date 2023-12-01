@@ -627,8 +627,8 @@ class clean_atlas_lc():
 		else:
 			return lc, final_cut, output
 
-	# make sure that for every SN measurement, we have corresponding control light curve 
-	# measurements at that MJD
+	# make sure that for every SN measurement, we have corresponding control light curve measurements at that MJD
+	"""	
 	def verify_mjds(self, lc):
 		print('# Making sure SN and control light curve MJDs match up exactly...')
 		# sort SN lc by MJD
@@ -671,6 +671,7 @@ class clean_atlas_lc():
 				lc.lcs[control_index].t = lc.lcs[control_index].t.loc[ix_sorted]
 		
 		return lc 
+		"""
 
 	def get_control_stats(self, lc):
 		print('# Calculating control light curve statistics...')
@@ -1108,7 +1109,7 @@ class clean_atlas_lc():
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
 				lc.load(self.output_dir, filt, num_controls=self.num_controls)
 
-				lc = self.verify_mjds(lc)
+				lc.verify_mjds() # = self.verify_mjds(lc)
 				if len(lc.lcs[0].t) < 1:
 					print('WARNING: Empty light curve--skipping any cuts/averaging/other...')
 					continue

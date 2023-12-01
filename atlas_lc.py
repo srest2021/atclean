@@ -13,10 +13,12 @@ from pdastro import pdastrostatsclass, AandB, AnotB
 class atlas_lc:
 	def __init__(self, tnsname=None, is_averaged=False, mjd_bin_size=None, discdate=None, ra=None, dec=None):
 		self.lcs = {}
+		self.num_controls = 0
 
 		self.tnsname = tnsname
 		self.is_averaged = is_averaged
 		self.mjd_bin_size = mjd_bin_size
+		
 		self.discdate = discdate
 		self.ra = ra
 		self.dec = dec
@@ -30,7 +32,7 @@ class atlas_lc:
 		res = f'SN {self.tnsname} light curve'
 		if self.is_averaged:
 			res += f' (averaged with MJD bin size {self.mjd_bin_size})'
-		res += f': RA: {self.ra}, Dec: {self.dec}, discovery date: {self.discdate}'
+		res += f': RA {self.ra}, Dec {self.dec}, discovery date {self.discdate} MJD'
 		return res
 
 	# get RA, Dec, and discovery date information from TNS
@@ -138,6 +140,8 @@ class atlas_lc:
 		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
 		print(output)
 
+		self.num_controls = num_controls
+
 		self.load_lc(output_dir, filt, is_averaged=self.is_averaged)
 		for control_index in range(1, num_controls+1):
 			self.load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index)
@@ -166,6 +170,9 @@ class atlas_lc:
 		o_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='o'))
 		c_len = len(self.lcs[control_index].ix_equal(colnames=['F'],val='c'))
 		return o_len, c_len
+	
+	def get_ix(self, control_index=0):
+		return self.lcs[control_index].t.index.values
 
 	def get_masked_ix(self, flags, control_index=0):
 		flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
@@ -181,6 +188,77 @@ class atlas_lc:
 	def get_post_SN_ix(self, control_index=0):
 		return self.lcs[control_index].ix_inrange('MJD', lowlim=self.discdate)
 	
+	def prep_for_cleaning(self):
+		print('# Clearing \'Mask\' column and replacing infs in all light curves...')
+		for control_index in range(0, self.num_controls+1):
+			self.lcs[control_index].t['Mask'] = 0 # clear 'Mask' column
+			self.lcs[control_index].t = self.lcs[control_index].t.replace([np.inf, -np.inf], np.nan) # replace infs with NaNs
+		
+		self.drop_extra_columns()
+		self.recalculate_fdf()
+		self.verify_mjds()
+
+	# drop mask column and any added columns from previous iterations
+	def drop_extra_columns(self, control_index=0):
+		dropcols = []
+		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'Nclip', 'Ngood', 'Nexcluded']:
+			if col in self.lcs[control_index].t.columns:
+				dropcols.append(col)
+		for col in self.lcs[control_index].t.columns:
+			if re.search('^c\d_',col): 
+				dropcols.append(col)
+
+		# drop any extra columns
+		if len(dropcols) > 0: 
+			print('# Dropping extra columns: ',dropcols)
+			self.lcs[control_index].t.drop(columns=dropcols,inplace=True)
+	
+	def recalculate_fdf(self, control_index=0):
+		print(f'# Recalculating flux/dflux column for control light curve {control_index:02d}...')
+		self.lcs[control_index].t['uJy/duJy'] = self.lcs[control_index].t['uJy']/self.lcs[control_index].t[self.dflux_colnames[control_index]]
+	
+	# make sure that for every SN measurement, we have corresponding control light curve measurements at that MJD
+	def verify_mjds(self):
+		print('# Making sure SN and control light curve MJDs match up exactly...')
+		# sort SN lc by MJD
+		mjd_sorted_i = self.lcs[0].ix_sort_by_cols('MJD')
+		self.lcs[0].t = self.lcs[0].t.loc[mjd_sorted_i]
+		sn_sorted = self.lcs[0].t.loc[mjd_sorted_i,'MJD'].to_numpy()
+
+		for control_index in range(1, self.num_controls+1):
+			# sort control light curves by MJD
+			mjd_sorted_i = self.lcs[control_index].ix_sort_by_cols('MJD')
+			control_sorted = self.lcs[control_index].t.loc[mjd_sorted_i,'MJD'].to_numpy()
+			
+			# compare control light curve to SN light curve and, if out of agreement, fix
+			if (len(sn_sorted) != len(control_sorted)) or (np.array_equal(sn_sorted, control_sorted) is False):
+				print('## MJDs out of agreement for control light curve %03d, fixing...' % control_index)
+
+				mjds_onlysn = AnotB(sn_sorted, control_sorted)
+				mjds_onlycontrol = AnotB(control_sorted, sn_sorted)
+
+				# for the MJDs only in SN, add row with that MJD to control light curve, with all values of other columns NaN
+				if len(mjds_onlysn) > 0:
+					print('### Adding %d NaN rows to control light curve...' % len(mjds_onlysn))
+					for mjd in mjds_onlysn:
+						self.lcs[control_index].newrow({'MJD':mjd,'Mask':0})
+				
+				# remove indices of rows in control light curve for which there is no MJD in the SN lc
+				if len(mjds_onlycontrol) > 0:
+					print('### Removing %d control light curve row(s) without matching SN row(s)...' % len(mjds_onlycontrol))
+					indices2skip = []
+					for mjd in mjds_onlycontrol:
+						ix = self.lcs[control_index].ix_equal('MJD',mjd)
+						if len(ix)!=1:
+							raise RuntimeError(f'### Couldn\'t find MJD={mjd} in column MJD, but should be there!')
+						indices2skip.extend(ix)
+					indices = AnotB(self.lcs[control_index].getindices(),indices2skip)
+				else:
+					indices = self.lcs[control_index].getindices()
+				
+				ix_sorted = self.lcs[control_index].ix_sort_by_cols('MJD',indices=indices)
+				self.lcs[control_index].t = self.lcs[control_index].t.loc[ix_sorted]
+		
 	def get_offset(self, offset_ix):
 		self.lcs[0].calcaverage_sigmacutloop('uJy', noisecol='duJy', Nsigma=3, indices=offset_ix, median_firstiteration=True)
 		offset = self.lcs[0].statparams['mean']
