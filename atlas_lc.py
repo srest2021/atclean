@@ -132,7 +132,7 @@ class atlas_lc:
 		self.lcs[control_index] = pdastrostatsclass()
 		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True)
 		
-        # clear previous 'Mask' column
+		# clear previous 'Mask' column
 		self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
@@ -154,6 +154,9 @@ class atlas_lc:
 
 	# update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
 	def update_mask_col(self, flag, indices, control_index=0):
+		# remove the old mask
+		self.lcs[control_index].t['Mask'] = np.bitwise_and(self.lcs[control_index].t['Mask'].astype(int), ~flag)
+
 		if len(indices) > 1:
 			flag_arr = np.full(self.lcs[control_index].t.loc[indices,'Mask'].shape, flag)
 			self.lcs[control_index].t.loc[indices,'Mask'] = np.bitwise_or(self.lcs[control_index].t.loc[indices,'Mask'].astype(int), flag_arr)
@@ -190,18 +193,19 @@ class atlas_lc:
 	
 	def prep_for_cleaning(self):
 		print('# Clearing \'Mask\' column and replacing infs in all light curves...')
+		self.drop_extra_columns()
+		
 		for control_index in range(0, self.num_controls+1):
 			self.lcs[control_index].t['Mask'] = 0 # clear 'Mask' column
 			self.lcs[control_index].t = self.lcs[control_index].t.replace([np.inf, -np.inf], np.nan) # replace infs with NaNs
-		
-		self.drop_extra_columns()
-		self.recalculate_fdf()
+			self.recalculate_fdf(control_index=control_index)
+
 		self.verify_mjds()
 
 	# drop mask column and any added columns from previous iterations
 	def drop_extra_columns(self, control_index=0):
 		dropcols = []
-		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'Nclip', 'Ngood', 'Nexcluded']:
+		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum']:
 			if col in self.lcs[control_index].t.columns:
 				dropcols.append(col)
 		for col in self.lcs[control_index].t.columns:
@@ -258,6 +262,10 @@ class atlas_lc:
 				
 				ix_sorted = self.lcs[control_index].ix_sort_by_cols('MJD',indices=indices)
 				self.lcs[control_index].t = self.lcs[control_index].t.loc[ix_sorted]
+				
+			self.lcs[control_index].t.reset_index(inplace=True)
+			#print(self.lcs[control_index].t)
+			#print(len(self.lcs[control_index].t))
 		
 	def get_offset(self, offset_ix):
 		self.lcs[0].calcaverage_sigmacutloop('uJy', noisecol='duJy', Nsigma=3, indices=offset_ix, median_firstiteration=True)
@@ -282,7 +290,7 @@ class atlas_lc:
 			output += f'\nDiscovery date greater than last template change; no baseline correction needed; skipping...'
 			print(output)
 			return output
-        
+		
 		t1_ix = self.lcs[0].ix_inrange('MJD', lowlim=t1, uplim=t2)
 		t2_ix = self.lcs[0].ix_inrange('MJD', lowlim=t2, uplim=t3)
 		t3_ix = self.lcs[0].ix_inrange('MJD', lowlim=t3)
@@ -293,7 +301,7 @@ class atlas_lc:
 			if not offset is None:
 				self.lcs[0].t.loc[t3_ix, 'uJy'] += offset
 				output += f'Correction applied to T3 region; {offset:0.2f} uJy added\n'
-        
+		
 		elif t1 < self.discdate and self.discdate < t2:
 			offset = self.get_offset(t3_ix)
 			if not offset is None:
@@ -304,7 +312,7 @@ class atlas_lc:
 			if not offset is None:
 				self.lcs[0].t.loc[t2_ix, 'uJy'] += offset
 				output += f'Correction applied to T2 region; {offset:0.2f} uJy added\n'
-        
+		
 		elif self.discdate < t1:
 			offset = self.get_offset(t3_ix)
 			if not offset is None:
