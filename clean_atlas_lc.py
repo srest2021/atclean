@@ -54,6 +54,7 @@ class clean_atlas_lc():
 		# chi-square cut
 		self.chisquares = False
 		self.chisquare_cut = None 
+		self.use_preSN_lc = False
 		self.stn_bound = None
 		self.min_cut = None
 		self.max_cut = None
@@ -161,6 +162,7 @@ class clean_atlas_lc():
 				self.chisquare_cut = float(cfg['Chi-square cut settings']['override_cut'])
 				print(f'# Overriding dynamic chi-square cut with manual cut of x2 = {self.chisquare_cut}')
 			except:
+				self.use_preSN_lc = bool(cfg['Chi-square cut settings']['use_preSN_lc'])
 				self.stn_bound = float(cfg['Chi-square cut settings']['stn_bound'])
 				self.min_cut = int(cfg['Chi-square cut settings']['min_cut'])
 				self.max_cut = int(cfg['Chi-square cut settings']['max_cut'])
@@ -627,52 +629,6 @@ class clean_atlas_lc():
 		else:
 			return lc, final_cut, output
 
-	# make sure that for every SN measurement, we have corresponding control light curve measurements at that MJD
-	"""	
-	def verify_mjds(self, lc):
-		print('# Making sure SN and control light curve MJDs match up exactly...')
-		# sort SN lc by MJD
-		mjd_sorted_i = lc.lcs[0].ix_sort_by_cols('MJD')
-		lc.lcs[0].t = lc.lcs[0].t.loc[mjd_sorted_i]
-		sn_sorted = lc.lcs[0].t.loc[mjd_sorted_i,'MJD'].to_numpy()
-
-		for control_index in range(1,self.num_controls+1):
-			# sort control light curves by MJD
-			mjd_sorted_i = lc.lcs[control_index].ix_sort_by_cols('MJD')
-			control_sorted = lc.lcs[control_index].t.loc[mjd_sorted_i,'MJD'].to_numpy()
-			
-			# compare control light curve to SN light curve and, if out of agreement, fix
-			if (len(sn_sorted) != len(control_sorted)) or (np.array_equal(sn_sorted, control_sorted) is False):
-				print('## MJDs out of agreement for control light curve %03d, fixing...' % control_index)
-
-				mjds_onlysn = AnotB(sn_sorted, control_sorted)
-				mjds_onlycontrol = AnotB(control_sorted, sn_sorted)
-
-				# for the MJDs only in SN, add row with that MJD to control light curve, with all values of other columns NaN
-				if len(mjds_onlysn) > 0:
-					print('### Adding %d NaN rows to control light curve...' % len(mjds_onlysn))
-					for mjd in mjds_onlysn:
-						lc.lcs[control_index].newrow({'MJD':mjd,'Mask':0})
-				
-				# remove indices of rows in control light curve for which there is no MJD in the SN lc
-				if len(mjds_onlycontrol) > 0:
-					print('### Removing %d control light curve row(s) without matching SN row(s)...' % len(mjds_onlycontrol))
-					indices2skip = []
-					for mjd in mjds_onlycontrol:
-						ix = lc.lcs[control_index].ix_equal('MJD',mjd)
-						if len(ix)!=1:
-							raise RuntimeError(f'### Couldn\'t find MJD={mjd} in column MJD, but should be there!')
-						indices2skip.extend(ix)
-					indices = AnotB(lc.lcs[control_index].getindices(),indices2skip)
-				else:
-					indices = lc.lcs[control_index].getindices()
-				
-				ix_sorted = lc.lcs[control_index].ix_sort_by_cols('MJD',indices=indices)
-				lc.lcs[control_index].t = lc.lcs[control_index].t.loc[ix_sorted]
-		
-		return lc 
-		"""
-
 	def get_control_stats(self, lc):
 		print('# Calculating control light curve statistics...')
 
@@ -722,12 +678,6 @@ class clean_atlas_lc():
 	# apply control light curve cut to SN light curve and update mask column with flag
 	def apply_control_cut(self, lc):
 		print('\nNow applying control light curve cut...')
-
-		# clear any previous flags in control light curves' 'Mask' columns
-		#for control_index in range(1,self.num_controls+1):
-			#lc.lcs[control_index].t['Mask'] = 0
-
-		#lc = self.verify_mjds(lc)
 		lc = self.get_control_stats(lc)
 
 		print('# Flagging SN light curve based on control light curve statistics...')
@@ -887,8 +837,8 @@ class clean_atlas_lc():
 	def average(self, lc, avglc):
 		for control_index in range(self.num_controls+1):
 			# only average control light curves if detecting pre-SN bumps
-			if (not(self.detect_bumps) or (self.detect_bumps and not(self.apply_to_controls))) and control_index > 0:
-				break
+			#if (not(self.detect_bumps) or (self.detect_bumps and not(self.apply_to_controls))) and control_index > 0:
+			#	break
 
 			lc, avglc = self.average_lc(lc, avglc, control_index)
 
@@ -1107,7 +1057,7 @@ class clean_atlas_lc():
 			for filt in ['o','c']:
 				print(f'\nFILTER SET: {filt}')
 				lc = atlas_lc(tnsname=args.tnsnames[obj_index])
-				lc.load(self.output_dir, filt, num_controls=self.num_controls)
+				lc._load(self.output_dir, filt, num_controls=self.num_controls)
 
 				lc.verify_mjds() # = self.verify_mjds(lc)
 				if len(lc.lcs[0].t) < 1:
@@ -1227,14 +1177,14 @@ class clean_atlas_lc():
 				# drop extra control lc cut columns
 				lc = self.drop_extra_columns(lc)
 				# save lc with new 'Mask' column
-				lc.save(self.output_dir, filt=filt, overwrite=self.overwrite)
+				lc._save(self.output_dir, filt=filt, overwrite=self.overwrite)
 
 
 				# drop extra columns in averaged lc
 				if self.averaging:
 					avglc = self.drop_extra_columns(avglc) 
 					# save averaged light curve
-					avglc.save(self.output_dir, filt=filt, overwrite=self.overwrite, keep_empty_bins=self.keep_empty_bins)
+					avglc._save(self.output_dir, filt=filt, overwrite=self.overwrite, keep_empty_bins=self.keep_empty_bins)
 
 				f = self.add_to_readme(f, lc, filt, final_cut=final_cut, 
 													uncertainty_output=uncertainty_output,

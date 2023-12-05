@@ -36,7 +36,7 @@ class atlas_lc:
 		return res
 
 	# get RA, Dec, and discovery date information from TNS
-	def get_tns_data(self, api_key, tns_id, bot_name):
+	def _get_tns_data(self, api_key, tns_id, bot_name):
 		print(f'Obtaining RA, Dec, and/or discovery date from TNS (TNS ID: {tns_id}; TNS bot name: "{bot_name}")...')
 		if tns_id == "None" or bot_name == "None":
 			raise RuntimeError("# ERROR: Cannot query TNS without TNS ID and bot name! Specify these parameters in params.ini")
@@ -110,7 +110,7 @@ class atlas_lc:
 			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), indices=ix, overwrite=overwrite)
 
 	# save SN light curve and, if necessary, control light curves
-	def save(self, output_dir, filt=None, overwrite=True, keep_empty_bins=True):
+	def _save(self, output_dir, filt=None, overwrite=True, keep_empty_bins=True):
 		if len(self.lcs) < 1:
 			print('WARNING: No light curves to save! Skipping...')
 		else:
@@ -136,7 +136,7 @@ class atlas_lc:
 		self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
-	def load(self, output_dir, filt, num_controls=0):
+	def _load(self, output_dir, filt, num_controls=0):
 		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
 		print(output)
 
@@ -192,9 +192,10 @@ class atlas_lc:
 		return self.lcs[control_index].ix_inrange('MJD', lowlim=self.discdate)
 	
 	def prep_for_cleaning(self):
-		print('# Clearing \'Mask\' column and replacing infs in all light curves...')
+		#print(f'# Dropping extra columns in all light curves...')
 		self.drop_extra_columns()
 		
+		print('# Clearing \'Mask\' column, replacing infs, and calculating flux/dflux in all light curves...')
 		for control_index in range(0, self.num_controls+1):
 			self.lcs[control_index].t['Mask'] = 0 # clear 'Mask' column
 			self.lcs[control_index].t = self.lcs[control_index].t.replace([np.inf, -np.inf], np.nan) # replace infs with NaNs
@@ -218,7 +219,7 @@ class atlas_lc:
 			self.lcs[control_index].t.drop(columns=dropcols,inplace=True)
 	
 	def recalculate_fdf(self, control_index=0):
-		print(f'# Recalculating flux/dflux column for control light curve {control_index:02d}...')
+		#print(f'# Recalculating flux/dflux column for control light curve {control_index:02d}...')
 		self.lcs[control_index].t['uJy/duJy'] = self.lcs[control_index].t['uJy']/self.lcs[control_index].t[self.dflux_colnames[control_index]]
 	
 	# make sure that for every SN measurement, we have corresponding control light curve measurements at that MJD
@@ -243,13 +244,13 @@ class atlas_lc:
 
 				# for the MJDs only in SN, add row with that MJD to control light curve, with all values of other columns NaN
 				if len(mjds_onlysn) > 0:
-					print('### Adding %d NaN rows to control light curve...' % len(mjds_onlysn))
+					#print('### Adding %d NaN rows to control light curve...' % len(mjds_onlysn))
 					for mjd in mjds_onlysn:
 						self.lcs[control_index].newrow({'MJD':mjd,'Mask':0})
 				
 				# remove indices of rows in control light curve for which there is no MJD in the SN lc
 				if len(mjds_onlycontrol) > 0:
-					print('### Removing %d control light curve row(s) without matching SN row(s)...' % len(mjds_onlycontrol))
+					#print('### Removing %d control light curve row(s) without matching SN row(s)...' % len(mjds_onlycontrol))
 					indices2skip = []
 					for mjd in mjds_onlycontrol:
 						ix = self.lcs[control_index].ix_equal('MJD',mjd)
@@ -264,8 +265,8 @@ class atlas_lc:
 				self.lcs[control_index].t = self.lcs[control_index].t.loc[ix_sorted]
 				
 			self.lcs[control_index].t.reset_index(inplace=True)
-			#print(self.lcs[control_index].t)
-			#print(len(self.lcs[control_index].t))
+
+		print('# Success')
 		
 	def get_offset(self, offset_ix):
 		self.lcs[0].calcaverage_sigmacutloop('uJy', noisecol='duJy', Nsigma=3, indices=offset_ix, median_firstiteration=True)
