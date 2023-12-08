@@ -517,7 +517,7 @@ class EfficiencyTable:
                 self.t.drop(col, axis=1, inplace=True)
 
         for i in range(len(self.gauss_sigmas)):
-            fom_limits = self.fom_limits[gauss_sigmas[i]]
+            fom_limits = self.fom_limits[self.gauss_sigmas[i]]
             self.t[f'pct_detec_{fom_limits[0]}'] = np.full(len(self.t), np.nan)
             self.t[f'pct_detec_{fom_limits[1]}'] = np.full(len(self.t), np.nan)
 
