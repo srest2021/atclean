@@ -153,9 +153,10 @@ class atlas_lc:
         return os.path.isfile(filename)
 
     # update given indices of 'Mask' column in the light curve (SN if control index is None) with given flag(s)
-    def update_mask_col(self, flag, indices, control_index=0):
-        # remove the old mask
-        self.lcs[control_index].t['Mask'] = np.bitwise_and(self.lcs[control_index].t['Mask'].astype(int), ~flag)
+    def update_mask_col(self, flag, indices, control_index=0, remove_old=True):
+        if remove_old:
+            # remove the old mask
+            self.lcs[control_index].t['Mask'] = np.bitwise_and(self.lcs[control_index].t['Mask'].astype(int), ~flag)
 
         if len(indices) > 1:
             flag_arr = np.full(self.lcs[control_index].t.loc[indices,'Mask'].shape, flag)

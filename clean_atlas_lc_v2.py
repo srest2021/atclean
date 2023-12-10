@@ -39,8 +39,7 @@ class CleanAtlasLightCurve(atlas_lc):
 		print('Success')
 
 	def _apply_uncert_cut(self, flag, cut):
-		print('\nApplying uncertainty cut...')
-
+		print(f'\nApplying uncertainty cut of {cut:0.2f}...')
 		for control_index in range(self.num_controls+1):
 			ix = self.get_ix(control_index=control_index)
 			kept_ix = self.lcs[control_index].ix_inrange(colnames=['duJy'],uplim=cut)
@@ -130,10 +129,11 @@ class CleanAtlasLightCurve(atlas_lc):
 			output = f'{s2}.'
 			print(f'# {s2}; skipping procedure')
 
-		return output
+		return output#, stats
 	
 	def apply_uncert_est(self, uncert_flag):
-		return self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut'])
+		#output, stats = self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut'])
+		return self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut']) #output
 	
 	def _get_all_controls(self):
 		controls = [deepcopy(self.lcs[control_index].t) for control_index in self.lcs if control_index > 0]
@@ -323,9 +323,26 @@ class CleanAtlasLightCurve(atlas_lc):
 					print('# Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, contam_lim_cut))
 					final_cut = contam_lim_cut
 		return final_cut
-
-	def _apply_x2_cut(self, flag, stn_cut, cut_start, cut_stop, cut_step, loss_lim, contam_lim, lim_to_prioritize, use_preSN_lc=False):
-		print('\nApplying chi-square cut...')
+	
+	def _apply_x2_cut(self, cut, data, flag):
+		print(f'\nApplying chi-square cut of {cut:0.2f}...')
+		for control_index in range(self.num_controls+1):
+			ix = self.get_ix(control_index=control_index)
+			kept_ix = self.lcs[control_index].ix_inrange(colnames=['chi/N'],uplim=cut)
+			cut_ix = AnotB(ix, kept_ix)
+			self.update_mask_col(flag, cut_ix, control_index=control_index)
+		
+			if control_index == 0:
+				num_cut = len(cut_ix)
+				percent_cut = 100 * num_cut/len(ix)
+				output1 = f'Chi-square cut {cut:0.2f} selected with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss'
+				output2 = f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%'
+				print(f'# {output1}\n# {output2}')
+				print('Success')
+		return f'{output1}\n{output2}'
+	
+	def _do_x2_cut(self, flag, stn_cut, cut_start, cut_stop, cut_step, loss_lim, contam_lim, lim_to_prioritize, use_preSN_lc=False):
+		print('\nCalculating chi-square cut...')
 
 		if lim_to_prioritize != 'loss' and lim_to_prioritize != 'contamination':
 			raise RuntimeError("ERROR: limit_to_prioritize must be 'loss' or 'contamination'!")
@@ -364,34 +381,19 @@ class CleanAtlasLightCurve(atlas_lc):
 			output = 'Final suggested chi-square cut could not be determined'
 			print(f'# ERROR: {output}. We suggest rethinking your contamination and loss limits.')
 			return output
-
-		for control_index in range(self.num_controls+1):
-			ix = self.get_ix(control_index=control_index)
-			kept_ix = self.lcs[control_index].ix_inrange(colnames=['chi/N'],uplim=final_cut)
-			cut_ix = AnotB(ix, kept_ix)
-			self.update_mask_col(flag, cut_ix, control_index=control_index)
 		
-			if control_index == 0:
-				num_cut = len(cut_ix)
-				percent_cut = 100 * num_cut/len(ix)
-				output1 = f'Chi-square cut {final_cut:0.2f} selected with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss'
-				output2 = f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%'
-				print(f'# {output1}\n# {output2}')
-				print('Success')
-
-		
-		return f'{output1}\n{output2}'
+		return self._apply_x2_cut(final_cut, data, flag)
 	
 	def apply_x2_cut(self, flag):
-		return self._apply_x2_cut(flag, 
-								  self.cfg['x2_cut_params']['stn_cut'], 
-								  self.cfg['x2_cut_params']['cut_start'], 
-								  self.cfg['x2_cut_params']['cut_stop'], 
-								  self.cfg['x2_cut_params']['cut_step'],
-								  self.cfg['x2_cut_params']['loss_lim'],
-								  self.cfg['x2_cut_params']['contam_lim'],
-								  self.cfg['x2_cut_params']['lim_to_prioritize'],
-								  self.cfg['x2_cut_params']['use_preSN_lc'])
+		return self._do_x2_cut(flag, 
+							   self.cfg['x2_cut_params']['stn_cut'], 
+							   self.cfg['x2_cut_params']['cut_start'], 
+							   self.cfg['x2_cut_params']['cut_stop'], 
+							   self.cfg['x2_cut_params']['cut_step'],
+							   self.cfg['x2_cut_params']['loss_lim'],
+							   self.cfg['x2_cut_params']['contam_lim'],
+							   self.cfg['x2_cut_params']['lim_to_prioritize'],
+							   self.cfg['x2_cut_params']['use_preSN_lc'])
 	
 	def _get_control_stats(self, flags):
 		print('# Calculating control light curve statistics...')
@@ -417,12 +419,12 @@ class CleanAtlasLightCurve(atlas_lc):
 			pda4MJD = pdastrostatsclass()
 			pda4MJD.t['uJy'] = uJy[0:,index]
 			pda4MJD.t[self.dflux_colnames[0]] = duJy[0:,index]
-			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], flags['x2']|flags['uncert'])
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], flags['chisquare']|flags['uncertainty'])
 			
 			pda4MJD.calcaverage_sigmacutloop('uJy',
 											noisecol=self.dflux_colnames[0],
 											maskcol='Mask',
-											maskval=(flags['x2']|flags['uncert']),
+											maskval=(flags['chisquare']|flags['uncertainty']),
 											verbose=1, Nsigma=3.0, median_firstiteration=True)
 			self.lcs[0].statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index)
 	
@@ -466,22 +468,6 @@ class CleanAtlasLightCurve(atlas_lc):
 			else:
 				self.lcs[control_index].t['Mask'] = np.bitwise_or(self.lcs[control_index].t['Mask'], flags_to_copy)
 
-		"""
-		len_ix = len(self.get_ix())
-		print('# Control light curve cut results:')
-		print('## Length of SN light curve: %d' % len_ix)
-		print('## Percent of data above x2_max bound: %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_x2']))/len_ix))
-		print('## Percent of data above stn_max bound: %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_stn']))/len_ix))
-		print('## Percent of data above Nclip_max bound: %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Nclip']))/len_ix))
-		print('## Percent of data below Ngood_min bound: %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Ngood']))/len_ix))
-		s = 'Total percent of data flagged as bad: %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_bad']))/len_ix)
-		print(f'## {s}')
-		output = f'\n\n {s}.'
-		s = 'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable']))/len_ix)
-		print(f'## {s}')
-		output += f'{s}.'
-		"""
-
 		len_ix = len(self.get_ix())
 		s = []
 		s.append('Percent of data above x2_max bound (%s): %0.2f%%' 
@@ -522,11 +508,13 @@ class CleanAtlasLightCurve(atlas_lc):
 		mjd = int(np.amin(self.lcs[control_index].t['MJD']))
 		mjd_max = int(np.amax(self.lcs[control_index].t['MJD']))+1
 
-		good_ix = self.lcs[control_index].ix_unmasked('Mask', maskval=flags['x2']|flags['uncert']|flags['controls_bad'])
+		#good_ix = self.lcs[control_index].ix_unmasked('Mask', maskval=flags['chisquare']|flags['uncertainty']|flags['controls_bad'])
 
 		while mjd <= mjd_max:
 			range_ix = self.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjd_bin_size, exclude_uplim=True)
-			range_good_ix = AandB(range_ix,good_ix)
+			range_good_ix = self.lcs[control_index].ix_unmasked('Mask', 
+													   maskval=flags['chisquare']|flags['uncertainty']|flags['controls_bad'], 
+													   indices=range_ix) #AandB(good_ix,range_ix)
 
 			# add new row to averaged light curve
 			new_row = {'MJDbin':mjd+0.5*mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_ix)-len(range_good_ix), 'Mask':0}
@@ -534,7 +522,7 @@ class CleanAtlasLightCurve(atlas_lc):
 			
 			# if no measurements present, flag or skip over day
 			if len(range_ix) < 1:
-				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
+				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index, remove_old=False)
 				mjd += mjd_bin_size
 				continue
 			
@@ -558,8 +546,8 @@ class CleanAtlasLightCurve(atlas_lc):
 															   'Nclip':fluxstatparams['Nclip'] if not fluxstatparams['Nclip'] is None else np.nan,
 															   'Ngood':fluxstatparams['Ngood'] if not fluxstatparams['Ngood'] is None else np.nan,
 															   'Mask':0})
-				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
-				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
+				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index, remove_old=False)
+				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index, remove_old=False)
 
 				mjd += mjd_bin_size
 				continue
@@ -569,8 +557,8 @@ class CleanAtlasLightCurve(atlas_lc):
 			fluxstatparams = deepcopy(self.lcs[control_index].statparams)
 
 			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
-				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
-				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
+				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index, remove_old=False)
+				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index, remove_old=False)
 				mjd += mjd_bin_size
 				continue
 
@@ -591,12 +579,12 @@ class CleanAtlasLightCurve(atlas_lc):
 			
 			# flag clipped measurements in lc
 			if len(fluxstatparams['ix_clip']) > 0:
-				self.update_mask_col(flags['avg_ixclip'], fluxstatparams['ix_clip'], control_index=control_index)
+				self.update_mask_col(flags['avg_ixclip'], fluxstatparams['ix_clip'], control_index=control_index, remove_old=False)
 			
 			# if small number within this bin, flag measurements
 			if len(range_good_ix) < 3:
-				self.update_mask_col(flags['avg_smallnum'], range_good_ix, control_index=control_index) # TO DO: CHANGE TO RANGE_I??
-				avglc.update_mask_col(flags['avg_smallnum'], [avglc_index], control_index=control_index)
+				self.update_mask_col(flags['avg_smallnum'], range_ix, control_index=control_index, remove_old=False) # TO DO: CHANGE TO RANGE_IX??
+				avglc.update_mask_col(flags['avg_smallnum'], [avglc_index], control_index=control_index, remove_old=False)
 			# else check sigmacut bounds and flag
 			else:
 				is_bad = False
@@ -607,8 +595,8 @@ class CleanAtlasLightCurve(atlas_lc):
 				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > x2_max:
 					is_bad = True
 				if is_bad:
-					self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
-					avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
+					self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index, remove_old=False)
+					avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index, remove_old=False)
 
 			mjd += mjd_bin_size
 		
@@ -653,9 +641,9 @@ class CleaningLoop():
 		self.lc_objs = {}
 
 		# flags for each cut
-		self.flags = {'x2':0x1,
+		self.flags = {'chisquare':0x1,
 
-					  'uncert':0x2,
+					  'uncertainty':0x2,
 
 					  'controls_bad':0x400000,
 					  'controls_questionable':0x80000,
@@ -757,7 +745,7 @@ class CleaningLoop():
 		f.write(f'\nTotal percent of data flagged as bad ({hex(self.flags["uncert"]|self.flags["x2"]|self.flags["controls_bad"]|self.flags["avg_badday"])}): {percent_flagged:0.2f}')
 		
 		if self.apply_averaging:
-			f.write(f'\n\n### Averaging cleaned light curve\n')
+			f.write(f'\n\n### Averaging cleaned light curves\n')
 			f.write(averaging_output)
 			f.write(f'\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename.')
 
@@ -790,15 +778,15 @@ class CleaningLoop():
 
 				uncert_cut_output = None
 				if self.apply_uncert_cut:
-					uncert_cut_output = self.lc_objs[k].apply_uncert_cut(self.flags['uncert'])
+					uncert_cut_output = self.lc_objs[k].apply_uncert_cut(self.flags['uncertainty'])
 				
 				uncert_est_output = None
 				if self.apply_uncert_est:
-					uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncert'])
+					uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
-					x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['x2'])
+					x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'])
 
 				controls_cut_output = None
 				if self.apply_controls_cut:
@@ -931,5 +919,6 @@ def load_settings():
 	print(f'Success: {cleaning.settings}')
 	return cleaning
 
-cleaning = load_settings()
-cleaning.loop()
+if __name__ == "__main__":
+	cleaning = load_settings()
+	cleaning.loop()

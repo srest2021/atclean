@@ -6,7 +6,7 @@
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
-    - [`clean_atlas_lc.v2.py`](#clean_atlas_lcv2py) (for one or more SNe, apply all cuts - chi-squares, uncertainties, control light curves - and average light curves)
+    - [`clean_atlas_lc_v2.py`](#clean_atlas_lcv2py) (for one or more SNe, apply all cuts - chi-squares, uncertainties, control light curves - and average light curves)
 
 ## Jupyter Notebooks
 
@@ -66,7 +66,7 @@ In order to change the number of control light curves downloaded, replace `[gene
 - `download_atlas_lc.py 2019vxm -c` downloads full SN 2019vxm and control light curves
 - `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
-### `clean_atlas_lc.py`
+### `clean_atlas_lc_v2.py`
 #### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
 Using the default settings in `settings.ini`, load previously downloaded light curves, estimate true uncertainties, apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
@@ -117,5 +117,5 @@ For this part of the cleaning, we still need to improve the cutting at the peak 
 - `-o` or `--overwirte`: overwrite existing light curves with the same filename
 
 **Example commands**:
-- `clean_atlas_lc.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
-- `clean_atlas_lc.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
+- `_clean_atlas_lc_v2.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
+- `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
