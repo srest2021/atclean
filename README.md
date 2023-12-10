@@ -11,7 +11,7 @@
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.v4.ipynb`
-#### (applies all cuts--chi-squares, uncertainties, and control light curves--and applies averaging)
+#### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
 Using an already downloaded light curve, determine the best chi-square cut, apply the chi-square cut and an uncertainty cut, and average the light curve with bad day flagging. Then, save the light curve with the flags.
 
 Control light curve cut currently in progress of being implemented and added to this notebook (this cut also requires pre-downloaded control light curves). To easily download control light curves in order to load them into this notebook, see the **`download_atlas_lc.py`** section to run this script.
@@ -70,33 +70,33 @@ In order to change the number of control light curves downloaded, replace `[gene
 #### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
 Using the default settings in `settings.ini`, load previously downloaded light curves, estimate true uncertainties, apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
-The **uncertainty cut** is a static procedure currently set at a constant value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini` to a different value.
+The **uncertainty cut** is a static procedure currently set at a constant value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
-We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. This procedure can be turned off or back on in `settings.ini` through the `estimate_true_uncertainties` field. Here is the exact procedure we use:
-1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value). Filter out any measurements flagged by these two cuts.
-2. Calculate the extra noise source for each control light curve using the following formula, where the median uncertainty, $\text{median}(∂µJy)$, is taken from the unflagged baseline flux:
-    - $\sigma_{\text{extra}}^2 = \sigma_{\text{true\_typical}}^2 - \sigma_{\text{poisson}}^2$
-    - $\sigma_{\text{extra}} = \sqrt{\sigma_{\text{true\_typical}}^2 - \text{median}(∂µJy)^2}$
-3. Calculate the final extra noise source by taking the median of all $\sigma_{\text{extra}}$.
-4. Decide whether or not to recommend addition of the extra noise source. First, get $\sigma_{\text{typical\_old}}$ by taking the median of the control light curves' $\text{median}(∂µJy)$. Next, get $\sigma_{\text{typical\_new}}$ using the following formula:
-    - $\sigma_{\text{typical\_new}} = \sqrt{\sigma_{\text{extra}}^2 + \sigma_{\text{typical\_old}}}$
+We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. Here is the exact procedure we use:
+1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
+2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $\text{median}(∂µJy)$, is taken from the unflagged baseline flux. $\text{sigma_true_typical}$ is calculated by applying a 3-$\sigma$ cut of the measurements cleaned in step 1, then getting the standard deviation.
+    - $\text{sigma_extra}^2 = \text{sigma_true_typical}^2 - \text{sigma_poisson}^2$
+    - $\text{sigma_extra} = \sqrt{\text{sigma_true_typical}^2 - \text{median}(∂µJy)^2}$
+3. Calculate the final extra noise source by taking the median of all $\text{sigma_extra}$.
+4. Decide whether or not to recommend addition of the extra noise source. First, get $\text{sigma_typical_old}$ by taking the median of the control light curves' $\text{median}(∂µJy)$. Next, get $\text{sigma_typical_new}$ using the following formula:
+    - $\text{sigma_typical_new} = \sqrt{\text{sigma_extra}^2 + \text{sigma_typical_old}}$
     
-    If $\sigma_{\text{typical\_new}}$ is 10% greater than $\sigma_{\text{typical\_old}}$, recommend addition of the extra noise.
+    If $\text{sigma_typical_new}$ is 10% greater than $\text{sigma_typical_old}$, recommend addition of the extra noise.
 5. Apply the extra noise source to the existing uncertainty using the following formula:
-    - $\text{new }∂µJy = \sqrt{(\text{old }∂µJy)^2 + \sigma_{\text{extra}}^2}$
+    - $\text{new }∂µJy = \sqrt{(\text{old }∂µJy)^2 + \text{sigma_extra}^2}$
 6. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
 The **chi-square cut** procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `[x2_cut]` `override_cut` parameter to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.v4.ipynb`**.
 
-The **control light curve cut** uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. We thus examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[controls_cut]`):
-- A returned chi-square > 2.5 (to change, set field `x2_max`)
-- A returned abs(flux/dflux) > 3.0 (to change, set field `stn_max`)
-- Number of measurements averaged < 2 (to change, set field `Nclip_max`)
-- Number of measurements clipped > 4 (to change, set field `Ngood_min`)
+The **control light curve cut** uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. We thus examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (fields can be changed in `settings.ini`):
+- A returned chi-square > 2.5 (to change, set field `[controls_cut]` `x2_max`)
+- A returned abs(flux/dflux) > 3.0 (to change, set field `[controls_cut]` `stn_max`)
+- Number of measurements averaged < 2 (to change, set field `[controls_cut]` `Nclip_max`)
+- Number of measurements clipped > 4 (to change, set field `[controls_cut]` `Ngood_min`)
 
 Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
 
-Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`): 
+Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`): 
 - A returned chi-square > 4.0 (to change, set field `x2_max`)
 - Number of measurements averaged < 2 (to change, set field `Nclip_max`)
 - Number of measurements clipped > 1 (to change, set field `Ngood_min`)
@@ -112,7 +112,7 @@ For this part of the cleaning, we still need to improve the cutting at the peak 
 - `-c` or `--controls_cut`: apply control light curve cut
 - `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
 	- `-m` or `--mjd_bin_size`: set MJD bin size in days
-- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
+- `-p` or `--plot` (**CURRENTLY NOT FUNCTIONAL**): saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `settings.ini`)
 - `-o` or `--overwirte`: overwrite existing light curves with the same filename
