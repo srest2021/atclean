@@ -74,16 +74,15 @@ The **uncertainty cut** is a static procedure currently set at a constant value 
 
 We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. Here is the exact procedure we use:
 1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
-2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, `\text{median}(∂µJy)`, is taken from the unflagged baseline flux. `\text{sigma_true_typical}` is calculated by applying a 3-`\sigma` cut of the measurements cleaned in step 1, then getting the standard deviation.
-    - `\text{sigma_extra}^2 = \text{sigma_true_typical}^2 - \text{sigma_poisson}^2`
-    - `\text{sigma_extra} = \sqrt{\text{sigma_true_typical}^2 - \text{median}(∂µJy)^2}`
-3. Calculate the final extra noise source by taking the median of all `\text{sigma_extra}$`.
-4. Decide whether or not to recommend addition of the extra noise source. First, get `\text{sigma_typical_old}` by taking the median of the control light curves' `\text{median}(∂µJy)`. Next, get `\text{sigma_typical_new}` using the following formula:
-    - `$\text{sigma_typical_new} = \sqrt{\text{sigma_extra}^2 + \text{sigma_typical_old}}`
-    
-    If `$\text{sigma_typical_new}` is 10% greater than `\text{sigma_typical_old}`, recommend addition of the extra noise.
+2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, `median_∂µJy`, is taken from the unflagged baseline flux. `σ_true_typical` is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
+    - `σ_extra^2 = σ_true_typical^2 - median_∂µJy^2`
+3. Calculate the final extra noise source by taking the median of all `σ_extra`.
+4. Decide whether or not to recommend addition of the extra noise source. First, get `σ_typical_old` by taking the median of the control light curves' `median_∂µJy`. Next, get `σ_typical_new` using the following formula:
+    - `σ_typical_new^2 = σ_extra^2 + σ_typical_old^2`
+
+    If `σ_typical_new` is 10% greater than `σ_typical_old`, recommend addition of the extra noise.
 5. Apply the extra noise source to the existing uncertainty using the following formula:
-    - `\text{new }∂µJy = \sqrt{(\text{old }∂µJy)^2 + \text{sigma_extra}^2}`
+    - `∂µJy_new^2 = ∂µJy_old^2 + σ_extra^2`
 6. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
 The **chi-square cut** procedure may be dynamic (default) or static. In order to apply a static cut at a constant value, set the `[x2_cut]` `override_cut` parameter to that value; otherwise, leave set at `None` to apply the dynamic cut. More in-depth explanation of each parameter, its meaning, and overall procedures is located in **`clean_atlas_lc.v4.ipynb`**.
