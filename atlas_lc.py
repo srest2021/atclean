@@ -215,7 +215,7 @@ class atlas_lc:
 
         # drop any extra columns
         if len(dropcols) > 0: 
-            print('# Dropping extra columns: ',dropcols)
+            print(f'# Dropping extra columns ({control_index if control_index > 0 else "SN light curve"}): ',dropcols)
             self.lcs[control_index].t.drop(columns=dropcols,inplace=True)
     
     def recalculate_fdf(self, control_index=0):
@@ -264,7 +264,7 @@ class atlas_lc:
                 ix_sorted = self.lcs[control_index].ix_sort_by_cols('MJD',indices=indices)
                 self.lcs[control_index].t = self.lcs[control_index].t.loc[ix_sorted]
                 
-            self.lcs[control_index].t.reset_index(inplace=True)
+            self.lcs[control_index].t.reset_index(drop=True, inplace=True)
 
         print('# Success')
 

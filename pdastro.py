@@ -893,9 +893,9 @@ class pdastroclass:
             #self.t = self.t.drop(columns=['__tmp_SN'])
             
         # Calculate the mags and uncertainties
-        self.t.loc[indices_mag,magcol]= -2.5*np.log10(self.t.loc[indices_mag,fluxcol])
-        self.t.loc[indices_mag,dmagcol] = 2.5 / np.log(10.0) * self.t.loc[indices_mag,dfluxcol]/self.t.loc[indices_mag,fluxcol]
-
+        self.t.loc[indices_mag,magcol]= -2.5*np.log10(self.t.loc[indices_mag,fluxcol].astype(np.float64))
+        self.t.loc[indices_mag,dmagcol] = 2.5 / np.log(10.0) * self.t.loc[indices_mag,dfluxcol].astype(np.float64) / self.t.loc[indices_mag,fluxcol].astype(np.float64)
+        
         # Are there upper limits to be calculated? 
         if len(indices_ul)>0:
             # just to be sure, set dmags to nan
@@ -904,11 +904,11 @@ class pdastroclass:
             indices_ul_positive = AnotB(indices_ul,indices_ul_negative) 
             if len(indices_ul_positive)>0:
                 # If flux is positive: upper limit = flux + Nsigma * dflux
-                self.t.loc[indices_ul_positive,magcol] = -2.5*np.log10(self.t.loc[indices_ul_positive,fluxcol]+upperlim_Nsigma*self.t.loc[indices_ul_positive,dfluxcol])
+                self.t.loc[indices_ul_positive,magcol] = -2.5*np.log10(self.t.loc[indices_ul_positive,fluxcol].astype(np.float64) + upperlim_Nsigma*self.t.loc[indices_ul_positive,dfluxcol].astype(np.float64))
 
             if len(indices_ul_negative)>0:
                 # If flux is negative: upper limit = Nsigma * dflux
-                self.t.loc[indices_ul_negative,magcol] = -2.5*np.log10(upperlim_Nsigma*self.t.loc[indices_ul_negative,dfluxcol])
+                self.t.loc[indices_ul_negative,magcol] = -2.5*np.log10(upperlim_Nsigma*self.t.loc[indices_ul_negative,dfluxcol].astype(np.float64))
         
         if not(zpt is None):        
             self.t.loc[indices,magcol]+=zpt

@@ -29,6 +29,8 @@ class CleanAtlasLightCurve(atlas_lc):
 		self.discdate = discdate
 
 	def save(self):
+		for control_index in range(self.num_controls+1):
+			self.drop_extra_columns(control_index=control_index)
 		self._save(self.cfg['output_dir'], filt=self.filt)
 		print('Success')
 	
@@ -48,7 +50,7 @@ class CleanAtlasLightCurve(atlas_lc):
 			if control_index == 0:
 				num_cut = len(cut_ix)
 				percent_cut = 100 * num_cut/len(ix)
-				output = f'Total percent of data flagged: {percent_cut:0.2f}%'
+				output = f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%'
 				print(f'# {output}')
 		return output
 
@@ -78,14 +80,20 @@ class CleanAtlasLightCurve(atlas_lc):
 			clean_ix = AandB(dflux_clean_ix, x2_clean_ix)
 
 			median_dflux = self._get_median_dflux(indices=clean_ix, control_index=control_index)
+			
 			stdev = self._get_flux_stdev(indices=clean_ix, control_index=control_index)
+			if stdev is None:
+				print(f'# WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {prelim_x2_cut}...')
+				stdev = self._get_flux_stdev(indices=dflux_clean_ix, control_index=control_index)
+				if stdev is None:
+					print('# WARNING: Could not get flux std dev using clean indices; retrying with all indices...')
+					stdev = self._get_flux_stdev(control_index=control_index)
+
 			sigma_extra = self._get_sigma_extra(median_dflux, stdev)
 
 			stats.loc[control_index, 'median_dflux'] = median_dflux
 			stats.loc[control_index, 'stdev'] = stdev
 			stats.loc[control_index, 'sigma_extra'] = sigma_extra
-
-		#print(stats)
 		return stats
 	
 	def _get_final_sigma_extra(self, stats):
@@ -121,8 +129,7 @@ class CleanAtlasLightCurve(atlas_lc):
 			s2 = 'True uncertainties estimation not needed'
 			output = f'{s2}.'
 			print(f'# {s2}; skipping procedure')
-		
-		#print(self.lcs[0].t[['MJD', 'uJy', 'duJy', 'duJy_new']].head())
+
 		return output
 	
 	def apply_uncert_est(self, uncert_flag):
@@ -182,8 +189,6 @@ class CleanAtlasLightCurve(atlas_lc):
 				continue
 			data = self._get_limcuts_data(lc, cut, ix, good_ix, bad_ix, kept_ix=kept_ix, cut_ix=cut_ix)
 			limcuts = pd.concat([limcuts, pd.DataFrame([data])],ignore_index=True)
-
-		#print(limcuts)
 		return limcuts
 	
 	def _get_limcuts(self, limcuts, loss_lim, contam_lim):
@@ -370,9 +375,11 @@ class CleanAtlasLightCurve(atlas_lc):
 				num_cut = len(cut_ix)
 				percent_cut = 100 * num_cut/len(ix)
 				output1 = f'Chi-square cut {final_cut:0.2f} selected with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss'
-				output2 = f'Total percent of data flagged: {percent_cut:0.2f}%'
+				output2 = f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%'
 				print(f'# {output1}\n# {output2}')
 				print('Success')
+
+		
 		return f'{output1}\n{output2}'
 	
 	def apply_x2_cut(self, flag):
@@ -459,6 +466,7 @@ class CleanAtlasLightCurve(atlas_lc):
 			else:
 				self.lcs[control_index].t['Mask'] = np.bitwise_or(self.lcs[control_index].t['Mask'], flags_to_copy)
 
+		"""
 		len_ix = len(self.get_ix())
 		print('# Control light curve cut results:')
 		print('## Length of SN light curve: %d' % len_ix)
@@ -472,8 +480,28 @@ class CleanAtlasLightCurve(atlas_lc):
 		s = 'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0): %0.2f%%' % (100*len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable']))/len_ix)
 		print(f'## {s}')
 		output += f'{s}.'
-		print('Success')
+		"""
 
+		len_ix = len(self.get_ix())
+		s = []
+		s.append('Percent of data above x2_max bound (%s): %0.2f%%' 
+		   % (hex(flags['controls_x2']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_x2'])) / len_ix))
+		s.append('Percent of data above stn_max bound (%s): %0.2f%%' 
+		   % (hex(flags['controls_stn']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_stn'])) / len_ix))
+		s.append('Percent of data above Nclip_max bound (%s): %0.2f%%' 
+		   % (hex(flags['controls_Nclip']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Nclip'])) / len_ix))
+		s.append('Percent of data below Ngood_min bound (%s): %0.2f%%' 
+		   % (hex(flags['controls_Ngood']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Ngood'])) / len_ix))
+		s.append('Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) (%s): %0.2f%%' 
+		   % (hex(flags['controls_questionable']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable'])) / len_ix))
+		s.append('Total percent of data flagged as bad (%s): %0.2f%%' 
+		   % (hex(flags['controls_bad']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_bad'])) / len_ix))
+		print('# Control light curve cut results:')
+		for out in s:
+			print(f'## {out}')
+		output = '\n'.join(s)
+		
+		print('Success')
 		return output
 	
 	def apply_controls_cut(self, flags):
@@ -494,53 +522,54 @@ class CleanAtlasLightCurve(atlas_lc):
 		mjd = int(np.amin(self.lcs[control_index].t['MJD']))
 		mjd_max = int(np.amax(self.lcs[control_index].t['MJD']))+1
 
-		good_i = self.lcs[control_index].ix_unmasked('Mask', maskval=flags['x2']|flags['uncert']|flags['controls_bad'])
+		good_ix = self.lcs[control_index].ix_unmasked('Mask', maskval=flags['x2']|flags['uncert']|flags['controls_bad'])
 
 		while mjd <= mjd_max:
-			range_i = self.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjd_bin_size, exclude_uplim=True)
-			range_good_i = AandB(range_i,good_i)
+			range_ix = self.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjd_bin_size, exclude_uplim=True)
+			range_good_ix = AandB(range_ix,good_ix)
 
-			new_row = {'MJDbin':mjd+0.5*mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_i)-len(range_good_i), 'Mask':0}
+			# add new row to averaged light curve
+			new_row = {'MJDbin':mjd+0.5*mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_ix)-len(range_good_ix), 'Mask':0}
 			avglc_index = avglc.lcs[control_index].newrow(new_row)
 			
 			# if no measurements present, flag or skip over day
-			if len(range_i) < 1:
+			if len(range_ix) < 1:
 				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
 				mjd += mjd_bin_size
 				continue
 			
 			# if no good measurements, average values anyway and flag
-			if len(range_good_i) < 1:
+			if len(range_good_ix) < 1:
 				# average flux
-				self.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colnames[control_index], indices=range_i, Nsigma=3.0, median_firstiteration=True)
+				self.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colnames[control_index], indices=range_ix, Nsigma=3.0, median_firstiteration=True)
 				fluxstatparams = deepcopy(self.lcs[control_index].statparams)
-
+				
 				# get average mjd
-				# TO DO: SHOULD NOISECOL HERE BE DUJY OR NONE??
-				self.lcs[control_index].calcaverage_sigmacutloop('MJD', indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+				#indices=fluxstatparams['ix_good']
+				self.lcs[control_index].calcaverage_sigmacutloop('MJD', indices=range_ix, Nsigma=0, median_firstiteration=False)
 				avg_mjd = self.lcs[control_index].statparams['mean']
 
 				# add row and flag
 				avglc.lcs[control_index].add2row(avglc_index, {'MJD':avg_mjd, 
-															   'uJy':fluxstatparams['mean'], 
-															   'duJy':fluxstatparams['mean_err'], 
-															   'stdev':fluxstatparams['stdev'],
-															   'x2':fluxstatparams['X2norm'],
-															   'Nclip':fluxstatparams['Nclip'],
-															   'Ngood':fluxstatparams['Ngood'],
+															   'uJy':fluxstatparams['mean'] if not fluxstatparams['mean'] is None else np.nan, 
+															   'duJy':fluxstatparams['mean_err'] if not fluxstatparams['mean_err'] is None else np.nan, 
+															   'stdev':fluxstatparams['stdev'] if not fluxstatparams['stdev'] is None else np.nan,
+															   'x2':fluxstatparams['X2norm'] if not fluxstatparams['X2norm'] is None else np.nan,
+															   'Nclip':fluxstatparams['Nclip'] if not fluxstatparams['Nclip'] is None else np.nan,
+															   'Ngood':fluxstatparams['Ngood'] if not fluxstatparams['Ngood'] is None else np.nan,
 															   'Mask':0})
-				self.update_mask_col(flags['avg_badday'], range_i, control_index=control_index)
+				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
 				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
 
 				mjd += mjd_bin_size
 				continue
 			
 			# average good measurements
-			self.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colnames[control_index], indices=range_good_i, Nsigma=3.0, median_firstiteration=True)
+			self.lcs[control_index].calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colnames[control_index], indices=range_good_ix, Nsigma=3.0, median_firstiteration=True)
 			fluxstatparams = deepcopy(self.lcs[control_index].statparams)
 
 			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
-				self.update_mask_col(flags['avg_badday'], range_i, control_index=control_index)
+				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
 				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
 				mjd += mjd_bin_size
 				continue
@@ -565,8 +594,8 @@ class CleanAtlasLightCurve(atlas_lc):
 				self.update_mask_col(flags['avg_ixclip'], fluxstatparams['ix_clip'], control_index=control_index)
 			
 			# if small number within this bin, flag measurements
-			if len(range_good_i) < 3:
-				self.update_mask_col(flags['avg_smallnum'], range_good_i, control_index=control_index) # TO DO: CHANGE TO RANGE_I??
+			if len(range_good_ix) < 3:
+				self.update_mask_col(flags['avg_smallnum'], range_good_ix, control_index=control_index) # TO DO: CHANGE TO RANGE_I??
 				avglc.update_mask_col(flags['avg_smallnum'], [avglc_index], control_index=control_index)
 			# else check sigmacut bounds and flag
 			else:
@@ -578,12 +607,10 @@ class CleanAtlasLightCurve(atlas_lc):
 				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > x2_max:
 					is_bad = True
 				if is_bad:
-					self.update_mask_col(flags['avg_badday'], range_i, control_index=control_index)
+					self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index)
 					avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index)
 
 			mjd += mjd_bin_size
-
-		print(avglc.lcs[0].t.loc[range(1,100),:].to_string())
 		
 		avglc.lcs[control_index].flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit)
 		avglc.drop_extra_columns(control_index=control_index)
@@ -593,13 +620,17 @@ class CleanAtlasLightCurve(atlas_lc):
 
 	def _apply_averaging(self, flags, Nclip_max, Ngood_min, x2_max, mjd_bin_size=1.0, flux2mag_sigmalimit=3.0):
 		print('\nAveraging light curve(s)...')
-		avglc = atlas_lc(self.tnsname, is_averaged=True, mjd_bin_size=mjd_bin_size, discdate=self.discdate)
-		print('Parameters: MJD bin size = %0.1f day(s), Nclip_max = %d, Ngood_min = %d, x2_max = %0.2f... ' % (mjd_bin_size, Nclip_max, Ngood_min, x2_max))
+		avglc = CleanAtlasLightCurve(self.filt, 
+							   		 tnsname=self.tnsname, 
+									 is_averaged=True, 
+									 mjd_bin_size=mjd_bin_size, 
+									 discdate=self.discdate)
+		print('# Parameters: MJD bin size = %0.1f day(s), Nclip_max = %d, Ngood_min = %d, x2_max = %0.2f... ' % (mjd_bin_size, Nclip_max, Ngood_min, x2_max))
 
 		for control_index in range(self.num_controls+1):
 			avglc = self._average(avglc, flags, Nclip_max, Ngood_min, x2_max, control_index=control_index, mjd_bin_size=mjd_bin_size, flux2mag_sigmalimit=flux2mag_sigmalimit)
 
-		s = 'Total percent of binned data flagged: %0.2f%%' % (100*len(avglc.lcs[0].ix_masked('Mask',maskval=flags['avg_badday']))/len(avglc.lcs[0].t))
+		s = 'Total percent of binned data flagged (%s): %0.2f%%' % (flags['avg_badday'], 100 * len(avglc.lcs[0].ix_masked('Mask',maskval=flags['avg_badday'])) / len(avglc.lcs[0].t))
 		print(f'# {s}')
 		output = f'{s}.'
 		print('Success')
@@ -637,11 +668,14 @@ class CleaningLoop():
 					  'avg_ixclip':0x1000,
 					  'avg_smallnum':0x2000}
 
+		#self.apply_template_correction = args.template_correction
 		self.apply_uncert_est = args.uncert_est
 		self.apply_uncert_cut = args.uncert_cut
 		self.apply_x2_cut = args.x2_cut
 		self.apply_controls_cut = args.controls_cut
 		self.apply_averaging = args.averaging
+
+		self.plot = args.plot
 
 	def load_snlist(self):
 		if self.settings['snlist_filename'] != 'None':
@@ -655,24 +689,25 @@ class CleaningLoop():
 		else:
 			print(f'\nSkipping SN list at {self.settings["snlist_filename"]}...')
 
-	def get_lc_data(self, tnsname):
+	def get_lc_data(self, tnsname, filt):
+		k = f'{tnsname}_{filt}'
 		# check if data exists in snlist
 		if not self.snlist is None:
 			row = self.snlist[self.snlist['tnsname'] == tnsname]
 			if len(row) < 1:
 				print()
-				self.lc_objs[tnsname].get_tns_data()
+				self.lc_objs[k].get_tns_data()
 			else:
 				print(f'\nSetting RA, Dec, and discovery date using {self.settings["snlist_filename"]}...')
 				if len(row) > 1:
 					# use first row
 					row = row[0]
 				index = row.index[0]
-				self.lc_objs[tnsname].set_tns_data(self.snlist.loc[index,'ra'], self.snlist.loc[index,'dec'], self.snlist.loc[index,'discovery_date'])
+				self.lc_objs[k].set_tns_data(self.snlist.loc[index,'ra'], self.snlist.loc[index,'dec'], self.snlist.loc[index,'discovery_date'])
 		else: # else get TNS data
 			print()
-			self.lc_objs[tnsname].get_tns_data()
-		print(self.lc_objs[tnsname])
+			self.lc_objs[k].get_tns_data()
+		print(self.lc_objs[k])
 
 	def begin_readme(self, tnsname):
 		f = open(f'{self.settings["output_dir"]}/{tnsname}/README.md','w+')
@@ -697,6 +732,36 @@ class CleaningLoop():
 			f.write(f'\n\t- Bad day (for averaged light curves): {hex(self.flags["avg_badday"])}')
 
 		return f
+	
+	def add_to_readme(self, f, k, uncert_cut_output=None, uncert_est_output=None, x2_cut_output=None, controls_cut_output=None, averaging_output=None):
+		f.write(f'\n\n## FILTER: {self.lc_objs[k].filt}')
+
+		if self.apply_uncert_cut:
+			f.write(f'\n\n### Uncertainty cut\n')
+			f.write(uncert_cut_output)
+		
+		if self.apply_uncert_est:
+			f.write(f'\n\n### True uncertainties estimation\n')
+			f.write(uncert_est_output)
+			
+		if self.apply_x2_cut:
+			f.write(f'\n\n### Chi-square cut\n')
+			f.write(x2_cut_output)
+
+		if self.apply_controls_cut:
+			f.write(f'\n\n### Control light curve cut\n')
+			f.write(controls_cut_output)
+
+		f.write(f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.')
+		percent_flagged = len(self.lc_objs[k].get_masked_ix(self.flags)) * 100 / len(self.lc_objs[k].lcs[0].t)
+		f.write(f'\nTotal percent of data flagged as bad ({hex(self.flags["uncert"]|self.flags["x2"]|self.flags["controls_bad"]|self.flags["avg_badday"])}): {percent_flagged:0.2f}')
+		
+		if self.apply_averaging:
+			f.write(f'\n\n### Averaging cleaned light curve\n')
+			f.write(averaging_output)
+			f.write(f'\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename.')
+
+		return f
 
 	def loop(self):
 		self.load_snlist()
@@ -708,36 +773,58 @@ class CleaningLoop():
 			f = self.begin_readme(tnsname)
 
 			for filt in ['o', 'c']:
-				print(f'\nSetting filter: {filt}')
-				self.lc_objs[tnsname] = CleanAtlasLightCurve(filt, cfg=self.settings, tnsname=tnsname)
-				self.get_lc_data(tnsname)
+				k = f'{tnsname}_{filt}' # key for lc_objs dict using TNS name and current filter
 
-				self.lc_objs[tnsname].load()
+				print(f'\nSETTING FILTER: {filt}')
+				self.lc_objs[k] = CleanAtlasLightCurve(filt, cfg=self.settings, tnsname=tnsname)
+				self.get_lc_data(tnsname, filt)
+
+				self.lc_objs[k].load()
 
 				print('\nPreparing for cleaning...')
-				self.lc_objs[tnsname].prep_for_cleaning()
+				self.lc_objs[k].prep_for_cleaning()
+
+				#template_correction_output = None
+				#if self.apply_template_correction:
+					#template_correction_output = self.lc_objs[k].apply_template_correction()
 
 				uncert_cut_output = None
 				if self.apply_uncert_cut:
-					uncert_cut_output = self.lc_objs[tnsname].apply_uncert_cut(self.flags['uncert'])
+					uncert_cut_output = self.lc_objs[k].apply_uncert_cut(self.flags['uncert'])
 				
 				uncert_est_output = None
 				if self.apply_uncert_est:
-					uncert_est_output = self.lc_objs[tnsname].apply_uncert_est(self.flags['uncert'])
+					uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncert'])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
-					x2_cut_output = self.lc_objs[tnsname].apply_x2_cut(self.flags['x2'])
+					x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['x2'])
 
 				controls_cut_output = None
 				if self.apply_controls_cut:
-					controls_cut_output = self.lc_objs[tnsname].apply_controls_cut(self.flags)
+					controls_cut_output = self.lc_objs[k].apply_controls_cut(self.flags)
 
 				averaging_output = None
 				if self.apply_averaging:
-					averaging_output = self.lc_objs[tnsname].apply_averaging(self.flags)
+					avglc, averaging_output = self.lc_objs[k].apply_averaging(self.flags)
+					
+					if self.settings['overwrite']:
+						avglc._save(self.settings['output_dir'], filt=filt)
 
-				sys.exit()
+				if self.settings['overwrite']:
+					self.lc_objs[k].save()
+
+				f = self.add_to_readme(f, k,
+						   			   uncert_cut_output=uncert_cut_output,
+						   			   uncert_est_output=uncert_est_output,
+									   x2_cut_output=x2_cut_output,
+									   controls_cut_output=controls_cut_output,
+									   averaging_output=averaging_output)
+
+				if self.plot:
+					print('WARNING: Plotting not implemented yet! Skipping...')
+
+			f.close()
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -746,7 +833,8 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 		
 	parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
 	parser.add_argument('--num_controls', type=int, default=None, help='Number of control light curves to load and clean')
-		
+	
+	#parser.add_argument('-t', '--template_correction', default=False, action='store_true', help='apply automatic ATLAS template change correction')
 	parser.add_argument('-e', '--uncert_est', default=False, action='store_true', help='apply true uncertainty estimation')
 	parser.add_argument('-u', '--uncert_cut', default=False, action='store_true', help='apply uncertainty cut')
 	parser.add_argument('-x', '--x2_cut', default=False, action='store_true', help='apply chi-square cut')
@@ -760,7 +848,6 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('--ylim_lower', type=float, default=None, help='if plotting, manually set lower y axis limit to a certain uJy')
 	parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
 
-	#parser.add_argument('--skip_tc', default=False, action='store_true', help='skip correction for ATLAS template changes')
 	parser.add_argument('-f','--cfg_filename', default='settings.ini', type=str, help='file name of ini file with settings for this class')
 	parser.add_argument('-o','--overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
 		
@@ -831,6 +918,14 @@ def load_settings():
 			'x2_max': float(cfg['averaging']['x2_max']),
 			'Nclip_max': int(cfg['averaging']['Nclip_max']),
 			'Ngood_min': int(cfg['averaging']['Ngood_min'])
+		}
+	
+	if cleaning.plot:
+		cleaning.settings['plot_params'] = {
+			'xlim_lower': args.xlim_lower,
+			'xlim_upper': args.xlim_upper,
+			'ylim_lower': args.ylim_lower,
+			'ylim_upper': args.ylim_upper
 		}
 
 	print(f'Success: {cleaning.settings}')
