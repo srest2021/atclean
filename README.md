@@ -12,9 +12,11 @@
 
 ### `clean_atlas_lc.v4.ipynb`
 #### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
-Using an already downloaded light curve, determine the best chi-square cut, apply the chi-square cut and an uncertainty cut, and average the light curve with bad day flagging. Then, save the light curve with the flags.
+Using previously downloaded SN and control light curves, estimate true uncertainties, apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
 
-Control light curve cut currently in progress of being implemented and added to this notebook (this cut also requires pre-downloaded control light curves). To easily download control light curves in order to load them into this notebook, see the **`download_atlas_lc.py`** section to run this script.
+Example notebooks for example SNe are located in the `/extern` folder of this repository.
+
+To easily download control light curves in order to load them into this notebook, see the **`download_atlas_lc.py`** section to run this script.
 
 ## Python Scripts
 
