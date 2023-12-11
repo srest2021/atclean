@@ -1,18 +1,4 @@
 #!/usr/bin/env python
-import pandas as pd
-import numpy as np
-import sys,random,re,os
-from copy import deepcopy
-from scipy.interpolate import interp1d
-from astropy.modeling.functional_models import Gaussian1D
-
-from pdastro import pdastrostatsclass
-from atlas_lc import atlas_lc
-
-# suppress deprecation warnings
-import warnings
-warnings.simplefilter('error', RuntimeWarning)
-warnings.filterwarnings("ignore")
 
 """
 SETTINGS
@@ -61,7 +47,7 @@ sim_sigmas = [[2, 5, 20, 40, 80, 120], # 5
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-fom_limits = [[3.0, 5.0], [10.4, 17.4], [15.1, 25.1], [20.0, 33.4], [25.3, 42.2], [29.0, 48.4], [33.1, 55.2]]
+fom_limits = None #[[3.0, 5.0], [10.4, 17.4], [15.1, 25.1], [20.0, 33.4], [25.3, 42.2], [29.0, 48.4], [33.1, 55.2]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -91,6 +77,21 @@ skip_ctrl = []
 """
 UTILITY
 """
+
+import pandas as pd
+import numpy as np
+import sys,random,re,os
+from copy import deepcopy
+from scipy.interpolate import interp1d
+from astropy.modeling.functional_models import Gaussian1D
+
+from pdastro import pdastrostatsclass
+from atlas_lc import atlas_lc
+
+# suppress deprecation warnings
+import warnings
+warnings.simplefilter('error', RuntimeWarning)
+warnings.filterwarnings("ignore")
 
 def AandB(A,B):
     return np.intersect1d(A,B,assume_unique=False)
