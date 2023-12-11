@@ -11,8 +11,15 @@
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.v4.ipynb`
-#### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
-Using previously downloaded SN and control light curves, estimate true uncertainties, apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
+#### estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), averages light curves, and corrects for ATLAS template changes.
+Using previously downloaded SN and control light curves:
+- Apply uncertainty cut
+- Estimate true uncertainties
+- Apply chi-square cut 
+- Apply control light curve cut
+- Average cleaned light curves
+- Optionally correct for ATLAS template changes
+- Save both original and averaged light curves with the updated 'Mask' columns
 
 Example notebooks for example SNe are located in the `/extern` folder of this repository.
 
@@ -70,7 +77,14 @@ In order to change the number of control light curves downloaded, replace `[gene
 
 ### `clean_atlas_lc_v2.py`
 #### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
-Using the default settings in `settings.ini`, load previously downloaded light curves, estimate true uncertainties, apply any of the chi-square, uncertainty, and control light curve cuts, average the light curves and flag bad days in both original and averaged light curves, then save both original and averaged light curves with the updated 'Mask' columns.
+Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
+- Apply uncertainty cut
+- Estimate true uncertainties
+- Apply chi-square cut 
+- Apply control light curve cut
+- Average cleaned light curves
+- Optionally correct for ATLAS template changes
+- Save both original and averaged light curves with the updated 'Mask' columns
 
 The **uncertainty cut** is a static procedure currently set at a constant value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
@@ -113,7 +127,7 @@ For this part of the cleaning, we still need to improve the cutting at the peak 
 - `-c` or `--controls_cut`: apply control light curve cut
 - `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
 	- `-m` or `--mjd_bin_size`: set MJD bin size in days
-- `-p` or `--plot` (**CURRENTLY NOT FUNCTIONAL**): saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
+- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
 	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `settings.ini`)
 - `-o` or `--overwirte`: overwrite existing light curves with the same filename

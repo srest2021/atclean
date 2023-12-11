@@ -10,6 +10,7 @@ import numpy as np
 
 from pdastro import pdastrostatsclass, AandB, AnotB
 from atlas_lc import atlas_lc
+from plot_atlas_lc_v2 import PlotAtlasLightCurve
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -59,7 +60,7 @@ class CleanAtlasLightCurve(atlas_lc):
 	def _get_median_dflux(self, indices=None, control_index=0):
 		if indices is None:
 			indices = self.get_ix(control_index=control_index)
-		return np.median(self.lcs[control_index].t.loc[indices, 'duJy'])
+		return np.nanmedian(self.lcs[control_index].t.loc[indices, 'duJy'])
 
 	def _get_flux_stdev(self, indices=None, control_index=0):
 		self.lcs[control_index].calcaverage_sigmacutloop('uJy', indices=indices, Nsigma=3.0, median_firstiteration=True)
@@ -108,8 +109,8 @@ class CleanAtlasLightCurve(atlas_lc):
 		print('\nApplying true uncertainty estimation...')
 
 		stats = self._get_uncert_est_stats(uncert_flag, prelim_x2_cut)
+		#print(stats.to_string())
 		final_sigma_extra = self._get_final_sigma_extra(stats)
-		#print(f'# Final sigma extra: {final_sigma_extra:0.2f}')
 		
 		sigma_typical_old = np.median(stats['median_dflux'])
 		sigma_typical_new = np.sqrt(final_sigma_extra**2 + sigma_typical_old**2)
@@ -129,10 +130,9 @@ class CleanAtlasLightCurve(atlas_lc):
 			output = f'{s2}.'
 			print(f'# {s2}; skipping procedure')
 
-		return output#, stats
+		return output
 	
 	def apply_uncert_est(self, uncert_flag):
-		#output, stats = self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut'])
 		return self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut']) #output
 	
 	def _get_all_controls(self):
@@ -341,7 +341,7 @@ class CleanAtlasLightCurve(atlas_lc):
 				print('Success')
 		return f'{output1}\n{output2}'
 	
-	def _do_x2_cut(self, flag, stn_cut, cut_start, cut_stop, cut_step, loss_lim, contam_lim, lim_to_prioritize, use_preSN_lc=False):
+	def _do_x2_cut(self, flag, stn_cut, cut_start, cut_stop, cut_step, loss_lim, contam_lim, lim_to_prioritize, use_preSN_lc=False, plot=None):
 		print('\nCalculating chi-square cut...')
 
 		if lim_to_prioritize != 'loss' and lim_to_prioritize != 'contamination':
@@ -350,9 +350,11 @@ class CleanAtlasLightCurve(atlas_lc):
 		print(f'# Contamination limit: {contam_lim:0.2f}%; loss limit: {loss_lim:0.2f}%')
 
 		if use_preSN_lc:
+			print('# Using pre-SN light curve to determine contamination and loss...')
 			lc_temp = deepcopy(self.lcs[0])
 			ix = lc_temp.ix_inrange('MJD', uplim=self.discdate)
 		else:
+			print('# Using control light curves to determine contamination and loss...')
 			lc_temp = self._get_all_controls()
 			ix = lc_temp.t.index.values
 		good_ix, bad_ix = self._get_goodbad_ix(lc_temp, ix, stn_cut)
@@ -382,9 +384,14 @@ class CleanAtlasLightCurve(atlas_lc):
 			print(f'# ERROR: {output}. We suggest rethinking your contamination and loss limits.')
 			return output
 		
-		return self._apply_x2_cut(final_cut, data, flag)
-	
-	def apply_x2_cut(self, flag):
+		output = self._apply_x2_cut(final_cut, data, flag)
+
+		if not plot is None:
+			plot.plot_x2_cut(self, limcuts, loss_lim, contam_lim, loss_lim_cut, contam_lim_cut, cut_start, cut_stop, use_preSN_lc=use_preSN_lc)
+
+		return plot, output
+
+	def apply_x2_cut(self, flag, plot=None):
 		return self._do_x2_cut(flag, 
 							   self.cfg['x2_cut_params']['stn_cut'], 
 							   self.cfg['x2_cut_params']['cut_start'], 
@@ -393,7 +400,8 @@ class CleanAtlasLightCurve(atlas_lc):
 							   self.cfg['x2_cut_params']['loss_lim'],
 							   self.cfg['x2_cut_params']['contam_lim'],
 							   self.cfg['x2_cut_params']['lim_to_prioritize'],
-							   self.cfg['x2_cut_params']['use_preSN_lc'])
+							   use_preSN_lc=self.cfg['x2_cut_params']['use_preSN_lc'],
+							   plot=plot)
 	
 	def _get_control_stats(self, flags):
 		print('# Calculating control light curve statistics...')
@@ -711,9 +719,9 @@ class CleaningLoop():
 
 		f.write(f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): ')
 		if self.apply_uncert_cut:
-			f.write(f'\n\t- Uncertainty cut: {hex(self.flags["uncert"])}')
+			f.write(f'\n\t- Uncertainty cut: {hex(self.flags["uncertainty"])}')
 		if self.apply_x2_cut:
-			f.write(f'\n\t- Chi-square cut: {hex(self.flags["x2"])}')
+			f.write(f'\n\t- Chi-square cut: {hex(self.flags["chisquare"])}')
 		if self.apply_controls_cut:
 			f.write(f'\n\t- Control light curve cut: {hex(self.flags["controls_bad"])}')
 		if self.apply_averaging:
@@ -742,7 +750,7 @@ class CleaningLoop():
 
 		f.write(f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.')
 		percent_flagged = len(self.lc_objs[k].get_masked_ix(self.flags)) * 100 / len(self.lc_objs[k].lcs[0].t)
-		f.write(f'\nTotal percent of data flagged as bad ({hex(self.flags["uncert"]|self.flags["x2"]|self.flags["controls_bad"]|self.flags["avg_badday"])}): {percent_flagged:0.2f}')
+		f.write(f'\nTotal percent of data flagged as bad ({hex(self.flags["uncertainty"]|self.flags["chisquare"]|self.flags["controls_bad"]|self.flags["avg_badday"])}): {percent_flagged:0.2f}')
 		
 		if self.apply_averaging:
 			f.write(f'\n\n### Averaging cleaned light curves\n')
@@ -766,11 +774,15 @@ class CleaningLoop():
 				print(f'\nSETTING FILTER: {filt}')
 				self.lc_objs[k] = CleanAtlasLightCurve(filt, cfg=self.settings, tnsname=tnsname)
 				self.get_lc_data(tnsname, filt)
-
 				self.lc_objs[k].load()
 
 				print('\nPreparing for cleaning...')
 				self.lc_objs[k].prep_for_cleaning()
+				
+				plot = None
+				if self.plot:
+					plot = PlotAtlasLightCurve(self.lc_objs[k], self.flags)
+					plot.plot_lcs(plot_controls = self.lc_objs[k].num_controls > 0)
 
 				#template_correction_output = None
 				#if self.apply_template_correction:
@@ -779,23 +791,31 @@ class CleaningLoop():
 				uncert_cut_output = None
 				if self.apply_uncert_cut:
 					uncert_cut_output = self.lc_objs[k].apply_uncert_cut(self.flags['uncertainty'])
+					if self.plot:
+						plot.plot_uncert_cut(self.lc_objs[k])
 				
 				uncert_est_output = None
 				if self.apply_uncert_est:
 					uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'])
+					if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
+						plot.plot_uncert_est(self.lc_objs[k])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
-					x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'])
+					plot, x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'], plot=plot)
 
 				controls_cut_output = None
 				if self.apply_controls_cut:
 					controls_cut_output = self.lc_objs[k].apply_controls_cut(self.flags)
+					if plot:
+						plot.plot_controls_cut(self.lc_objs[k])
 
 				averaging_output = None
 				if self.apply_averaging:
 					avglc, averaging_output = self.lc_objs[k].apply_averaging(self.flags)
-					
+					if plot:
+						plot.plot_badday_cut(avglc)
+
 					if self.settings['overwrite']:
 						avglc._save(self.settings['output_dir'], filt=filt)
 
@@ -810,7 +830,7 @@ class CleaningLoop():
 									   averaging_output=averaging_output)
 
 				if self.plot:
-					print('WARNING: Plotting not implemented yet! Skipping...')
+					plot.save()
 
 			f.close()
 
@@ -870,7 +890,7 @@ def load_settings():
 	cleaning = CleaningLoop(args, settings)
 	
 	if cleaning.apply_uncert_est:
-		cleaning.settings['prelim_x2_cut'] = bool(cfg['uncert_est']['prelim_x2_cut'])
+		cleaning.settings['prelim_x2_cut'] = float(cfg['uncert_est']['prelim_x2_cut'])
 
 	if cleaning.apply_uncert_cut:
 		cleaning.settings['uncert_cut'] = float(cfg['uncert_cut']['cut'])
@@ -889,7 +909,7 @@ def load_settings():
 				'contam_lim': float(cfg['x2_cut']['contamination_limit']),
 				'loss_lim': float(cfg['x2_cut']['loss_limit']),
 				'lim_to_prioritize': cfg['x2_cut']['limit_to_prioritize'],
-				'use_preSN_lc': bool(cfg['x2_cut']['use_preSN_lc'])
+				'use_preSN_lc': cfg['x2_cut']['use_preSN_lc'] == 'True'
 			}
 	
 	if cleaning.apply_controls_cut:

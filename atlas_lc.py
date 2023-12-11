@@ -179,11 +179,11 @@ class atlas_lc:
         return self.lcs[control_index].t.index.values
 
     def get_masked_ix(self, flags, control_index=0):
-        flags_ = flags["x2"] | flags["uncert"] | flags["controls_bad"] | flags["avg_badday"]
+        flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
         return self.lcs[control_index].ix_masked('Mask',maskval=flags_)
 
     def get_unmasked_ix(self, flags, control_index=0):
-        flags_ = flags["x2"] | flags["uncert"] | flags["controls_bad"] | flags["avg_badday"]
+        flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
         return self.lcs[control_index].ix_unmasked('Mask',maskval=flags_)
 
     def get_pre_SN_ix(self, control_index=0):
@@ -216,7 +216,7 @@ class atlas_lc:
 
         # drop any extra columns
         if len(dropcols) > 0: 
-            print(f'# Dropping extra columns ({control_index if control_index > 0 else "SN light curve"}): ',dropcols)
+            print(f'# Dropping extra columns ({"control light curve "+str(control_index) if control_index > 0 else "SN light curve"}): ',dropcols)
             self.lcs[control_index].t.drop(columns=dropcols,inplace=True)
     
     def recalculate_fdf(self, control_index=0):
