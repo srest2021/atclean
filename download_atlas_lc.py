@@ -70,11 +70,11 @@ class download_atlas_lc:
 
 		parser.add_argument('-u','--username', type=str, help='username for ATLAS api')
 		parser.add_argument('-a','--tns_api_key', type=str, help='api key to access TNS')
-		parser.add_argument('-f','--cfg_filename', default='params.ini', type=str, help='file name of ini file with settings for this class')
+		parser.add_argument('-f','--cfg_filename', default='settings.ini', type=str, help='file name of ini file with settings for this class')
 		parser.add_argument('-l', '--lookbacktime_days', default=None, type=int, help='lookback time (days)')
 		parser.add_argument('--mjd_min', default=None, type=float, help='minimum MJD to download')
 		parser.add_argument('--mjd_max', default=None, type=float, help='maximum MJD to download')
-		parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
+		parser.add_argument('-o','--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
 
 		return parser
 
@@ -92,21 +92,21 @@ class download_atlas_lc:
 		print(f'List of transients to download: {args.tnsnames}')
 
 		# ATLAS credentials
-		self.username = cfg['ATLAS credentials']['username'] if args.username is None else args.username
+		self.username = cfg['atlas_cred']['username'] if args.username is None else args.username
 		print(f'ATLAS username: {self.username}')
 		self.password = getpass(prompt='Enter ATLAS password: ')
 
 		# TNS credentials
-		self.tns_api_key = cfg['TNS credentials']['api_key'] if args.tns_api_key is None else args.tns_api_key
-		self.tns_id = cfg['TNS credentials']['tns_id']
-		self.bot_name = cfg['TNS credentials']['bot_name']
+		self.tns_api_key = cfg['tns_cred']['api_key'] if args.tns_api_key is None else args.tns_api_key
+		self.tns_id = cfg['tns_cred']['tns_id']
+		self.bot_name = cfg['tns_cred']['bot_name']
 
 		# data output directory
-		self.output_dir = cfg['Input/output settings']['output_dir']
+		self.output_dir = cfg['general']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 
 		# attempt to load snlist.txt; if does not exist, create new snlist table
-		self.snlist_filename = f'{self.output_dir}/{cfg["Input/output settings"]["snlist_filename"]}'
+		self.snlist_filename = f'{self.output_dir}/{cfg["general"]["snlist_filename"]}'
 		if os.path.exists(self.snlist_filename):
 			self.snlist = pdastrostatsclass()
 			print(f'Loading SN list at {self.snlist_filename}')
@@ -119,7 +119,7 @@ class download_atlas_lc:
 		print(f'Overwrite existing light curve files: {self.overwrite}')
 
 		# flux2mag sigma limit
-		self.flux2mag_sigmalimit = int(cfg['Input/output settings']['flux2mag_sigmalimit'])
+		self.flux2mag_sigmalimit = int(cfg['general']['flux2mag_sigmalimit'])
 		print(f'Sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN): {self.flux2mag_sigmalimit}')
 		
 		# mjd min
@@ -145,8 +145,8 @@ class download_atlas_lc:
 		print(f'Control light curve status: {self.controls}')
 		if self.controls:
 			if args.ctrl_coords is None:
-				self.radius = float(cfg['Control light curve settings']['radius'])
-				self.num_controls = int(cfg['Control light curve settings']['num_controls'])
+				self.radius = float(cfg['general']['radius'])
+				self.num_controls = int(cfg['general']['num_controls'])
 				print(f'# Circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
 				
 				if args.closebright:
@@ -159,7 +159,7 @@ class download_atlas_lc:
 						raise RuntimeError('ERROR: Too many coordinates in --closebright argument!')
 					print(f'# Close bright object coordinates: RA {self.closebright_coords[0]}, Dec {self.closebright_coords[1]}')
 					
-					self.closebright_min_dist = float(cfg['Control light curve settings']['closebright_min_dist'])
+					self.closebright_min_dist = float(cfg['general']['closebright_min_dist'])
 					print(f'# Minimum distance of control light curves from SN location: {self.closebright_min_dist}\"')
 			else:
 				self.control_coords_filename = f'{self.output_dir}/{args.ctrl_coords}'
