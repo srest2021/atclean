@@ -1,4 +1,5 @@
-# Interactive Jupyter Notebooks and Python Scripts for Cleaning ATLAS Light Curves
+# ATClean
+### Interactive Jupyter Notebooks and Python Scripts for Cleaning ATLAS Light Curves
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
@@ -70,8 +71,11 @@ In order to change the number of control light curves downloaded, replace `[gene
 - `--dont_overwrite`: don't overwrite existing light curves with the same filename
 
 You can easily download light curves for a single SN without TNS credentials or `snlist.txt` straight from the command line:
+
 `./download_atlas_lc.py 2019vxm --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+
 As well as its control light curves by adding -c:
+
 `./download_atlas_lc.py 2019vxm -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
 **Other example commands**:

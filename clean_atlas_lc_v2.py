@@ -476,6 +476,8 @@ class CleanAtlasLightCurve(atlas_lc):
 			else:
 				self.lcs[control_index].t['Mask'] = np.bitwise_or(self.lcs[control_index].t['Mask'], flags_to_copy)
 
+		self.drop_extra_columns()
+
 		len_ix = len(self.get_ix())
 		s = []
 		s.append('Percent of data above x2_max bound (%s): %0.2f%%' 

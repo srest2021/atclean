@@ -91,7 +91,7 @@ class atlas_lc:
         return filename
 
     # save a single light curve
-    def save_lc(self, output_dir, control_index=0, filt=None, overwrite=True, keep_empty_bins=True):
+    def _save_lc(self, output_dir, control_index=0, filt=None, overwrite=True, keep_empty_bins=True):
         if filt is None:
             # split lc up by filt and save to two separate files
             for filt_ in ['o','c']:
@@ -121,7 +121,7 @@ class atlas_lc:
             print(output)
 
             for control_index in self.lcs:
-                self.save_lc(output_dir, control_index, filt=filt, overwrite=overwrite, keep_empty_bins=keep_empty_bins)
+                self._save_lc(output_dir, control_index, filt=filt, overwrite=overwrite, keep_empty_bins=keep_empty_bins)
 
     # load a single light curve
     def load_lc(self, output_dir, filt, is_averaged=False, control_index=0):
@@ -204,10 +204,10 @@ class atlas_lc:
 
         self.verify_mjds()
 
-    # drop mask column and any added columns from previous iterations
+    # drop any added columns from previous iterations
     def drop_extra_columns(self, control_index=0):
         dropcols = []
-        for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum']:
+        for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'c2_mean', 'c2_mean_err', 'c2_stdev', 'c2_stdev_err', 'c2_X2norm', 'c2_Ngood', 'c2_Nclip', 'c2_Nmask', 'c2_Nnan', 'c2_abs_stn']:
             if col in self.lcs[control_index].t.columns:
                 dropcols.append(col)
         for col in self.lcs[control_index].t.columns:
@@ -299,13 +299,11 @@ class atlas_lc:
         s = f'Corrective flux {offset:0.2f} uJy added to {region_name} region'
         print(f'# {s}')
         self._update_offset_col(offset, region_ix)
-
-        output = f'### {s}\n'
-        return output
+        return s
     
     def _manual_template_correction(self, region1_offset=None, region2_offset=None, region3_offset=None):
         print('# Proceeding with manual template correction...')
-        output = ''
+        output = []
 
         self._clear_offset()
 
@@ -315,17 +313,17 @@ class atlas_lc:
         region3_ix = self.lcs[0].ix_inrange('MJD', lowlim=t2)
 
         if not region1_offset is None:
-            output += self._add_offset(region1_offset, region1_ix, region_name="first")
+            output.append(self._add_offset(region1_offset, region1_ix, region_name="first"))
         if not region2_offset is None:
-            output += self._add_offset(region2_offset, region2_ix, region_name="second")
+            output.append(self._add_offset(region2_offset, region2_ix, region_name="second"))
         if not region3_offset is None:
-            output += self._add_offset(region3_offset, region3_ix, region_name="third")
+            output.append(self._add_offset(region3_offset, region3_ix, region_name="third"))
 
         return output
     
     def _template_correction(self, maskval=None):
         print('# Proceeding with automatic template correction...')
-        output = ''
+        output = []
 
         self._clear_offset()
         
@@ -344,8 +342,8 @@ class atlas_lc:
         region3_mean = self._get_mean(region3_ix[:40], maskval=maskval) # first 40 measurements after t2
         region3_offset = region2b_mean - region3_mean
         
-        output += self._add_offset(region1_offset, region1_ix, region_name="first")
-        output += self._add_offset(region3_offset, region3_ix, region_name="third")
+        output.append(self._add_offset(region1_offset, region1_ix, region_name="first"))
+        output.append(self._add_offset(region3_offset, region3_ix, region_name="third"))
 
         ix = self.get_ix()
         if self.discdate > 57600:
@@ -354,7 +352,7 @@ class atlas_lc:
             global_ix = ix[-40:]
         global_mean = self._get_mean(global_ix, maskval=maskval)
         global_offset = -global_mean
-        output += self._add_offset(global_offset, ix, region_name="global")
+        output.append(self._add_offset(global_offset, ix, region_name="global"))
 
         return output
     
@@ -364,8 +362,8 @@ class atlas_lc:
             raise RuntimeError(f'ERROR: discovery date cannot be set to None')
 
         if not(region1_offset is None and region2_offset is None and region3_offset is None):
-            return self._manual_template_correction(region1_offset=region1_offset, 
-                                                    region2_offset=region2_offset, 
-                                                    region3_offset=region3_offset)
+            return '\n'.join(self._manual_template_correction(region1_offset=region1_offset, 
+                                                              region2_offset=region2_offset, 
+                                                              region3_offset=region3_offset))
         else:
-            return self._template_correction(maskval=maskval)
+            return '\n'.join(self._template_correction(maskval=maskval))
