@@ -7,9 +7,6 @@ SETTINGS
 # SN TNS name
 tnsname = ''
 
-# SN discovery date
-#discovery_date = None
-
 # path to directory that contains SN, control, and other light curves
 source_dir = ''
 

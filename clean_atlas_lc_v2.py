@@ -29,10 +29,10 @@ class CleanAtlasLightCurve(atlas_lc):
 		self.dec = dec
 		self.discdate = discdate
 
-	def save(self):
+	def save(self, overwrite=True):
 		for control_index in range(self.num_controls+1):
 			self.drop_extra_columns(control_index=control_index)
-		self._save(self.cfg['output_dir'], filt=self.filt)
+		self._save(self.cfg['output_dir'], filt=self.filt, overwrite=overwrite)
 		print('Success')
 	
 	def load(self):
@@ -819,10 +819,10 @@ class CleaningLoop():
 						plot.plot_badday_cut(avglc)
 
 					if self.settings['overwrite']:
-						avglc._save(self.settings['output_dir'], filt=filt)
+						avglc._save(self.settings['output_dir'], filt=filt, overwrite=self.settings['overwrite'])
 
 				if self.settings['overwrite']:
-					self.lc_objs[k].save()
+					self.lc_objs[k].save(overwrite=self.settings['overwrite'])
 
 				f = self.add_to_readme(f, k,
 						   			   uncert_cut_output=uncert_cut_output,
@@ -939,6 +939,10 @@ def load_settings():
 		}
 
 	print(f'Success: {cleaning.settings}')
+
+	if cleaning.settings['overwrite']:
+		print('WARNING: overwrite set to False (add -o to command to overwrite existing files)')
+
 	return cleaning
 
 if __name__ == "__main__":
