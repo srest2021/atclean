@@ -12,7 +12,7 @@
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.v4.ipynb`
-#### estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), averages light curves, and corrects for ATLAS template changes.
+#### Estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), averages light curves, and corrects for ATLAS template changes.
 Using previously downloaded SN and control light curves:
 - Apply uncertainty cut
 - Estimate true uncertainties
@@ -51,7 +51,7 @@ Open the config file `settings.ini` and replace the following fields with your i
 4. You can also change the sigma limit when converting flux to magnitude (magnitudes are limits when dmagnitudes are NaN). If you intend to download control light curves, you can change the radius of the circle pattern of locations around the SN and the total number of control light curves.
 
 ### `download_atlas_lc.py` 
-#### (downloads SN light curve and, optionally, control light curves)
+#### Downloads SN light curve and, optionally, control light curves.
 This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). 
 
 In order to change the number of control light curves downloaded, replace `[general]` `num_controls` with the number of desired control light curves.
@@ -85,7 +85,7 @@ As well as its control light curves by adding -c:
 - `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
 ### `clean_atlas_lc_v2.py`
-#### (estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves)
+#### Estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves.
 Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
 - Apply uncertainty cut
 - Estimate true uncertainties
