@@ -628,7 +628,9 @@ class CleanAtlasLightCurve(atlas_lc):
 		for control_index in range(self.num_controls+1):
 			avglc = self._average(avglc, flags, Nclip_max, Ngood_min, x2_max, control_index=control_index, mjd_bin_size=mjd_bin_size, flux2mag_sigmalimit=flux2mag_sigmalimit)
 
-		s = 'Total percent of binned data flagged (%s): %0.2f%%' % (flags['avg_badday'], 100 * len(avglc.lcs[0].ix_masked('Mask',maskval=flags['avg_badday'])) / len(avglc.lcs[0].t))
+		nonnull_ix = avglc.lcs[0].ix_not_null('MJD')
+		percent_cut = 100 * len(avglc.lcs[0].ix_masked('Mask',maskval=flags['avg_badday'], indices=nonnull_ix)) / len(nonnull_ix)
+		s = 'Total percent of binned data flagged (%s): %0.2f%%' % (hex(flags['avg_badday']), percent_cut) 
 		print(f'# {s}')
 		output = f'{s}.'
 		print('Success')
