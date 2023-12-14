@@ -3,23 +3,23 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc.v4.ipynb`](#clean_atlas_lcv4ipynb) (for one SN, apply all cuts - chi-squares, uncertainties, control light curves - and average light curve)
+	- [`clean_atlas_lc.v4.ipynb`](#clean_atlas_lcv4ipynb) (for one SN, apply all cuts, average light curve, and correct for template changes)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
-    - [`clean_atlas_lc_v2.py`](#clean_atlas_lcv2py) (for one or more SNe, apply all cuts - chi-squares, uncertainties, control light curves - and average light curves)
+    - [`clean_atlas_lc_v2.py`](#clean_atlas_lcv2py) (for one or more SNe, apply all cuts and average light curves)
 
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.v4.ipynb`
-#### Estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), averages light curves, and corrects for ATLAS template changes.
+#### Estimates true uncertainties, applies all cuts, averages light curves, and corrects for ATLAS template changes.
 Using previously downloaded SN and control light curves:
 - Apply uncertainty cut
 - Estimate true uncertainties
 - Apply chi-square cut 
 - Apply control light curve cut
 - Average cleaned light curves
-- Optionally correct for ATLAS template changes
+- Correct for ATLAS template changes
 - Save both original and averaged light curves with the updated 'Mask' columns
 
 Example notebooks for example SNe are located in the `/extern` folder of this repository.
@@ -85,14 +85,13 @@ As well as its control light curves by adding -c:
 - `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
 
 ### `clean_atlas_lc_v2.py`
-#### Estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves.
+#### Estimates true uncertainties, applies all cuts, and averages light curves.
 Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
 - Apply uncertainty cut (`-u`)
 - Estimate true uncertainties (`-e`)
 - Apply chi-square cut (`-x`)
 - Apply control light curve cut (`-c`)
 - Average cleaned light curves (`-g`)
-- Optionally correct for ATLAS template changes (**NOT CURRENTLY FUNCTIONAL**)
 - Save both original and averaged light curves with the updated 'Mask' columns
 
 **Arguments** (will override default config file settings if specified):
