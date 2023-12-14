@@ -141,8 +141,8 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
 - We define loss $L$ for a certain chi-square cut to be the number of good cut measurements over the total number of good measurements.
     - $L = N_{good,cut}/N_{good}$
 - In order to provide informative output on contamination and loss, we calculate these measures for a range of possible chi-square cuts and optionally plot them (use `-p` argument to do so). 
-    - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (change by setting the `[x2_cut]` `cut_start` field) and end at 50 (this value is inclusive and can be changed by setting the `[x2_cut]` `cut_stop` field) with a step size of 1 (change by setting the `[x2_cut]` `cut_step` field). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
-    - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts.
+    - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (to change, set field `[x2_cut]` `cut_start`) and end at 50 (to change, set field `[x2_cut]` `cut_stop`) with a step size of 1 (to change, set field `[x2_cut]` `cut_step`). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
+    - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts. However, you can use the pre-SN flux instead by setting the `x2_cut` `use_preSN_lc` field.
 - We output the calculated contamination and loss for the applied chi-square cut in a table with each SN's TNS name and filter in the output directory.
 
 We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
@@ -162,8 +162,8 @@ Note that this cut may not greatly affect certain SNe depending on the quality o
 
 #### Averaging and cutting bad days (`-g`)
 Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`): 
-- A returned chi-square > 4.0 (to change, set field `x2_max`)
-- Number of measurements averaged < 2 (to change, set field `Nclip_max`)
-- Number of measurements clipped > 1 (to change, set field `Ngood_min`)
+- A returned chi-square > 4.0 (to change, set field `[averaging]` `x2_max`)
+- Number of measurements averaged < 2 (to change, set field `[averaging]` `Nclip_max`)
+- Number of measurements clipped > 1 (to change, set field `[averaging]` `Ngood_min`)
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
