@@ -165,7 +165,7 @@ class PlotAtlasLightCurve():
 
 		self.pdf.savefig(fig)
 
-	def plot_limcuts(self, limcuts, loss_lim, contam_lim, loss_lim_cut, contam_lim_cut, cut_start, cut_stop, use_preSN_lc=False):
+	def plot_limcuts(self, limcuts, cut, cut_start, cut_stop, use_preSN_lc=False):
 		loss_color = 'darkmagenta'
 		contam_color = 'teal'
 
@@ -184,21 +184,11 @@ class PlotAtlasLightCurve():
 		ax1.set_xlabel('Chi-square cut')
 		ax1.axhline(linewidth=1, color='k')
 
-		ax1.axhline(loss_lim, linewidth=1, color=loss_color, linestyle='dotted')#, label='Loss limit')
-		ax1.text(35, loss_lim+0.1, 'Loss limit', color=loss_color, clip_on=True)
-		
 		ax1.plot(limcuts['PSF Chi-Square Cut'].values, limcuts['Ploss'].values, ms=3.5, color=loss_color, marker='o', label='Loss')
-		ax1.axvline(x=loss_lim_cut, color=loss_color, linestyle='--', label='Loss cut')
-		ax1.axvspan(loss_lim_cut, cut_stop, alpha=0.2, color=loss_color)
-
-		ax1.axhline(contam_lim, linewidth=1, color=contam_color, linestyle='dotted')#, label='Contamination limit')
-		ax1.text(25, contam_lim+0.1, 'Contamination limit', color=contam_color, clip_on=True)
-
 		ax1.plot(limcuts['PSF Chi-Square Cut'].values, limcuts['Pcontamination'].values, ms=3.5, color=contam_color, marker='o', label='Contamination')
-		ax1.axvline(x=contam_lim_cut, color=contam_color, linestyle='--', label='Contamination cut')
-		ax1.axvspan(cut_start, contam_lim_cut, alpha=0.2, color=contam_color)
+		ax1.axvline(x=cut, color='k', linestyle='dashed', label='Selected cut')
 
-		ax1.set_xlim(0,50)
+		ax1.set_xlim(cut_start-1,cut_stop+1)
 		ax1.set_ylim(0, max(max(limcuts['Ploss'].values), max(limcuts['Pcontamination'].values))*1.1)
 
 		ax1.legend(facecolor='white', framealpha=1, bbox_to_anchor=(1.02, 1), loc='upper left')
@@ -207,16 +197,9 @@ class PlotAtlasLightCurve():
 
 	def plot_uncert_cut(self, lc):
 		self.plot_cut_lc(lc, 'Uncertainty cut', self.flags['uncertainty'])
-
-	def plot_x2_cut(self, lc, limcuts, loss_lim, contam_lim, loss_lim_cut, contam_lim_cut, cut_start, cut_stop, use_preSN_lc=False):
-		self.plot_limcuts(limcuts, 
-						  loss_lim, 
-						  contam_lim, 
-						  loss_lim_cut, 
-						  contam_lim_cut, 
-						  cut_start, 
-						  cut_stop, 
-						  use_preSN_lc=use_preSN_lc)
+		
+	def plot_x2_cut(self, lc, limcuts, cut, cut_start, cut_stop, use_preSN_lc=False):
+		self.plot_limcuts(limcuts, cut, cut_start, cut_stop, use_preSN_lc=use_preSN_lc)
 		self.plot_cut_lc(lc, 'Chi-square cut', self.flags['chisquare'])
 
 	def plot_controls_cut(self, lc):

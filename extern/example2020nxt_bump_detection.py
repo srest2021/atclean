@@ -5,10 +5,10 @@ SETTINGS
 """
 
 # SN TNS name
-tnsname = ''
+tnsname = '2020nxt'
 
 # path to directory that contains SN, control, and other light curves
-source_dir = ''
+source_dir = '/Users/sofiarest/Desktop/Supernovae/data/temp'
 
 # path to directory where generated tables should be stored
 tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
@@ -26,20 +26,17 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [5, 15, 25, 40, 80, 130, 200, 256, 300]
+gauss_sigmas = [5, 20, 40, 70, 100, 150]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[2, 5, 20, 40, 80, 120], # 5
-              [2, 5, 20, 40, 80, 120], # 15
-              [2, 5, 20, 40, 80, 120], # 15
-              [5, 20, 40, 80, 110, 150, 200, 250], # 40
-              [5, 20, 40, 80, 110, 150, 200, 250], # 80
-              [20, 40, 80, 110, 150, 200, 250, 300], # 130
-              [20, 40, 80, 110, 150, 200, 250, 300], # 200
-              [20, 40, 80, 110, 150, 200, 250, 300], # 256
-              [20, 40, 80, 110, 150, 200, 250, 300]] # 300
+sim_sigmas = [[5, 20, 40, 70, 100, 150], 
+              [5, 20, 40, 70, 100, 150],
+              [5, 20, 40, 70, 100, 150],
+              [5, 20, 40, 70, 100, 150],
+              [5, 20, 40, 70, 100, 150],
+              [5, 20, 40, 70, 100, 150]]
 
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in gauss_sigmas
@@ -59,25 +56,28 @@ iterations = 50000
 flags = 0x800000
 
 # add observation seasons' mjd ranges here
-valid_mjd_ranges = [[57365,57622],
-                    [57762,57983], 
-                    [58120,58383], 
-                    [58494,58741-41], 
-                    [58822+28,59093], 
-                    [59184,59445], 
-                    [59566,59835], 
-                    [59901,60085]]
+valid_mjd_ranges = [[57300,57386], 
+                    [57524,57738], 
+                    [57877,58148], 
+                    [58297,58509], 
+                    [58587,58882], 
+                    [58974,59244], 
+                    [59354,59612], 
+                    [59687,59965], 
+                    [60069,60219]]
 
 # skip any messy control light curves (leave empty list [] if not skipping any)
-skip_ctrl = []
+skip_ctrl = [5]
 
 """
 UTILITY
 """
 
+import sys
+sys.path.insert(1,'../')
 import pandas as pd
 import numpy as np
-import sys,random,re,os
+import random,re,os
 from copy import deepcopy
 from scipy.interpolate import interp1d
 from astropy.modeling.functional_models import Gaussian1D

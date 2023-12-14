@@ -191,139 +191,6 @@ class CleanAtlasLightCurve(atlas_lc):
 			limcuts = pd.concat([limcuts, pd.DataFrame([data])],ignore_index=True)
 		return limcuts
 	
-	def _get_limcuts(self, limcuts, loss_lim, contam_lim):
-		contam_lim_cut = None
-		loss_lim_cut = None
-		contam_case = None
-		loss_case = None
-
-		sortby_loss = limcuts.iloc[(limcuts['Ploss']).argsort()].reset_index()
-		min_loss = sortby_loss.loc[0,'Ploss']
-		max_loss = sortby_loss.loc[len(sortby_loss)-1,'Ploss']
-		# if all loss below lim, loss_lim_cut is min cut
-		if min_loss < loss_lim and max_loss < loss_lim:
-			loss_case = 'below lim'
-			loss_lim_cut = limcuts.loc[0,'PSF Chi-Square Cut']
-		else:
-			# else if all loss above lim, loss_lim_cut is min cut with min% loss
-			if min_loss > loss_lim and max_loss > loss_lim:
-				loss_case = 'above lim'
-				a = np.where(limcuts['Ploss'] == min_loss)[0]
-				b = limcuts.iloc[a]
-				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-				loss_lim_cut = c.loc[0,'PSF Chi-Square Cut']
-			# else if loss crosses lim at some point, loss_lim_cut is min cut with max% loss <= loss_lim
-			else:
-				loss_case = 'crosses lim'
-				valid_cuts = sortby_loss[sortby_loss['Ploss'] <= loss_lim]
-				a = np.where(limcuts['Ploss'] == valid_cuts.loc[len(valid_cuts)-1,'Ploss'])[0]
-				# sort by cuts
-				b = limcuts.iloc[a]
-				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-				# get midpoint of loss1 and loss2 (two points on either side of lim)
-				loss1_i = np.where(limcuts['PSF Chi-Square Cut'] == c.loc[0,'PSF Chi-Square Cut'])[0][0]
-				if limcuts.loc[loss1_i,'Ploss'] == loss_lim:
-					loss_lim_cut = limcuts.loc[loss1_i,'PSF Chi-Square Cut']
-				else:
-					loss2_i = loss1_i - 1
-					x = np.array([limcuts.loc[loss1_i,'PSF Chi-Square Cut'], limcuts.loc[loss2_i,'PSF Chi-Square Cut']])
-					contam_y = np.array([limcuts.loc[loss1_i,'Pcontamination'], limcuts.loc[loss2_i,'Pcontamination']])
-					loss_y = np.array([limcuts.loc[loss1_i,'Ploss'], limcuts.loc[loss2_i,'Ploss']])
-					contam_line = np.polyfit(x,contam_y,1)
-					loss_line = np.polyfit(x,loss_y,1)
-					loss_lim_cut = (loss_lim-loss_line[1])/loss_line[0]
-
-		sortby_contam = limcuts.iloc[(limcuts['Pcontamination']).argsort()].reset_index()
-		min_contam = sortby_contam.loc[0,'Pcontamination']
-		max_contam = sortby_contam.loc[len(sortby_contam)-1,'Pcontamination']
-		# if all contam below lim, contam_lim_cut is max cut
-		if min_contam < contam_lim and max_contam < contam_lim:
-			contam_case = 'below lim'
-			contam_lim_cut = limcuts.loc[len(limcuts)-1,'PSF Chi-Square Cut']
-		else:
-			# else if all contam above lim, contam_lim_cut is max cut with min% contam
-			if min_contam > contam_lim and max_contam > contam_lim:
-				contam_case = 'above lim'
-				a = np.where(limcuts['Pcontamination'] == min_contam)[0]
-				b = limcuts.iloc[a]
-				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-				contam_lim_cut = c.loc[len(c)-1,'PSF Chi-Square Cut']
-			# else if contam crosses lim at some point, contam_lim_cut is max cut with max% contam <= contam_lim
-			else:
-				contam_case = 'crosses lim'
-				valid_cuts = sortby_contam[sortby_contam['Pcontamination'] <= contam_lim]
-				a = np.where(limcuts['Pcontamination'] == valid_cuts.loc[len(valid_cuts)-1,'Pcontamination'])[0]
-				# sort by cuts
-				b = limcuts.iloc[a]
-				c = b.iloc[(b['PSF Chi-Square Cut']).argsort()].reset_index()
-				# get midpoint of contam1 and contam2 (two points on either side of lim)
-				contam1_i = np.where(limcuts['PSF Chi-Square Cut'] == c.loc[len(c)-1,'PSF Chi-Square Cut'])[0][0]
-				if limcuts.loc[contam1_i,'Pcontamination'] == contam_lim:
-					contam_lim_cut = limcuts.loc[contam1_i,'PSF Chi-Square Cut']
-				else:
-					contam2_i = contam1_i + 1
-					x = np.array([limcuts.loc[contam1_i,'PSF Chi-Square Cut'], limcuts.loc[contam2_i,'PSF Chi-Square Cut']])
-					contam_y = np.array([limcuts.loc[contam1_i,'Pcontamination'], limcuts.loc[contam2_i,'Pcontamination']])
-					loss_y = np.array([limcuts.loc[contam1_i,'Ploss'], limcuts.loc[contam2_i,'Ploss']])
-					contam_line = np.polyfit(x,contam_y,1)
-					loss_line = np.polyfit(x,loss_y,1)
-					contam_lim_cut = (contam_lim-contam_line[1])/contam_line[0]
-
-		return contam_lim_cut, loss_lim_cut, contam_case, loss_case
-	
-	def _choose_btwn_cuts(self, contam_lim_cut, loss_lim_cut, contam_case, loss_case, loss_lim, contam_lim, cut_start, lim_to_prioritize):
-		# case 1 and 1: final_cut = 3
-		# case 1 and 2: take limit of case 2
-		# case 1 and 3: take limit of case 3
-		# case 2 and 2: print lims don't work
-		# case 2 and 3: choose_btwn_lim_cuts
-		# case 3 and 3: choose_btwn_lim_cuts
-
-		case1 = loss_case == 'below lim' or contam_case == 'below lim'
-		case2 = loss_case == 'above lim' or contam_case == 'above lim'
-		case3 = loss_case == 'crosses lim' or contam_case == 'crosses lim'
-
-		final_cut = None
-		if case1 and not case2 and not case3: # 1 and 1
-			print('# Valid chi-square cut range from %0.2f to %0.2f! Setting to 3...' % (loss_lim_cut, contam_lim_cut))
-			final_cut = cut_start
-		elif case1: # 1
-			if case2: # and 2
-				if loss_case == 'above lim':
-					print('# WARNING: contam_lim_cut <= %0.2f falls below limit %0.2f%%, but loss_lim_cut >= %0.2f falls above limit %0.2f%%! Setting to %0.2f...' % (contam_lim_cut, contam_lim, loss_lim_cut, loss_lim, loss_lim_cut))
-					final_cut = loss_lim_cut
-				else:
-					print('# WARNING: loss_lim_cut <= %0.2f falls below limit %0.2f%%, but contam_lim_cut >= %0.2f falls above limit %0.2f%%! Setting to %0.2f...' % (loss_lim_cut, loss_lim, contam_lim_cut, contam_lim, contam_lim_cut))
-					final_cut = contam_lim_cut
-			else: # and 3
-				if loss_case == 'crosses lim':
-					print('# Contam_lim_cut <= %0.2f falls below limit %0.2f%% and loss_lim_cut >= %0.2f crosses limit %0.2f%%, setting to %0.2f...' % (contam_lim_cut, contam_lim, loss_lim_cut, loss_lim, loss_lim_cut))
-					final_cut = loss_lim_cut
-				else:
-					print('Loss_lim_cut <= %0.2f falls below limit %0.2f%% and contam_lim_cut >= %0.2f crosses limit %0.2f%%, setting to %0.2f...' % (loss_lim_cut, loss_lim, contam_lim_cut, contam_lim, contam_lim_cut))
-					final_cut = contam_lim_cut
-		elif case2 and not case3: # 2 and 2
-			print('ERROR: chi-square loss_lim_cut >= %0.2f and contam_lim_cut <= %0.2f both fall above limits %0.2f%% and %0.2f%%! Try setting less strict limits. Setting final cut to nan.' % (loss_lim_cut, contam_lim_cut, loss_lim, contam_lim))
-			final_cut = np.nan
-		else: # 2 and 3 or 3 and 3
-			if loss_lim_cut > contam_lim_cut:
-				print('# WARNING: chi-square loss_lim_cut >= %0.2f and contam_lim_cut <= %0.2f do not overlap! ' % (loss_lim_cut, contam_lim_cut))
-				if lim_to_prioritize == 'contam_lim':
-					print('# Prioritizing %s and setting to %0.2f...' % (lim_to_prioritize, contam_lim_cut))
-					final_cut = contam_lim_cut
-				else:
-					print('# Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, loss_lim_cut))
-					final_cut = loss_lim_cut
-			else:
-				print('# Valid chi-square cut range from %0.2f to %0.2f! ' % (loss_lim_cut, contam_lim_cut))
-				if lim_to_prioritize == 'contam_lim':
-					print('# Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, loss_lim_cut))
-					final_cut = loss_lim_cut
-				else:
-					print('# Prioritizing %s and setting to %0.2f... ' % (lim_to_prioritize, contam_lim_cut))
-					final_cut = contam_lim_cut
-		return final_cut
-	
 	def _apply_x2_cut(self, cut, data, flag):
 		print(f'\nApplying chi-square cut of {cut:0.2f}...')
 		for control_index in range(self.num_controls+1):
@@ -340,68 +207,48 @@ class CleanAtlasLightCurve(atlas_lc):
 				print(f'# {output1}\n# {output2}')
 				print('Success')
 		return f'{output1}\n{output2}'
-	
-	def _do_x2_cut(self, flag, stn_cut, cut_start, cut_stop, cut_step, loss_lim, contam_lim, lim_to_prioritize, use_preSN_lc=False, plot=None):
-		print('\nCalculating chi-square cut...')
 
-		if lim_to_prioritize != 'loss' and lim_to_prioritize != 'contamination':
-			raise RuntimeError("ERROR: limit_to_prioritize must be 'loss' or 'contamination'!")
-		
-		print(f'# Contamination limit: {contam_lim:0.2f}%; loss limit: {loss_lim:0.2f}%')
-
-		if use_preSN_lc:
-			print('# Using pre-SN light curve to determine contamination and loss...')
+	def apply_x2_cut(self, flag, plot=None):
+		if self.cfg['x2_cut_params']['use_preSN_lc'] or self.num_controls == 0:
+			print('\nUsing pre-SN light curve to determine contamination and loss...')
 			lc_temp = deepcopy(self.lcs[0])
 			ix = lc_temp.ix_inrange('MJD', uplim=self.discdate)
 		else:
-			print('# Using control light curves to determine contamination and loss...')
+			print('\nUsing control light curves to determine contamination and loss...')
 			lc_temp = self._get_all_controls()
 			ix = lc_temp.t.index.values
-		good_ix, bad_ix = self._get_goodbad_ix(lc_temp, ix, stn_cut)
-		
-		limcuts = self._get_limcuts_table(lc_temp, ix, good_ix, bad_ix, cut_start, cut_stop, cut_step)
-		if limcuts.empty:
-			output = f'No cuts kept more than 10% of measurements--chi-square cut not applicable for this SN!'
-			print(f'# {output}')
-			return output
+		good_ix, bad_ix = self._get_goodbad_ix(lc_temp, ix, self.cfg['x2_cut_params']['stn_cut'])
+		limcuts = self._get_limcuts_table(lc_temp, 
+										  ix, 
+										  good_ix, 
+										  bad_ix, 
+										  self.cfg['x2_cut_params']['cut_start'], 
+										  self.cfg['x2_cut_params']['cut_stop'],
+										  self.cfg['x2_cut_params']['cut_step'])
+		print('Success')
 
-		contam_lim_cut, loss_lim_cut, contam_case, loss_case = self._get_limcuts(limcuts, loss_lim, contam_lim)
-		contam_data = self._get_limcuts_data(lc_temp, contam_lim_cut, ix, good_ix, bad_ix)
-		loss_data = self._get_limcuts_data(lc_temp, loss_lim_cut, ix, good_ix, bad_ix)
+		data = self._get_limcuts_data(lc_temp, self.cfg['x2_cut'], ix, good_ix, bad_ix)
+		output = self._apply_x2_cut(self.cfg['x2_cut'], data, flag)
 
-		print('# Contamination cut according to given contamination limit, with %0.2f%% contamination and %0.2f%% loss: %0.2f' % (contam_data['Pcontamination'], contam_data['Ploss'], contam_lim_cut))
-		if contam_case == 'above lim':
-			print('# WARNING: Contamination cut not possible with contamination <= contam_lim %0.1f!' % contam_lim)
-		print('# Loss cut according to given loss limit, with %0.2f%% contamination and %0.2f%% loss: %0.2f' % (loss_data['Pcontamination'], loss_data['Ploss'], loss_lim_cut))
-		if loss_case == 'above lim':
-			print('# WARNING: Loss cut not possible with loss <= loss_lim %0.2f!' % loss_lim)
-
-		final_cut = self._choose_btwn_cuts(contam_lim_cut, loss_lim_cut, contam_case, loss_case, loss_lim, contam_lim, cut_start, lim_to_prioritize)
-		data = self._get_limcuts_data(lc_temp, final_cut, ix, good_ix, bad_ix)
-
-		if np.isnan(final_cut):
-			output = 'Final suggested chi-square cut could not be determined'
-			print(f'# ERROR: {output}. We suggest rethinking your contamination and loss limits.')
-			return output
-		
-		output = self._apply_x2_cut(final_cut, data, flag)
+		x2_cut_info_row = {
+			'tnsname': self.tnsname, 
+			'filt': self.filt, 
+			'x2_cut': self.cfg['x2_cut'], 
+			'use_preSN_lc': self.cfg['x2_cut_params']['use_preSN_lc'], 
+			'stn_bound': self.cfg['x2_cut_params']['stn_cut'], 
+			'Pcontamination': round(data['Pcontamination'],2), 
+			'Ploss': round(data['Ploss'],2)
+		}
 
 		if not plot is None:
-			plot.plot_x2_cut(self, limcuts, loss_lim, contam_lim, loss_lim_cut, contam_lim_cut, cut_start, cut_stop, use_preSN_lc=use_preSN_lc)
+			plot.plot_x2_cut(self, 
+							 limcuts, 
+							 self.cfg['x2_cut'], 
+							 self.cfg['x2_cut_params']['cut_start'], 
+							 self.cfg['x2_cut_params']['cut_stop'], 
+							 use_preSN_lc=self.cfg['x2_cut_params']['use_preSN_lc'])
 
-		return plot, output
-
-	def apply_x2_cut(self, flag, plot=None):
-		return self._do_x2_cut(flag, 
-							   self.cfg['x2_cut_params']['stn_cut'], 
-							   self.cfg['x2_cut_params']['cut_start'], 
-							   self.cfg['x2_cut_params']['cut_stop'], 
-							   self.cfg['x2_cut_params']['cut_step'],
-							   self.cfg['x2_cut_params']['loss_lim'],
-							   self.cfg['x2_cut_params']['contam_lim'],
-							   self.cfg['x2_cut_params']['lim_to_prioritize'],
-							   use_preSN_lc=self.cfg['x2_cut_params']['use_preSN_lc'],
-							   plot=plot)
+		return plot, x2_cut_info_row, output
 	
 	def _get_control_stats(self, flags):
 		print('# Calculating control light curve statistics...')
@@ -517,8 +364,6 @@ class CleanAtlasLightCurve(atlas_lc):
 
 		mjd = int(np.amin(self.lcs[control_index].t['MJD']))
 		mjd_max = int(np.amax(self.lcs[control_index].t['MJD']))+1
-
-		#good_ix = self.lcs[control_index].ix_unmasked('Mask', maskval=flags['chisquare']|flags['uncertainty']|flags['controls_bad'])
 
 		while mjd <= mjd_max:
 			range_ix = self.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjd_bin_size, exclude_uplim=True)
@@ -644,11 +489,99 @@ class CleanAtlasLightCurve(atlas_lc):
 									 self.cfg['averaging_params']['mjd_bin_size'],
 									 self.cfg['flux2mag_sigmalimit'])
 
+class ChiSquareCutInfo():
+	def __init__(self, filename):
+		self.filename = filename
+
+		try:
+			print(f'\nLoading x2_cut_info table at {self.filename}...')
+			self.t = pd.read_table(self.filename, delim_whitespace=True)
+			print('Success')
+		except:
+			print(f'No existing x2_cut_info table; creating blank table...')
+			self.t = pd.DataFrame(columns=['tnsname', 'filt', 'x2_cut', 'use_preSN_lc', 'stn_bound', 'Pcontamination', 'Ploss'])
+
+	def add_row(self, row):
+		tnsname = row['tnsname']
+		filt = row['filt']
+
+		if len(self.t) > 0:
+			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filt'].eq(filt))[0]
+			if len(matching_ix) > 1:
+				raise RuntimeError(f'ERROR: x2_cut_info has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
+		
+			if len(matching_ix) > 0:
+				# update existing row
+				idx = matching_ix[0]
+				self.t.loc[idx,:] = row
+			else:
+				# new row
+				self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+		else:
+			# new row
+			self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+	def save(self):
+		print(f'\nSaving chi-square cut table at {self.filename}...')
+		self.t.to_string(self.filename)
+		print(self.t.to_string())
+
+class SnInfo():
+	def __init__(self, output_dir, filename=None):
+		if filename is None:
+			self.filename = f'{output_dir}/sninfo.txt'
+		else:
+			self.filename = f'{output_dir}/{filename}'
+
+		try:
+			print(f'\nLoading SN info table at {self.filename}...')
+			self.t = pd.read_table(self.filename, delim_whitespace=True)
+			print('Success')
+		except Exception as e:
+			if filename is None:
+				print(f'No existing SN info table; creating blank table...')
+				self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+			else:
+				raise RuntimeError(f'Could not load SN info table at {self.filename}: {str(e)}')
+
+	def get_row(self, tnsname):
+		if self.t.empty:
+			return None
+		
+		matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
+		if len(matching_ix) > 1:
+			raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}')
+		if len(matching_ix) > 0:
+			return self.t.loc[matching_ix[0],:]
+		return None
+
+	def add_row(self, row):
+		if len(self.t) > 0:
+			matching_ix = np.where(self.t['tnsname'].eq(row['tnsname']))[0]
+			if len(matching_ix) > 1:
+				raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {row["tnsname"]}')
+		
+			if len(matching_ix) > 0:
+				# update existing row
+				idx = matching_ix[0]
+				self.t.loc[idx,:] = row
+			else:
+				# new row
+				self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+		else:
+			# new row
+			self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+	def save(self):
+		print(f'\nSaving SN info table at {self.filename}...')
+		self.t.to_string(self.filename)
+
 class CleaningLoop():
 	def __init__(self, args, settings):
 		self.tnsnames = args.tnsnames
 		self.settings = settings
-		self.snlist = None
+		self.sninfo = None
+		self.x2_cut_info = None
 
 		self.lc_objs = {}
 
@@ -674,39 +607,23 @@ class CleaningLoop():
 		self.apply_x2_cut = args.x2_cut
 		self.apply_controls_cut = args.controls_cut
 		self.apply_averaging = args.averaging
-
 		self.plot = args.plot
-
-	def load_snlist(self):
-		if self.settings['snlist_filename'] != 'None':
-			filename = f'{self.settings["output_dir"]}/{self.settings["snlist_filename"]}'
-			print(f'\nLoading SN list at {filename}...')
-			try:
-				self.snlist = pd.read_table(filename, delim_whitespace=True)
-				print('Success')
-			except Exception as e:
-				raise RuntimeError(f'# Could not load SN list at {filename}: {str(e)}')
-		else:
-			print(f'\nSkipping SN list at {self.settings["snlist_filename"]}...')
 
 	def get_lc_data(self, tnsname, filt):
 		k = f'{tnsname}_{filt}'
-		# check if data exists in snlist
-		if not self.snlist is None:
-			row = self.snlist[self.snlist['tnsname'] == tnsname]
-			if len(row) < 1:
-				print()
-				self.lc_objs[k].get_tns_data()
-			else:
-				print(f'\nSetting RA, Dec, and discovery date using {self.settings["snlist_filename"]}...')
-				if len(row) > 1:
-					# use first row
-					row = row[0]
-				index = row.index[0]
-				self.lc_objs[k].set_tns_data(self.snlist.loc[index,'ra'], self.snlist.loc[index,'dec'], self.snlist.loc[index,'discovery_date'])
-		else: # else get TNS data
-			print()
+		row = self.sninfo.get_row(tnsname)
+		print()
+		if not row is None:
+			print(f'Setting RA, Dec, and discovery date using SN info table...')
+			self.lc_objs[k].set_tns_data(row['ra'], row['dec'], row['discovery_date'])
+		else:
+			# query TNS
 			self.lc_objs[k].get_tns_data()
+			self.sninfo.add_row({'tnsname': self.lc_objs[k].tnsname, 
+								 'ra': self.lc_objs[k].ra, 
+								 'dec': self.lc_objs[k].dec,
+								 'discovery_date': self.lc_objs[k].discdate
+								})
 		print(self.lc_objs[k])
 
 	def begin_readme(self, tnsname):
@@ -764,7 +681,10 @@ class CleaningLoop():
 		return f
 
 	def loop(self):
-		self.load_snlist()
+		self.sninfo = SnInfo(self.settings["output_dir"], self.settings["sninfo_filename"])
+
+		if self.apply_x2_cut:
+			self.x2_cut_info = ChiSquareCutInfo(filename=f'{self.settings["output_dir"]}/x2_cut_info.txt')  #self.load_x2_cut_info()
 
 		for obj_index in range(len(self.tnsnames)):
 			tnsname = self.tnsnames[obj_index]
@@ -806,7 +726,9 @@ class CleaningLoop():
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
-					plot, x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'], plot=plot)
+					plot, x2_cut_info_row, x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'], plot=plot)
+					print(x2_cut_info_row)
+					self.x2_cut_info.add_row(x2_cut_info_row)
 
 				controls_cut_output = None
 				if self.apply_controls_cut:
@@ -837,6 +759,11 @@ class CleaningLoop():
 					plot.save()
 
 			f.close()
+		
+		self.sninfo.save()
+
+		if self.apply_x2_cut:
+			self.x2_cut_info.save()
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -885,7 +812,7 @@ def load_settings():
 		'api_key': cfg['tns_cred']['api_key'],
 		'tns_id': cfg['tns_cred']['tns_id'],
 		'bot_name': cfg['tns_cred']['bot_name'],
-		'snlist_filename': cfg['general']['snlist_filename'],
+		'sninfo_filename': cfg['general']['sninfo_filename'] if cfg['general']['sninfo_filename'] != 'None' else None,
 		'overwrite': args.overwrite,
 		'num_controls': int(cfg['general']['num_controls']) if args.num_controls is None else args.num_controls,
 		'flux2mag_sigmalimit': float(cfg['general']['flux2mag_sigmalimit'])
@@ -900,22 +827,17 @@ def load_settings():
 		cleaning.settings['uncert_cut'] = float(cfg['uncert_cut']['cut'])
 
 	if cleaning.apply_x2_cut:
-		cleaning.settings['x2_cut'] = None
-		if cfg['x2_cut']['override_cut'].isdigit():
-			override_cut = float(cfg['x2_cut']['override_cut'])
-			cleaning.settings['x2_cut'] = override_cut
-		else:
-			cleaning.settings['x2_cut_params'] = {
-				'stn_cut': float(cfg['x2_cut']['stn_bound']),
-				'cut_start': int(cfg['x2_cut']['min_cut']),
-				'cut_stop': int(cfg['x2_cut']['max_cut']),
-				'cut_step': int(cfg['x2_cut']['cut_step']),
-				'contam_lim': float(cfg['x2_cut']['contamination_limit']),
-				'loss_lim': float(cfg['x2_cut']['loss_limit']),
-				'lim_to_prioritize': cfg['x2_cut']['limit_to_prioritize'],
-				'use_preSN_lc': cfg['x2_cut']['use_preSN_lc'] == 'True'
-			}
-	
+		cleaning.settings['x2_cut'] = float(cfg['x2_cut']['cut'])
+		cleaning.settings['x2_cut_params'] = {
+			'stn_cut': float(cfg['x2_cut']['stn_bound']),
+			'cut_start': int(cfg['x2_cut']['min_cut']),
+			'cut_stop': int(cfg['x2_cut']['max_cut']),
+			'cut_step': int(cfg['x2_cut']['cut_step']),
+			'use_preSN_lc': cfg['x2_cut']['use_preSN_lc'] == 'True'
+		}
+		if not cleaning.settings['x2_cut_params']['use_preSN_lc'] and cleaning.settings['num_controls'] == 0:
+			raise RuntimeError(f'ERROR: use_preSN_lc set to {cleaning.settings["x2_cut_params"]["use_preSN_lc"]}, but num_controls set to 0')
+
 	if cleaning.apply_controls_cut:
 		cleaning.settings['controls_cut_params'] = {
 			'x2_max': float(cfg['controls_cut']['x2_max']),
