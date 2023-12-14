@@ -696,11 +696,11 @@ if __name__ == "__main__":
                 rand_control_index = random.choice(valid_ctrls)
                 
                 # select random peak MJD from start of lc to 50 days before discovery date
-                peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[0]+0.5, 1) + 0.5
+                peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
                 # make sure peak MJD is within an observation season; else redraw
                 while not in_valid_season(peak_mjd, valid_mjd_ranges):
                     # redraw random peak mjd
-                    peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[0]+0.5, 1) + 0.5
+                    peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
                 sd[key].t.loc[j, 'peak_mjd'] = peak_mjd
 
                 # select random sim sigma

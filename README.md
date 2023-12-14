@@ -95,10 +95,28 @@ Using the default settings in `settings.ini` and previously downloaded SN and co
 - Optionally correct for ATLAS template changes
 - Save both original and averaged light curves with the updated 'Mask' columns
 
-#### Uncertainty cut
+**Arguments** (will override default config file settings if specified):
+- First provide TNS name(s) of object(s) to clean
+- `--num_controls`: set number of control light curves to load and clean
+- `-e` or `--uncert_est`: apply uncertainties estimation
+- `-u` or `--uncert_cut`: apply uncertainty cut
+- `-x` or `--x2_cut`: apply chi-square cut
+- `-c` or `--controls_cut`: apply control light curve cut
+- `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
+	- `-m` or `--mjd_bin_size`: set MJD bin size in days
+- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
+	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
+- `-f ` or `--cfg_filename`: provide a different config file filename (default is `settings.ini`)
+- `-o` or `--overwrite`: overwrite existing light curves with the same filename
+
+**Example commands**:
+- `_clean_atlas_lc_v2.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
+- `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
+
+#### Uncertainty cut (`-u`)
 The **uncertainty cut** is a static procedure currently set at a default value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
-#### True uncertainties estimation
+#### True uncertainties estimation (`-e`)
 We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. Here is the exact procedure we use:
 1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
 2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, `median_∂µJy`, is taken from the unflagged baseline flux. `σ_true_typical` is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
@@ -112,7 +130,7 @@ We also attempt to **account for an extra noise source** in the data by estimati
     - `∂µJy_new^2 = ∂µJy_old^2 + σ_extra^2`
 6. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 
-#### Chi-square cut
+#### Chi-square cut (`-x`)
 The **chi-square cut** is a static procedure currently set at a default value of 5. To change, set the `[x2_cut]` `cut` field in `settings.ini`.
 
 We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to analyze the effectiveness of a PSF chi-square cut for the target SN, with flux/dflux as the deciding factor of what constitutes a good measurement vs. a bad measurement. 
@@ -122,7 +140,7 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
     - $C = N_{bad, kept}/N_{kept}$
 - We define loss $L$ for a certain chi-square cut to be the number of good cut measurements over the total number of good measurements.
     - $L = N_{good,cut}/N_{good}$
-- In order to provide informative output on contamination and loss, we calculate these measures for a range of possible chi-square cuts and optionally plot them. 
+- In order to provide informative output on contamination and loss, we calculate these measures for a range of possible chi-square cuts and optionally plot them (use `-p` argument to do so). 
     - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (change by setting the `[x2_cut]` `cut_start` field) and end at 50 (this value is inclusive and can be changed by setting the `[x2_cut]` `cut_stop` field) with a step size of 1 (change by setting the `[x2_cut]` `cut_step` field). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
     - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts.
 - We output the calculated contamination and loss for the applied chi-square cut in a table with each SN's TNS name and filter in the output directory.
@@ -133,7 +151,7 @@ We set our default chi-square cut to 5, and defer overriding of that cut for a p
 <b>Warning:</b> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and override the cut with a custom value if needed.
 </div>
 
-#### Control light curve cut 
+#### Control light curve cut (`-c`)
 The **control light curve cut** uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. We thus examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (fields can be changed in `settings.ini`):
 - A returned chi-square > 2.5 (to change, set field `[controls_cut]` `x2_max`)
 - A returned abs(flux/dflux) > 3.0 (to change, set field `[controls_cut]` `stn_max`)
@@ -142,28 +160,10 @@ The **control light curve cut** uses a set of quality control light curves to de
 
 Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
 
-#### Averaging and cutting bad days
+#### Averaging and cutting bad days (`-g`)
 Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`): 
 - A returned chi-square > 4.0 (to change, set field `x2_max`)
 - Number of measurements averaged < 2 (to change, set field `Nclip_max`)
 - Number of measurements clipped > 1 (to change, set field `Ngood_min`)
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
-
-**Arguments** (will override default config file settings if specified):
-- First provide TNS name(s) of object(s) to clean
-- `--num_controls`: set number of control light curves to load and clean
-- `-e` or `--uncert_est`: apply uncertainties estimation
-- `-u` or `--uncert_cut`: apply uncertainty cut
-- `-x` or `--x2_cut`: apply chi-square cut
-- `-c` or `--controls_cut`: apply control light curve cut
-- `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
-	- `-m` or `--mjd_bin_size`: set MJD bin size in days
-- `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
-	- You can use the arguments `--xlim_lower`, `--xlim_upper`, `--ylim_lower`, and `--ylim_upper` to set the x and y axis limits of the plots manually.
-- `-f ` or `--cfg_filename`: provide a different config file filename (default is `settings.ini`)
-- `-o` or `--overwirte`: overwrite existing light curves with the same filename
-
-**Example commands**:
-- `_clean_atlas_lc_v2.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
-- `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
