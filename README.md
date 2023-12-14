@@ -87,19 +87,19 @@ As well as its control light curves by adding -c:
 ### `clean_atlas_lc_v2.py`
 #### Estimates true uncertainties, applies all cuts (chi-squares, uncertainties, control light curves), and averages light curves.
 Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
-- Apply uncertainty cut
-- Estimate true uncertainties
-- Apply chi-square cut 
-- Apply control light curve cut
-- Average cleaned light curves
-- Optionally correct for ATLAS template changes
-- Save both original and averaged light curves with the updated 'Mask' columns
+- Apply uncertainty cut (`-u`)
+- Estimate true uncertainties (`-e`)
+- Apply chi-square cut (`-x`)
+- Apply control light curve cut (`-c`)
+- Average cleaned light curves (`-g`)
+- Optionally correct for ATLAS template changes (**NOT CURRENTLY FUNCTIONAL**)
+- Save both original and averaged light curves with the updated 'Mask' columns (`-o`)
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
 - `--num_controls`: set number of control light curves to load and clean
-- `-e` or `--uncert_est`: apply uncertainties estimation
 - `-u` or `--uncert_cut`: apply uncertainty cut
+- `-e` or `--uncert_est`: apply uncertainties estimation
 - `-x` or `--x2_cut`: apply chi-square cut
 - `-c` or `--controls_cut`: apply control light curve cut
 - `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
@@ -142,7 +142,7 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
     - $L = N_{good,cut}/N_{good}$
 - In order to provide informative output on contamination and loss, we calculate these measures for a range of possible chi-square cuts and optionally plot them (use `-p` argument to do so). 
     - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (to change, set field `[x2_cut]` `cut_start`) and end at 50 (to change, set field `[x2_cut]` `cut_stop`) with a step size of 1 (to change, set field `[x2_cut]` `cut_step`). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
-    - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts. However, you can use the pre-SN flux instead by setting the `x2_cut` `use_preSN_lc` field.
+    - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts. However, you can use the pre-SN flux instead by setting the `[x2_cut]` `use_preSN_lc` field.
 - We output the calculated contamination and loss for the applied chi-square cut in a table with each SN's TNS name and filter in the output directory.
 
 We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
