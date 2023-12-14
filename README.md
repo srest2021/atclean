@@ -93,7 +93,7 @@ Using the default settings in `settings.ini` and previously downloaded SN and co
 - Apply control light curve cut (`-c`)
 - Average cleaned light curves (`-g`)
 - Optionally correct for ATLAS template changes (**NOT CURRENTLY FUNCTIONAL**)
-- Save both original and averaged light curves with the updated 'Mask' columns (`-o`)
+- Save both original and averaged light curves with the updated 'Mask' columns
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
