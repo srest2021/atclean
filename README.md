@@ -72,17 +72,17 @@ In order to change the number of control light curves downloaded, replace `[gene
 
 You can easily download light curves for a single SN without TNS credentials or `sninfo.txt` straight from the command line:
 
-`./download_atlas_lc.py 2019vxm --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+`./download_atlas_lc.py 2019vxm -o --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
 As well as its control light curves by adding -c:
 
-`./download_atlas_lc.py 2019vxm -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+`./download_atlas_lc.py 2019vxm -o -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
 **Other example commands**:
-- `download_atlas_lc.py 2019vxm` - downloads full SN 2019vxm light curve using ATLAS password 'XXX'
-- `download_atlas_lc.py 2019vxm -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days
-- `download_atlas_lc.py 2019vxm -c` downloads full SN 2019vxm and control light curves
-- `download_atlas_lc.py 2019vxm 2020lse -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse
+- `download_atlas_lc.py 2019vxm -o` - downloads full SN 2019vxm light curve using ATLAS password 'XXX' (and saves & overwrites any old light curves)
+- `download_atlas_lc.py 2019vxm -o -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days (and saves & overwrites any old light curves)
+- `download_atlas_lc.py 2019vxm -o -c` downloads full SN 2019vxm and control light curves (and saves & overwrites any old light curves)
+- `download_atlas_lc.py 2019vxm 2020lse -o -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse (and saves & overwrites any old light curves)
 
 ### `clean_atlas_lc_v2.py`
 #### Estimates true uncertainties, applies all cuts, and averages light curves.
