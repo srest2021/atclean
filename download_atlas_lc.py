@@ -37,8 +37,8 @@ class download_atlas_lc:
 
 		# input/output
 		self.output_dir = None
-		self.snlist_filename = None
-		self.snlist = None
+		self.sninfo_filename = None
+		self.sninfo = None
 		self.overwrite = True
 		self.flux2mag_sigmalimit = None
 
@@ -105,14 +105,14 @@ class download_atlas_lc:
 		self.output_dir = cfg['general']['output_dir']
 		print(f'Light curve .txt files output directory: {self.output_dir}')
 
-		# attempt to load snlist.txt; if does not exist, create new snlist table
-		self.snlist_filename = f'{self.output_dir}/{cfg["general"]["snlist_filename"]}'
-		if os.path.exists(self.snlist_filename):
-			self.snlist = pdastrostatsclass()
-			print(f'Loading SN list at {self.snlist_filename}')
-			self.snlist.load_spacesep(self.snlist_filename, delim_whitespace=True)
+		# attempt to load sninfo.txt; if does not exist, create new sninfo table
+		self.sninfo_filename = f'{self.output_dir}/{cfg["general"]["sninfo_filename"]}'
+		if os.path.exists(self.sninfo_filename):
+			self.sninfo = pdastrostatsclass()
+			print(f'Loading SN list at {self.sninfo_filename}')
+			self.sninfo.load_spacesep(self.sninfo_filename, delim_whitespace=True)
 		else:
-			self.snlist = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+			self.sninfo = pdastrostatsclass(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
 
 		# overwrite existing files?
 		self.overwrite = bool(args.overwrite)
@@ -396,7 +396,7 @@ class download_atlas_lc:
 		self.control_coords.t.loc[control_index,'n_detec_o'] = len(o_ix)
 		self.control_coords.t.loc[control_index,'n_detec_c'] = len(AnotB(lc.lcs[control_index].getindices(),o_ix))
 
-	def get_lc_data(self, args, lc, snlist_index):
+	def get_lc_data(self, args, lc, sninfo_index):
 		# get RA, Dec, and discovery date from command line if available
 		if not(args.coords is None):
 			print('Getting RA and Dec coordinates from command line argument --coords...')
@@ -415,38 +415,38 @@ class download_atlas_lc:
 				raise RuntimeError('ERROR: Only one SN allowed when specifying SN discovery date in command line!')
 			lc.discdate = args.discdate
 
-		# if RA, Dec, or discovery date not provided in command line, check in snlist.txt or try using TNS API
+		# if RA, Dec, or discovery date not provided in command line, check in sninfo.txt or try using TNS API
 		if args.coords is None or args.discdate is None:
-			# check if no existing row in snlist.txt; else no need to add new row
-			if snlist_index == -1:
+			# check if no existing row in sninfo.txt; else no need to add new row
+			if sninfo_index == -1:
 				# check if we can query TNS
 				if self.tns_api_key == 'None':
 					# all options exhausted
-					raise RuntimeError('ERROR: No TNS API key provided, no corresponding SN entry in snlist.txt, and not enough information provided in arguments! Please provide RA, Dec, and discovery date in --coords and --discdate arguments.')
+					raise RuntimeError('ERROR: No TNS API key provided, no corresponding SN entry in sninfo.txt, and not enough information provided in arguments! Please provide RA, Dec, and discovery date in --coords and --discdate arguments.')
 				else:
 					# get RA, Dec, and/or discovery date from TN 
 					lc.get_tns_data(self.tns_api_key, self.tns_id, self.bot_name)
 			else:
 				print(f'Getting RA, Dec, and/or discovery date from existing row in SN list...')
 
-		# add RA, Dec, and discovery date to new row in snlist.txt if no existing row for this SN
-		if snlist_index == -1:
-			# add row to snlist.txt
-			self.snlist.newrow({'tnsname':lc.tnsname, 'ra':lc.ra, 'dec':lc.dec, 'discovery_date':lc.discdate, 'closebright_ra':np.nan, 'closebright_dec':np.nan})
-			snlist_index = len(self.snlist.t)-1
+		# add RA, Dec, and discovery date to new row in sninfo.txt if no existing row for this SN
+		if sninfo_index == -1:
+			# add row to sninfo.txt
+			self.sninfo.newrow({'tnsname':lc.tnsname, 'ra':lc.ra, 'dec':lc.dec, 'discovery_date':lc.discdate, 'closebright_ra':np.nan, 'closebright_dec':np.nan})
+			sninfo_index = len(self.sninfo.t)-1
 
-		# fill in missing information from snlist.txt
-		if lc.ra is None: lc.ra = self.snlist.t.loc[snlist_index,'ra']
-		if lc.dec is None: lc.dec = self.snlist.t.loc[snlist_index,'dec']
-		if lc.discdate is None: lc.discdate = self.snlist.t.loc[snlist_index,'discovery_date']
+		# fill in missing information from sninfo.txt
+		if lc.ra is None: lc.ra = self.sninfo.t.loc[sninfo_index,'ra']
+		if lc.dec is None: lc.dec = self.sninfo.t.loc[sninfo_index,'dec']
+		if lc.discdate is None: lc.discdate = self.sninfo.t.loc[sninfo_index,'discovery_date']
 
 		if self.closebright and self.closebright_coords is None:
-			print(f'Getting close bright object coordinates from SN list at {self.snlist_filename}...')
-			if not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_ra'])) and not(np.isnan(self.snlist.t.loc[snlist_index,'closebright_dec'])):
-				self.closebright_coords[0] = self.snlist.t.loc[snlist_index,'closebright_ra']
-				self.closebright_coords[1] = self.snlist.t.loc[snlist_index,'closebright_dec']
+			print(f'Getting close bright object coordinates from SN list at {self.sninfo_filename}...')
+			if not(np.isnan(self.sninfo.t.loc[sninfo_index,'closebright_ra'])) and not(np.isnan(self.sninfo.t.loc[sninfo_index,'closebright_dec'])):
+				self.closebright_coords[0] = self.sninfo.t.loc[sninfo_index,'closebright_ra']
+				self.closebright_coords[1] = self.sninfo.t.loc[sninfo_index,'closebright_dec']
 			else:
-				raise RuntimeError(f'ERROR: Close bright object coordinates given in SN list file at {self.snlist_filename} are not valid!')
+				raise RuntimeError(f'ERROR: Close bright object coordinates given in SN list file at {self.sninfo_filename} are not valid!')
 		
 		output = f'RA: {lc.ra}, Dec: {lc.dec}, discovery date: {lc.discdate}'
 		if self.closebright: 
@@ -485,11 +485,11 @@ class download_atlas_lc:
 		return lc
 
 	# download SN light curve and, if necessary, control light curves, then save
-	def download_lcs(self, args, tnsname, token, snlist_index):
+	def download_lcs(self, args, tnsname, token, sninfo_index):
 		lc = atlas_lc(tnsname=tnsname)
 		print(f'\nCOMMENCING LOOP FOR SN {lc.tnsname}\n')
 		
-		lc = self.get_lc_data(args, lc, snlist_index)
+		lc = self.get_lc_data(args, lc, sninfo_index)
 
 		# only download light curve if overwriting existing files
 		if not(self.overwrite) and lc.exists(self.output_dir, 'o') and lc.exists(self.output_dir, 'c'):
@@ -532,20 +532,20 @@ class download_atlas_lc:
 			raise RuntimeError('ERROR in connect_atlas(): No token header!')
 
 		for obj_index in range(len(args.tnsnames)):
-			snlist_index = -1
-			snlist_ix = self.snlist.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
-			# check if SN information exists in snlist.txt
-			if len(snlist_ix) > 0:
-				if len(snlist_ix > 1):
+			sninfo_index = -1
+			sninfo_ix = self.sninfo.ix_equal(colnames=['tnsname'],val=args.tnsnames[obj_index])
+			# check if SN information exists in sninfo.txt
+			if len(sninfo_ix) > 0:
+				if len(sninfo_ix > 1):
 					# drop duplicate rows
-					self.snlist.t.drop(snlist_ix[1:])
-				snlist_index = snlist_ix[0]
+					self.sninfo.t.drop(sninfo_ix[1:])
+				sninfo_index = sninfo_ix[0]
 
-			self.download_lcs(args, args.tnsnames[obj_index], token, snlist_index)
+			self.download_lcs(args, args.tnsnames[obj_index], token, sninfo_index)
 
-		# save snlist.txt with any new rows
-		print(f'\nSaving SN list at {self.snlist_filename}')
-		self.snlist.write(self.snlist_filename)
+		# save sninfo.txt with any new rows
+		print(f'\nSaving SN list at {self.sninfo_filename}')
+		self.sninfo.write(self.sninfo_filename)
 
 if __name__ == "__main__":
 	download_atlas_lc = download_atlas_lc()

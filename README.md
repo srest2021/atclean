@@ -68,7 +68,7 @@ In order to change the number of control light curves downloaded, replace `[gene
 - `-a` or `--tns_api_key`: override default TNS API key given in `settings.ini` config file
 - `-f ` or `--cfg_filename`: provide a different config file filename (default is `settings.ini`)
 - `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
-- `--dont_overwrite`: don't overwrite existing light curves with the same filename
+- `-o` or `--overwrite`: overwrite existing light curves with the same filename
 
 You can easily download light curves for a single SN without TNS credentials or `sninfo.txt` straight from the command line:
 
