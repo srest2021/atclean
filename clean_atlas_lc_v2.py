@@ -213,11 +213,12 @@ class CleanAtlasLightCurve(atlas_lc):
 			if control_index == 0:
 				num_cut = len(cut_ix)
 				percent_cut = 100 * num_cut/len(ix)
-				output1 = f'Chi-square cut {cut:0.2f} selected with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss'
-				output2 = f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%'
-				print(f'# {output1}\n# {output2}')
+				output = []
+				output.append(f'Chi-square cut {cut:0.2f} selected with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss')
+				output.append(f'Total percent of data flagged ({hex(flag)}): {percent_cut:0.2f}%')
+				print('\n'.join(f'# {s}' for s in output))
 				print('Success')
-		return f'{output1}\n{output2}'
+		return '\n'.join(output) #f'{output1}\n{output2}'
 
 	def apply_x2_cut(self, flag, plot=None):
 		if self.cfg['x2_cut_params']['use_preSN_lc'] or self.num_controls == 0:
@@ -337,26 +338,23 @@ class CleanAtlasLightCurve(atlas_lc):
 		self.drop_extra_columns()
 
 		len_ix = len(self.get_ix())
-		s = []
-		s.append('Percent of data above x2_max bound (%s): %0.2f%%' 
+		output = []
+		output.append('Percent of data above x2_max bound (%s): %0.2f%%' 
 		   % (hex(flags['controls_x2']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_x2'])) / len_ix))
-		s.append('Percent of data above stn_max bound (%s): %0.2f%%' 
+		output.append('Percent of data above stn_max bound (%s): %0.2f%%' 
 		   % (hex(flags['controls_stn']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_stn'])) / len_ix))
-		s.append('Percent of data above Nclip_max bound (%s): %0.2f%%' 
+		output.append('Percent of data above Nclip_max bound (%s): %0.2f%%' 
 		   % (hex(flags['controls_Nclip']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Nclip'])) / len_ix))
-		s.append('Percent of data below Ngood_min bound (%s): %0.2f%%' 
+		output.append('Percent of data below Ngood_min bound (%s): %0.2f%%' 
 		   % (hex(flags['controls_Ngood']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Ngood'])) / len_ix))
-		s.append('Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) (%s): %0.2f%%' 
+		output.append('Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) (%s): %0.2f%%' 
 		   % (hex(flags['controls_questionable']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable'])) / len_ix))
-		s.append('Total percent of data flagged as bad (%s): %0.2f%%' 
+		output.append('Total percent of data flagged as bad (%s): %0.2f%%' 
 		   % (hex(flags['controls_bad']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_bad'])) / len_ix))
 		print('# Control light curve cut results:')
-		for out in s:
-			print(f'## {out}')
-		output = '\n'.join(s)
-		
+		print('\n'.join(f'## {s}' for s in output))
 		print('Success')
-		return output
+		return '\n'.join(output)
 	
 	def apply_controls_cut(self, flags):
 		return self._apply_controls_cut(flags, 
