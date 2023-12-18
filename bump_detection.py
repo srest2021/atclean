@@ -276,10 +276,13 @@ class SimDetecLightCurve(atlas_lc):
 			lc.t.drop(columns=dropcols,inplace=True)
 		return lc
 	
-	def apply_rolling_sum(self, control_index, sigma, flag=0x800000, verbose=False):
+	def apply_rolling_sum(self, control_index, sigma, indices=None, flag=0x800000, verbose=False):
 		self.sigma = sigma
 
-		ix = get_ix(self.lcs[control_index].t)
+		if indices is None:
+			ix = get_ix(self.lcs[control_index].t)
+		else:
+			ix = indices
 		if len(ix) < 1:
 			raise RuntimeError('ERROR: not enough measurements to apply simulated gaussian')
 		good_ix = AandB(ix, self.lcs[control_index].ix_unmasked('Mask', flag)) # all good pre-SN indices

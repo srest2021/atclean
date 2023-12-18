@@ -100,8 +100,12 @@ class CleanAtlasLightCurve(atlas_lc):
 			self.lcs[control_index].t['duJy_new'] = np.sqrt(self.lcs[control_index].t['duJy']*self.lcs[control_index].t['duJy'] + sigma_extra**2)
 			self.recalculate_fdf(control_index=control_index)
 
-	def _apply_uncert_est(self, uncert_flag, prelim_x2_cut):
-		print('\nApplying true uncertainty estimation...')
+	def _apply_uncert_est(self, uncert_flag, prelim_x2_cut, save=False):
+		output = []
+		if save:
+			print('\nApplying true uncertainties estimation...')
+		else:
+			print('\nChecking true uncertainties estimation...')
 
 		stats = self._get_uncert_est_stats(uncert_flag, prelim_x2_cut)
 		#print(stats.to_string())
@@ -110,25 +114,37 @@ class CleanAtlasLightCurve(atlas_lc):
 		sigma_typical_old = np.median(stats['median_dflux'])
 		sigma_typical_new = np.sqrt(final_sigma_extra**2 + sigma_typical_old**2)
 		percent_greater = 100 * ((sigma_typical_new - sigma_typical_old)/sigma_typical_old)
-		s1 = f'We increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature'
-		print(f'# {s1}')
-		print(f'# New typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty')
-
+		output.append(f'We can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature')
+		output.append(f'New typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty')
+		
+		output.append(f'Apply true uncertainties estimation set to {save}')
 		if percent_greater >= 10:
-			output = f'{s1}.\nThe extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column.'
-			print(f'# Proceeding with true uncertainties estimation...')
-			print(f'# Calculating new uncertainties in \'duJy_new\' column for each light curve...') 
-			self._add_noise(final_sigma_extra)
-			print('Success')
+			output.append('True uncertainties estimation recommended')
+			output.append(f'{"Applying" if save else "Skipping"} procedure...')
+			if save:
+				self._add_noise(final_sigma_extra)
+				print('Success')
+				output.append('The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column')
 		else:
-			s2 = 'True uncertainties estimation not needed'
-			output = f'{s2}.'
-			print(f'# {s2}; skipping procedure')
+			output.append('True uncertainties estimation not needed; skipping procedure...')
 
-		return output
+		print('\n'.join(f'# {s}' for s in output))
+
+		uncert_est_info_row = {
+			'tnsname': self.tnsname, 
+			'filt': self.filt, 
+			'sigma_extra': final_sigma_extra,
+			'sigma_typical_old':sigma_typical_old,
+			'sigma_typical_new':sigma_typical_new,
+			'sigma_typical_new_pct_greater': percent_greater,
+			'recommended': percent_greater >= 10,
+			'applied': save
+		}
+
+		return uncert_est_info_row, '\n'.join(output)
 	
-	def apply_uncert_est(self, uncert_flag):
-		return self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut']) #output
+	def apply_uncert_est(self, uncert_flag, save=False):
+		return self._apply_uncert_est(uncert_flag, self.cfg['prelim_x2_cut'], save=save)
 	
 	def _get_all_controls(self):
 		controls = [deepcopy(self.lcs[control_index].t) for control_index in self.lcs if control_index > 0]
@@ -470,9 +486,8 @@ class CleanAtlasLightCurve(atlas_lc):
 
 		nonnull_ix = avglc.lcs[0].ix_not_null('MJD')
 		percent_cut = 100 * len(avglc.lcs[0].ix_masked('Mask',maskval=flags['avg_badday'], indices=nonnull_ix)) / len(nonnull_ix)
-		s = 'Total percent of binned data flagged (%s): %0.2f%%' % (hex(flags['avg_badday']), percent_cut) 
-		print(f'# {s}')
-		output = f'{s}.'
+		output = 'Total percent of binned data flagged (%s): %0.2f%%' % (hex(flags['avg_badday']), percent_cut) 
+		print(f'# {output}')
 		print('Success')
 		return avglc, output
 
@@ -484,16 +499,53 @@ class CleanAtlasLightCurve(atlas_lc):
 									 self.cfg['averaging_params']['mjd_bin_size'],
 									 self.cfg['flux2mag_sigmalimit'])
 
+class UncertEstInfo():
+	def __init__(self, filename):
+		self.filename = filename
+
+		try:
+			print(f'\nLoading true uncertainties estimation table at {self.filename}...')
+			self.t = pd.read_table(self.filename, delim_whitespace=True)
+			print('Success')
+		except:
+			print(f'No existing true uncertainties estimation table; creating blank table...')
+			self.t = pd.DataFrame(columns=['tnsname', 'filt', 'sigma_extra', 'sigma_typical_old', 'sigma_typical_new', 'sigma_typical_new_pct_greater', 'recommended', 'applied'])
+		
+	def add_row(self, row):
+		tnsname = row['tnsname']
+		filt = row['filt']
+
+		if len(self.t) > 0:
+			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filt'].eq(filt))[0]
+			if len(matching_ix) > 1:
+				raise RuntimeError(f'ERROR: true uncertainties estimation table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
+		
+			if len(matching_ix) > 0:
+				# update existing row
+				idx = matching_ix[0]
+				self.t.loc[idx,:] = row
+			else:
+				# new row
+				self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+		else:
+			# new row
+			self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+	
+	def save(self):
+		print(f'\nSaving true uncertainties estimation table at {self.filename}...')
+		self.t.to_string(self.filename)
+		#print(self.t.to_string())
+
 class ChiSquareCutInfo():
 	def __init__(self, filename):
 		self.filename = filename
 
 		try:
-			print(f'\nLoading x2_cut_info table at {self.filename}...')
+			print(f'\nLoading chi-square cut table at {self.filename}...')
 			self.t = pd.read_table(self.filename, delim_whitespace=True)
 			print('Success')
 		except:
-			print(f'No existing x2_cut_info table; creating blank table...')
+			print(f'No existing chi-square cut table; creating blank table...')
 			self.t = pd.DataFrame(columns=['tnsname', 'filt', 'x2_cut', 'use_preSN_lc', 'stn_bound', 'Pcontamination', 'Ploss'])
 
 	def add_row(self, row):
@@ -503,7 +555,7 @@ class ChiSquareCutInfo():
 		if len(self.t) > 0:
 			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filt'].eq(filt))[0]
 			if len(matching_ix) > 1:
-				raise RuntimeError(f'ERROR: x2_cut_info has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
+				raise RuntimeError(f'ERROR: chi-square cut table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
 		
 			if len(matching_ix) > 0:
 				# update existing row
@@ -519,7 +571,7 @@ class ChiSquareCutInfo():
 	def save(self):
 		print(f'\nSaving chi-square cut table at {self.filename}...')
 		self.t.to_string(self.filename)
-		print(self.t.to_string())
+		#print(self.t.to_string())
 
 class SnInfo():
 	def __init__(self, output_dir, filename=None):
@@ -652,9 +704,9 @@ class CleaningLoop():
 			f.write(f'\n\n### Uncertainty cut\n')
 			f.write(uncert_cut_output)
 		
-		if self.apply_uncert_est:
-			f.write(f'\n\n### True uncertainties estimation\n')
-			f.write(uncert_est_output)
+		#if self.apply_uncert_est:
+		f.write(f'\n\n### True uncertainties estimation\n')
+		f.write(uncert_est_output)
 			
 		if self.apply_x2_cut:
 			f.write(f'\n\n### Chi-square cut\n')
@@ -678,8 +730,11 @@ class CleaningLoop():
 	def loop(self):
 		self.sninfo = SnInfo(self.settings["output_dir"], self.settings["sninfo_filename"])
 
+		#if self.apply_uncert_est:
+		self.uncert_est_info = UncertEstInfo(filename=f'{self.settings["output_dir"]}/uncert_est_info.txt')
+
 		if self.apply_x2_cut:
-			self.x2_cut_info = ChiSquareCutInfo(filename=f'{self.settings["output_dir"]}/x2_cut_info.txt')  #self.load_x2_cut_info()
+			self.x2_cut_info = ChiSquareCutInfo(filename=f'{self.settings["output_dir"]}/x2_cut_info.txt')
 
 		for obj_index in range(len(self.tnsnames)):
 			tnsname = self.tnsnames[obj_index]
@@ -714,15 +769,17 @@ class CleaningLoop():
 						plot.plot_uncert_cut(self.lc_objs[k])
 				
 				uncert_est_output = None
-				if self.apply_uncert_est:
-					uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'])
-					if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
+				#if self.apply_uncert_est:
+				uncert_est_info_row, uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'], save=self.apply_uncert_est)
+				#print(uncert_est_info_row)
+				self.uncert_est_info.add_row(uncert_est_info_row)
+				if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
 						plot.plot_uncert_est(self.lc_objs[k])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
 					plot, x2_cut_info_row, x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'], plot=plot)
-					print(x2_cut_info_row)
+					#print(x2_cut_info_row)
 					self.x2_cut_info.add_row(x2_cut_info_row)
 
 				controls_cut_output = None
@@ -756,6 +813,9 @@ class CleaningLoop():
 			f.close()
 		
 		self.sninfo.save()
+
+		#if self.apply_uncert_est:
+		self.uncert_est_info.save()
 
 		if self.apply_x2_cut:
 			self.x2_cut_info.save()
@@ -815,8 +875,8 @@ def load_settings():
 
 	cleaning = CleaningLoop(args, settings)
 	
-	if cleaning.apply_uncert_est:
-		cleaning.settings['prelim_x2_cut'] = float(cfg['uncert_est']['prelim_x2_cut'])
+	#if cleaning.apply_uncert_est:
+	cleaning.settings['prelim_x2_cut'] = float(cfg['uncert_est']['prelim_x2_cut'])
 
 	if cleaning.apply_uncert_cut:
 		cleaning.settings['uncert_cut'] = float(cfg['uncert_cut']['cut'])
