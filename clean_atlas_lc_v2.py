@@ -24,11 +24,6 @@ class CleanAtlasLightCurve(atlas_lc):
 	def get_tns_data(self):
 		self._get_tns_data(self.cfg['api_key'], self.cfg['tns_id'], self.cfg['bot_name'])
 
-	def set_tns_data(self, ra, dec, discdate):
-		self.ra = ra
-		self.dec = dec
-		self.discdate = discdate
-
 	def save(self, overwrite=True):
 		for control_index in range(self.num_controls+1):
 			self.drop_extra_columns(control_index=control_index)

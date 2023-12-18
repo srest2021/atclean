@@ -26,15 +26,15 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-gauss_sigmas = [5, 20, 40, 70, 100, 150]
+gauss_sigmas = [100, 150]#[5, 20, 40, 70, 100, 150]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in gauss_sigmas
 # if using a simulated eruption, add None entry
-sim_sigmas = [[5, 20, 40, 70, 100, 150], 
-              [5, 20, 40, 70, 100, 150],
-              [5, 20, 40, 70, 100, 150],
-              [5, 20, 40, 70, 100, 150],
+sim_sigmas = [#[5, 20, 40, 70, 100, 150], 
+              #[5, 20, 40, 70, 100, 150],
+              #[5, 20, 40, 70, 100, 150],
+              #[5, 20, 40, 70, 100, 150],
               [5, 20, 40, 70, 100, 150],
               [5, 20, 40, 70, 100, 150]]
 

@@ -496,7 +496,7 @@ class download_atlas_lc:
 			print(f'SN light curve files already exist and overwrite is set to {self.overwrite}! Skipping download...')
 		else:
 			lc = self.download_lc(args, token, lc, lc.ra, lc.dec)
-			lc.save_lc(self.output_dir, overwrite=self.overwrite)
+			lc._save_lc(self.output_dir, overwrite=self.overwrite)
 
 		if args.controls:
 			print('Control light curve downloading set to True')
@@ -515,7 +515,7 @@ class download_atlas_lc:
 										  dec=self.control_coords.t.loc[control_index,'dec'], 
 										  control_index=control_index)
 					self.update_control_coords(lc, control_index)
-					lc.save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
+					lc._save_lc(self.output_dir, control_index=control_index, overwrite=self.overwrite)
 
 			# save control_coords table
 			if self.overwrite:
