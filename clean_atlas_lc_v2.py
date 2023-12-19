@@ -244,12 +244,12 @@ class CleanAtlasLightCurve(atlas_lc):
 
 		x2_cut_info_row = {
 			'tnsname': self.tnsname, 
-			'filt': self.filt, 
+			'filter': self.filt, 
 			'x2_cut': self.cfg['x2_cut'], 
 			'use_preSN_lc': self.cfg['x2_cut_params']['use_preSN_lc'], 
 			'stn_bound': self.cfg['x2_cut_params']['stn_cut'], 
-			'Pcontamination': round(data['Pcontamination'],2), 
-			'Ploss': round(data['Ploss'],2)
+			'pct_contamination': round(data['Pcontamination'],2), 
+			'pct_loss': round(data['Ploss'],2)
 		}
 
 		if not plot is None:
@@ -544,7 +544,7 @@ class ChiSquareCutInfo():
 			print('Success')
 		except:
 			print(f'No existing chi-square cut table; creating blank table...')
-			self.t = pd.DataFrame(columns=['tnsname', 'filt', 'x2_cut', 'use_preSN_lc', 'stn_bound', 'Pcontamination', 'Ploss'])
+			self.t = pd.DataFrame(columns=['tnsname', 'filter', 'x2_cut', 'use_preSN_lc', 'stn_bound', 'pct_contamination', 'pct_loss'])
 
 	def add_row(self, row):
 		tnsname = row['tnsname']
@@ -727,10 +727,7 @@ class CleaningLoop():
 
 	def loop(self):
 		self.sninfo = SnInfo(self.settings["output_dir"], self.settings["sninfo_filename"])
-
-		#if self.apply_uncert_est:
 		self.uncert_est_info = UncertEstInfo(filename=f'{self.settings["output_dir"]}/uncert_est_info.txt')
-
 		if self.apply_x2_cut:
 			self.x2_cut_info = ChiSquareCutInfo(filename=f'{self.settings["output_dir"]}/x2_cut_info.txt')
 

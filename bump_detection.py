@@ -412,6 +412,8 @@ class SimDetecTable:
 			raise RuntimeError(f'ERROR: Could not load simulation detection table at {filename}: {str(e)}')
 
 	def save(self, tables_dir):
+		if not os.path.exists(tables_dir):
+			os.mkdir(tables_dir)
 		filename = self.get_filename(tables_dir)
 		print(f'Saving simulation detection table simdetec_{sd_key(self.sigma_kern, self.peak_appmag)}.txt...')
 		self.t.to_string(filename, index=False)
