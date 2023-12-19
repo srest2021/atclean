@@ -7,18 +7,18 @@
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
-    - [`clean_atlas_lc_v2.py`](#clean_atlas_lcv2py) (for one or more SNe, apply all cuts and average light curves)
+    - [`clean_atlas_lc_v2.py`](#clean_atlas_lc_v2py) (for one or more SNe, apply all cuts and average light curves)
 
 ## Jupyter Notebooks
 
 ### `clean_atlas_lc.v4.ipynb`
 #### Estimates true uncertainties, applies all cuts, averages light curves, and corrects for ATLAS template changes.
 Using previously downloaded SN and control light curves:
-- Apply uncertainty cut
+- Apply uncertainty cut (flag: `0x2`)
 - Estimate true uncertainties
-- Apply chi-square cut 
-- Apply control light curve cut
-- Average cleaned light curves
+- Apply chi-square cut (flag: `0x1`)
+- Apply control light curve cut (flag: `0x400000`)
+- Average cleaned light curves (flag: `0x800000`)
 - Correct for ATLAS template changes
 - Save both original and averaged light curves with the updated 'Mask' columns
 

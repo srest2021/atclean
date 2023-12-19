@@ -767,17 +767,14 @@ class CleaningLoop():
 						plot.plot_uncert_cut(self.lc_objs[k])
 				
 				uncert_est_output = None
-				#if self.apply_uncert_est:
 				uncert_est_info_row, uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'], save=self.apply_uncert_est)
-				#print(uncert_est_info_row)
 				self.uncert_est_info.add_row(uncert_est_info_row)
 				if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
-						plot.plot_uncert_est(self.lc_objs[k])
+					plot.plot_uncert_est(self.lc_objs[k])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
 					plot, x2_cut_info_row, x2_cut_output = self.lc_objs[k].apply_x2_cut(self.flags['chisquare'], plot=plot)
-					#print(x2_cut_info_row)
 					self.x2_cut_info.add_row(x2_cut_info_row)
 
 				controls_cut_output = None
@@ -812,7 +809,6 @@ class CleaningLoop():
 		
 		self.sninfo.save()
 
-		#if self.apply_uncert_est:
 		self.uncert_est_info.save()
 
 		if self.apply_x2_cut:
