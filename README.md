@@ -87,12 +87,14 @@ As well as its control light curves by adding -c:
 ### `clean_atlas_lc_v2.py`
 #### Estimates true uncertainties, applies all cuts, and averages light curves.
 Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
-- Apply uncertainty cut (`-u`)
-- Estimate true uncertainties (`-e`)
-- Apply chi-square cut (`-x`)
-- Apply control light curve cut (`-c`)
-- Average cleaned light curves (`-g`)
+- Apply uncertainty cut (`-u`) (flag: `0x2`)
+- Estimate true uncertainties (`-e`) 
+- Apply chi-square cut (`-x`) (flag: `0x1`)
+- Apply control light curve cut (`-c`) (flag: `0x400000`)
+- Average cleaned light curves (`-g`) (flag: `0x800000`)
 - Save both original and averaged light curves with the updated 'Mask' columns
+
+The 'Mask' column in each cleaned light curves will contain hex values ("flags") that mark cut measurements. You can use bit operations to select measurements that were cut or kept according to some or all cuts.
 
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
@@ -112,10 +114,10 @@ Using the default settings in `settings.ini` and previously downloaded SN and co
 - `_clean_atlas_lc_v2.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
 - `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
 
-#### Uncertainty cut (`-u`)
+#### Uncertainty cut (`-u`) 
 The **uncertainty cut** is a static procedure currently set at a default value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
-#### True uncertainties estimation (`-e`)
+#### True uncertainties estimation (`-e`) 
 We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. Here is the exact procedure we use:
 1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
 2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, `median_∂µJy`, is taken from the unflagged baseline flux. `σ_true_typical` is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
