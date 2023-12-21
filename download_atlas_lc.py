@@ -425,7 +425,7 @@ class download_atlas_lc:
 					raise RuntimeError('ERROR: No TNS API key provided, no corresponding SN entry in sninfo.txt, and not enough information provided in arguments! Please provide RA, Dec, and discovery date in --coords and --discdate arguments.')
 				else:
 					# get RA, Dec, and/or discovery date from TN 
-					lc.get_tns_data(self.tns_api_key, self.tns_id, self.bot_name)
+					lc._get_tns_data(self.tns_api_key, self.tns_id, self.bot_name)
 			else:
 				print(f'Getting RA, Dec, and/or discovery date from existing row in SN list...')
 

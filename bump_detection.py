@@ -311,9 +311,9 @@ class SimDetecLightCurve(atlas_lc):
 		norm_temp_sum = norm_temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
 		self.lcs[control_index].t.loc[ix,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
 
-	def apply_rolling_sums(self, sigma, num_controls):
-		print(f'Applying rolling sum to {num_controls} control light curves...')
-		for control_index in range(1, num_controls+1):
+	def apply_rolling_sums(self, sigma):
+		print(f'Applying rolling sum to {self.num_controls} control light curves...')
+		for control_index in range(1, self.num_controls+1):
 			self.apply_rolling_sum(control_index, sigma)
 
 	def add_simulation(self, control_index, peak_mjd=None, gaussian=None, eruption=None, peak_appmag=None, flag=0x800000, verbose=False):
@@ -678,7 +678,7 @@ if __name__ == "__main__":
 		print(f'\nUsing rolling sum sigma of {sigma_kern} days...')
 
 		# apply rolling sum to all control light curves
-		lc.apply_rolling_sums(sigma_kern, num_controls)
+		lc.apply_rolling_sums(sigma_kern)#, num_controls)
 
 		for peak_index in range(len(peak_appmags)):
 			peak_appmag = peak_appmags[peak_index]

@@ -8,6 +8,7 @@ from collections import OrderedDict
 from astropy.time import Time
 from datetime import datetime
 import numpy as np
+import pandas as pd
 from pdastro import pdastrostatsclass, AandB, AnotB
 
 class atlas_lc:
@@ -68,14 +69,6 @@ class atlas_lc:
 		self.dec = dec
 		self.discdate = discdate
 
-	"""
-	# get baseline indices (any indices before the SN discovery date)
-	def get_baseline_ix(self):
-		if self.discdate is None:
-			raise RuntimeError('ERROR: Cannot get baseline indices because discovery date is None!')
-		return self.lcs[0].ix_inrange(colnames=['MJD'],uplim=self.discdate-20,exclude_uplim=True)
-	"""
-
 	# get a light curve filename for saving/loading
 	def get_filename(self, filt, control_index, directory):
 		# SN light curve: 				DIRECTORY/2022xxx/2022xxx.o.lc.txt
@@ -108,13 +101,13 @@ class atlas_lc:
 				else: 
 					ix = self.lcs[control_index].ix_equal(colnames=['F'],val=filt_)
 				
-				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=ix, overwrite=overwrite)
+				self.lcs[control_index].write(filename=self.get_filename(filt_,control_index,output_dir), indices=ix, overwrite=overwrite, hexcols=['Mask'])
 		else:
 			if self.is_averaged and not keep_empty_bins:
 				ix = self.lcs[control_index].ix_not_null(colnames=['uJy'])
 			else: 
 				ix = self.lcs[control_index].getindices()
-			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), indices=ix, overwrite=overwrite)
+			self.lcs[control_index].write(filename=self.get_filename(filt,control_index,output_dir), indices=ix, overwrite=overwrite, hexcols=['Mask'])
 
 	# save SN light curve and, if necessary, control light curves
 	def _save(self, output_dir, filt=None, overwrite=True, keep_empty_bins=True):
@@ -136,22 +129,21 @@ class atlas_lc:
 			raise RuntimeError(f'ERROR: cannot load a light curve whose is_averaged status of {is_averaged} does not match previous status of {self.is_averaged}!')
 		self.is_averaged = is_averaged
 
-		self.lcs[control_index] = pdastrostatsclass(hexcols=['Mask'])
-		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True)
-		
+		self.lcs[control_index] = pdastrostatsclass()
+		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True, hexcols=['Mask'])
 		if clear_mask:
 			# clear previous 'Mask' column
 			self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
-	def _load(self, output_dir, filt, num_controls=0):
+	def _load(self, output_dir, filt, num_controls=0, clear_mask=True):
 		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
 		print(output)
 
 		self.num_controls = num_controls
-		self._load_lc(output_dir, filt, is_averaged=self.is_averaged)
+		self._load_lc(output_dir, filt, is_averaged=self.is_averaged, clear_mask=clear_mask)
 		for control_index in range(1, num_controls+1):
-			self._load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index)
+			self._load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index, clear_mask=clear_mask)
 
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
 
@@ -193,11 +185,11 @@ class atlas_lc:
 		flags_ = flags["chisquare"] | flags["uncertainty"] | flags["controls_bad"] | flags["avg_badday"]
 		return self.lcs[control_index].ix_unmasked('Mask',maskval=flags_)
 
-	def get_pre_SN_ix(self, control_index=0):
-		return self.lcs[control_index].ix_inrange('MJD', uplim=self.discdate)
+	def get_pre_SN_ix(self, colname='MJD', control_index=0):
+		return self.lcs[control_index].ix_inrange(colname, uplim=self.discdate)
 	
-	def get_post_SN_ix(self, control_index=0):
-		return self.lcs[control_index].ix_inrange('MJD', lowlim=self.discdate)
+	def get_post_SN_ix(self, colname='MJD', control_index=0):
+		return self.lcs[control_index].ix_inrange(colname, lowlim=self.discdate)
 	
 	def prep_for_cleaning(self):
 		#print(f'# Dropping extra columns in all light curves...')

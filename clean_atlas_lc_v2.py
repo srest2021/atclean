@@ -132,7 +132,7 @@ class CleanAtlasLightCurve(atlas_lc):
 
 		uncert_est_info_row = {
 			'tnsname': self.tnsname, 
-			'filt': self.filt, 
+			'filter': self.filt, 
 			'sigma_extra': final_sigma_extra,
 			'sigma_typical_old':sigma_typical_old,
 			'sigma_typical_new':sigma_typical_new,
@@ -507,14 +507,18 @@ class UncertEstInfo():
 			print('Success')
 		except:
 			print(f'No existing true uncertainties estimation table; creating blank table...')
-			self.t = pd.DataFrame(columns=['tnsname', 'filt', 'sigma_extra', 'sigma_typical_old', 'sigma_typical_new', 'sigma_typical_new_pct_greater', 'recommended', 'applied'])
+			self.t = pd.DataFrame(columns=['tnsname', 'filter', 'sigma_extra', 'sigma_typical_old', 'sigma_typical_new', 'sigma_typical_new_pct_greater', 'recommended', 'applied'])
 		
 	def add_row(self, row):
 		tnsname = row['tnsname']
-		filt = row['filt']
+		filt = row['filter']
+		
+		#print(len(self.t))
+		#print(self.t)
+		#sys.exit()
 
 		if len(self.t) > 0:
-			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filt'].eq(filt))[0]
+			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filter'].eq(filt))[0]
 			if len(matching_ix) > 1:
 				raise RuntimeError(f'ERROR: true uncertainties estimation table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
 		
@@ -548,10 +552,10 @@ class ChiSquareCutInfo():
 
 	def add_row(self, row):
 		tnsname = row['tnsname']
-		filt = row['filt']
+		filt = row['filter']
 
 		if len(self.t) > 0:
-			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filt'].eq(filt))[0]
+			matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filter'].eq(filt))[0]
 			if len(matching_ix) > 1:
 				raise RuntimeError(f'ERROR: chi-square cut table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
 		
