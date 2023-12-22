@@ -3,7 +3,8 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc.v4.ipynb`](#clean_atlas_lcv4ipynb) (for one SN, apply all cuts, average light curve, and correct for template changes)
+	- [`clean_atlas_lc.v4.ipynb`](#clean_atlas_lcv4ipynb) (for one SN, apply all cuts, average light curve, and correct for ATLAS template changes)
+    - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (standalone ATLAS template change correction)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
@@ -25,6 +26,11 @@ Using previously downloaded SN and control light curves:
 Example notebooks for example SNe are located in the `/extern` folder of this repository.
 
 To easily download control light curves in order to load them into this notebook, see the **`download_atlas_lc.py`** section to run this script.
+
+### `atlas_lc_template_correction.ipynb`
+#### Corrects for ATLAS template changes.
+
+[Read more](#atlas-template-change-correction--t)
 
 ## Python Scripts
 
@@ -79,9 +85,11 @@ In order to change the number of control light curves downloaded, replace `[gene
     
     `./download_atlas_lc.py 2019vxm -o --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
-- As well as its control light curves by adding -c:
+    As well as its control light curves by adding -c:
 
     `./download_atlas_lc.py 2019vxm -o -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+
+    To use the TNS API or `sninfo.txt`, simply omit the `--coords` and `--discdate` arguments and make sure your `settings.ini` file is updated. 
 
 - `download_atlas_lc.py 2019vxm -o` - downloads full SN 2019vxm light curve (and saves & overwrites any old light curves)
 - `download_atlas_lc.py 2019vxm -o -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days (and saves & overwrites any old light curves)
@@ -128,10 +136,10 @@ WIP
 </details>
 
 #### Uncertainty cut (`-u`) 
-The **uncertainty cut** is a static procedure currently set at a default value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
+The uncertainty cut, currently set to a default value of 160, cuts any measurements with an uncertainty $∂µJy$ > 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
 #### True uncertainties estimation (`-e`) 
-We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. 
+We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section. 
 
 <details>
 <summary>Read more</summary>
@@ -151,7 +159,7 @@ Here is the procedure we use to calculate new uncertainties:
 </details>
 
 #### Chi-square cut (`-x`)
-The **chi-square cut** is a static procedure currently set at a default value of 5. To change, set the `[x2_cut]` `cut` field in `settings.ini`.
+The chi-square cut, currently set to a default value of 5, cuts any measurements with a PSF chi-square value > 5. To change, set the `[x2_cut]` `cut` field in `settings.ini`.
 
 We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to analyze the effectiveness of a PSF chi-square cut for the target SN, with flux/dflux as the deciding factor of what constitutes a good measurement vs. a bad measurement. 
 
@@ -178,7 +186,7 @@ We set our default chi-square cut to 5, and defer overriding of that cut for a p
 </div>
 
 #### Control light curve cut (`-c`)
-The **control light curve cut** uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. 
+The control light curve cut uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. 
 
 <details>
 <summary>Read more</summary>
@@ -194,7 +202,7 @@ We examine each SN epoch and its corresponding control light curve measurements 
 Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
 
 #### Averaging and cutting bad days (`-g`)
-Our goal with the **averaging** procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. 
+Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. 
 
 <details>
 <summary>Read more</summary>
