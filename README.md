@@ -33,11 +33,14 @@ Open the config file `settings.ini` and replace the following fields with your i
 1. Replace `[atlas_cred]` `username` with your ATLAS username. You will be prompted for your ATLAS password when/if you run `download_atlas_lc.py`.
 2. If given a TNS API key, the script will automatically fetch an object's RA, Dec, and discovery date from TNS. 
 	- If you have a key, set `[tns_cred]` `api_key` to your TNS API key. Then, set `[tns_cred]` `tns_id` to the TNS ID of your bot and `[tns_cred]` `bot_name` to the name of your bot.
-	- If you don't have a key, you have two options:
-		1. Obtain your own key from TNS. A key is obtained automatically once you create a bot, which you can do [here](https://www.wis-tns.org/bots) (log in, then click '+Add bot'). 
-		2. Manually add this information to a table in a text file titled `sninfo.txt`. (You can change this file's name in `[general]` `sninfo_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
+	- If you don't have a key, you have three options:
+        1. Option 1: Add the RA, Dec, and discovery date to the command using the `--coords` and `--discdate` options ([read more](#download_atlas_lcpy)).
 
-			Example `sninfo.txt` file (also located in `extern/sninfo.txt`:
+		2. Option 2: Obtain your own key from TNS. A key is obtained automatically once you create a bot, which you can do [here](https://www.wis-tns.org/bots) (log in, then click '+Add bot'). 
+		
+        3. Option 3: Manually add this information to a table in a text file titled `sninfo.txt`. (You can change this file's name in `[general]` `sninfo_filename`.) This text file is automatically generated inside the output directory after a single run of the script and stores infomation about SNe from previous iterations of the code; however, you can also edit/add in your own SN TNS names, coordinates, etc. It should include six columns (`tnsname`, `ra`, `dec`, `discovery_date`, `closebright_ra`, and `closebright_dec`), and empty cells should be marked as `NaN`. 
+
+			Example `sninfo.txt` file (also located in `extern/sninfo.txt`):
 			```
 			tnsname           ra          dec  discovery_date  closebright_ra  closebright_dec
 			2023bee 8:56:11.6303 -3:19:32.095    59956.749940             NaN              NaN
@@ -70,16 +73,17 @@ In order to change the number of control light curves downloaded, replace `[gene
 - `-l` or `--lookbacktime_days`: specify a lookback time in days (if not specified, script will download full light curve)
 - `-o` or `--overwrite`: overwrite existing light curves with the same filename
 
-You can easily download light curves for a single SN without TNS credentials or `sninfo.txt` straight from the command line:
+**Example commands**:
 
-`./download_atlas_lc.py 2019vxm -o --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+- You can easily download light curves for a single SN without TNS credentials or a `sninfo.txt` file straight from the command line:
+    
+    `./download_atlas_lc.py 2019vxm -o --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
-As well as its control light curves by adding -c:
+- As well as its control light curves by adding -c:
 
-`./download_atlas_lc.py 2019vxm -o -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
+    `./download_atlas_lc.py 2019vxm -o -c --coords 10:41:02.190,-27:05:00.42 --discdate 58985.264`
 
-**Other example commands**:
-- `download_atlas_lc.py 2019vxm -o` - downloads full SN 2019vxm light curve using ATLAS password 'XXX' (and saves & overwrites any old light curves)
+- `download_atlas_lc.py 2019vxm -o` - downloads full SN 2019vxm light curve (and saves & overwrites any old light curves)
 - `download_atlas_lc.py 2019vxm -o -l 100` - downloads SN 2019vxm light curve with a lookback time of 100 days (and saves & overwrites any old light curves)
 - `download_atlas_lc.py 2019vxm -o -c` downloads full SN 2019vxm and control light curves (and saves & overwrites any old light curves)
 - `download_atlas_lc.py 2019vxm 2020lse -o -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse (and saves & overwrites any old light curves)
