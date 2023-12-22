@@ -142,7 +142,7 @@ Here is the procedure we use to calculate new uncertainties:
 
     If $σ_{\rm typical, new}$ is 10% greater than $σ_{\rm typical, old}$, recommend addition of the extra noise.
 5. Apply the extra noise source to the existing uncertainty using the following formula:
-    - $\rm ∂µJy_{\rm new}^2 = \rm ∂µJy_{\rm old}^2 + σ_{\rm extra}^2$
+    - $\mathrm{∂µJy}_{\rm new}^2 = \rm ∂µJy_{\rm old}^2 + σ_{\rm extra}^2$
 6. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
 </details>
 
