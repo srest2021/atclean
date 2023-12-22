@@ -99,6 +99,7 @@ The 'Mask' column in each cleaned light curves will contain hex values ("flags")
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
 - `--num_controls`: set number of control light curves to load and clean
+- `-t` or `--template_correction`: apply automatic ATLAS template change correction to flux
 - `-u` or `--uncert_cut`: apply uncertainty cut
 - `-e` or `--uncert_est`: apply uncertainties estimation
 - `-x` or `--x2_cut`: apply chi-square cut
@@ -111,25 +112,40 @@ The 'Mask' column in each cleaned light curves will contain hex values ("flags")
 - `-o` or `--overwrite`: overwrite existing light curves with the same filename
 
 **Example commands**:
-- `_clean_atlas_lc_v2.py 2019vxm -x -u -c -g -p -o` - applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
+- `_clean_atlas_lc_v2.py 2019vxm -t -x -u -c -g -p -o` - corrects for ATLAS template changes, applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
 - `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
+
+#### ATLAS template change correction (`-t`)
+We take into account ATLAS's periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882. More information can be found [here](https://fallingstar-data.com/forcedphot/faq/).
+
+<details>
+<summary>Read more</summary>
+WIP
+</details>
 
 #### Uncertainty cut (`-u`) 
 The **uncertainty cut** is a static procedure currently set at a default value of 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
 #### True uncertainties estimation (`-e`) 
-We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. Here is the exact procedure we use:
-1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
-2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, `median_∂µJy`, is taken from the unflagged baseline flux. `σ_true_typical` is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
-    - `σ_extra^2 = σ_true_typical^2 - median_∂µJy^2`
-3. Calculate the final extra noise source by taking the median of all `σ_extra`.
-4. Decide whether or not to recommend addition of the extra noise source. First, get `σ_typical_old` by taking the median of the control light curves' `median_∂µJy`. Next, get `σ_typical_new` using the following formula:
-    - `σ_typical_new^2 = σ_extra^2 + σ_typical_old^2`
+We also attempt to **account for an extra noise source** in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and lastly **applying this extra noise to a new uncertainty column**. This new uncertainty column will be used in the cuts following this section. 
 
-    If `σ_typical_new` is 10% greater than `σ_typical_old`, recommend addition of the extra noise.
+<details>
+<summary>Read more</summary>
+Here is the procedure we use to calculate new uncertainties:
+
+1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
+2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $median_{∂µJy}$, is taken 
+from the unflagged baseline flux. `σ_true_typical` is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
+    - $σ_{extra}^2 = σ_{true_typical}^2 - median_{∂µJy}^2$
+3. Calculate the final extra noise source by taking the median of all $σ_{extra}$.
+4. Decide whether or not to recommend addition of the extra noise source. First, get $σ_{typical_old}$ by taking the median of the control light curves' $median_{∂µJy}$. Next, get $σ_{typical_new}$ using the following formula:
+    - $σ_{typical_new}^2 = σ_{extra}^2 + σ_{typical_old}^2$
+
+    If $σ_{typical_new}$ is 10% greater than $σ_{typical_old}$, recommend addition of the extra noise.
 5. Apply the extra noise source to the existing uncertainty using the following formula:
-    - `∂µJy_new^2 = ∂µJy_old^2 + σ_extra^2`
+    - $∂µJy_{new}^2 = ∂µJy_{old}^2 + σ_{extra}^2$
 6. For cuts following this procedure, use the new uncertainty column with the extra noise added instead of the old uncertainty column.
+</details>
 
 #### Chi-square cut (`-x`)
 The **chi-square cut** is a static procedure currently set at a default value of 5. To change, set the `[x2_cut]` `cut` field in `settings.ini`.

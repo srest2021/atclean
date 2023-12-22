@@ -191,7 +191,7 @@ class atlas_lc:
 	def get_post_SN_ix(self, colname='MJD', control_index=0):
 		return self.lcs[control_index].ix_inrange(colname, lowlim=self.discdate)
 	
-	def prep_for_cleaning(self):
+	def prep_for_cleaning(self, clear_offset=False):
 		#print(f'# Dropping extra columns in all light curves...')
 		self.drop_extra_columns()
 		
@@ -202,6 +202,9 @@ class atlas_lc:
 			self.recalculate_fdf(control_index=control_index)
 
 		self.verify_mjds()
+
+		if clear_offset and 'uJy_offset' in self.lcs[0].t.columns:
+			self._clear_offset()
 
 	# drop any added columns from previous iterations
 	def drop_extra_columns(self, control_index=0):
@@ -272,7 +275,7 @@ class atlas_lc:
 		if 'uJy_offset' in self.lcs[0].t.columns:
 			print('# Subtracting previous offset...')
 			self.lcs[0].t['uJy'] -= self.lcs[0].t['uJy_offset']
-		print('# Setting current offset to 0...')
+		print('# Setting current uJy offset to 0...')
 		self.lcs[0].t['uJy_offset'] = 0
 
 	def _update_offset_col(self, offset, region_ix):

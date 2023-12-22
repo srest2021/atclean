@@ -1,7 +1,8 @@
-from pdastro import AnotB
+from pdastro import AorB
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.gridspec as gridspec
 
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
@@ -43,7 +44,7 @@ class PlotAtlasLightCurve():
 		if not 'plot_params' in self.lc.cfg:
 			raise RuntimeError('ERROR: attempting to plot, but no plot params!')
 		manual_limits = list(self.lc.cfg['plot_params'].values()) 
-		self.limits = self.set_limits(manual_limits)
+		self.limits = self.set_limits(self.lc, manual_limits)
 
 		# ATLAS template change dates
 		self.t1 = 58417
@@ -54,19 +55,20 @@ class PlotAtlasLightCurve():
 		print('\nSaving PDF of plots...\n')
 		self.pdf.close()
 
-	def set_limits(self, manual_limits):
+	def set_limits(self, lc, manual_limits, indices=None):
 		limits = manual_limits
 		if limits[0] is None:
-			limits[0] = self.lc.lcs[0].t['MJD'].min() * 0.999
+			limits[0] = lc.lcs[0].t['MJD'].min() * 0.999
 		if limits[1] is None:
-			limits[1] = self.lc.lcs[0].t['MJD'].max() * 1.001
+			limits[1] = lc.lcs[0].t['MJD'].max() * 1.001
 		
-		indices = self.lc.get_ix()
+		if indices is None:
+			indices = lc.get_ix()
 		# exclude measurements with duJy > 160
-		good_ix = self.lc.lcs[0].ix_inrange(colnames='duJy', uplim=160, indices=indices)
+		good_ix = lc.lcs[0].ix_inrange(colnames='duJy', uplim=160, indices=indices)
 		# get 5% of abs(max flux - min flux)
-		flux_min = self.lc.lcs[0].t.loc[good_ix, 'uJy'].min()
-		flux_max = self.lc.lcs[0].t.loc[good_ix, 'uJy'].max()
+		flux_min = lc.lcs[0].t.loc[good_ix, 'uJy'].min()
+		flux_max = lc.lcs[0].t.loc[good_ix, 'uJy'].max()
 		diff = abs(flux_max - flux_min)
 		offset = 0.05 * diff
 
@@ -243,5 +245,89 @@ class PlotAtlasLightCurve():
 
 		ax2.errorbar(lc.lcs[0].t['MJD'], lc.lcs[0].t['uJy'], yerr=lc.lcs[0].t['duJy_new'], fmt='none', ecolor=sn_flux, elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5)
 		ax2.scatter(lc.lcs[0].t['MJD'], lc.lcs[0].t['uJy'], s=marker_size, lw=marker_edgewidth, color=sn_flux, marker='o', alpha=0.5)
+
+		self.pdf.savefig(fig)
+	
+	def plot_template_correction(self, lc, title=None):
+		sn_flux = 'orange' if lc.filt == 'o' else 'cyan'
+		colors = ['salmon', 'sandybrown', 'darkseagreen']
+		t1, t2 = 58417, 58882
+
+		region1_ix = lc.lcs[0].ix_inrange('MJD', uplim=t1)
+		region2_ix = lc.lcs[0].ix_inrange('MJD', lowlim=t1, uplim=t2)
+		region3_ix = lc.lcs[0].ix_inrange('MJD', lowlim=t2)
+
+		region1_mean = lc._get_mean(region1_ix[-40:]) # last 40 measurements before t1
+		region2a_mean = lc._get_mean(region2_ix[:40]) # first 40 measurements after t1
+		region2b_mean = lc._get_mean(region2_ix[-40:]) # last 40 measurements before t2
+		region3_mean = lc._get_mean(region3_ix[:40]) # first 40 measurements after t2
+
+		gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1], hspace=0.35, wspace=0.4)
+		fig = plt.figure(constrained_layout=True)
+		fig.set_figwidth(6)
+		fig.set_figheight(6)
+		fig.tight_layout()
+
+		ax1 = plt.subplot(gs[0, :])
+		if not title is None:
+			ax1.set_title(title)
+		ax1.axvline(x=t1, color='k', linestyle='dotted', label='ATLAS template change', zorder=30)
+		ax1.axvline(x=t2, color='k', linestyle='dotted', zorder=30)
+		ax1.axhline(color='k',zorder=0)
+		limits = self.set_limits(lc, [None]*4)
+		ax1.set_xlim(limits[0], limits[1])
+		ax1.set_ylim(limits[2], limits[3])
+
+		ax1.errorbar(lc.lcs[0].t.loc[region1_ix,'MJD'], lc.lcs[0].t.loc[region1_ix,'uJy'], yerr=lc.lcs[0].t.loc[region1_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[0], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax1.scatter(lc.lcs[0].t.loc[region1_ix,'MJD'], lc.lcs[0].t.loc[region1_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[0], marker='o', alpha=0.5, zorder=10, label='Region 1 flux')
+		ax1.errorbar(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], yerr=lc.lcs[0].t.loc[region2_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[1], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax1.scatter(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[1], marker='o', alpha=0.5, zorder=10, label='Region 2 flux')
+		ax1.errorbar(lc.lcs[0].t.loc[region3_ix,'MJD'], lc.lcs[0].t.loc[region3_ix,'uJy'], yerr=lc.lcs[0].t.loc[region3_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[2], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax1.scatter(lc.lcs[0].t.loc[region3_ix,'MJD'], lc.lcs[0].t.loc[region3_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[2], marker='o', alpha=0.5, zorder=10, label='Region 2 flux')
+
+		ax1.legend(facecolor='white', framealpha=1, loc='upper left').set_zorder(100)#,  bbox_to_anchor=(1, 1))
+
+		ax2 = plt.subplot(gs[1, 0])
+		ax2.set_title('First template change', fontsize=12)
+		ax2.axvline(x=t1, color='k', linestyle='dotted', zorder=100)
+		ax2.axhline(color='k',zorder=0)
+		ax2.set_xlim(lc.lcs[0].t.loc[region1_ix[-40:][0], 'MJD'], lc.lcs[0].t.loc[region2_ix[:40][-1], 'MJD'])
+
+		ax2.errorbar(lc.lcs[0].t.loc[region1_ix,'MJD'], lc.lcs[0].t.loc[region1_ix,'uJy'], yerr=lc.lcs[0].t.loc[region1_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[0], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax2.scatter(lc.lcs[0].t.loc[region1_ix,'MJD'], lc.lcs[0].t.loc[region1_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[0], marker='o', alpha=0.5, zorder=10)
+		ax2.errorbar(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], yerr=lc.lcs[0].t.loc[region2_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[1], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax2.scatter(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[1], marker='o', alpha=0.5, zorder=10)
+
+		ax2.axhline(y=region1_mean, color=colors[0], linestyle='dashed', label='Region 1 mean',zorder=20)
+		ax2.axhline(y=region2a_mean, color=colors[1], linestyle='dashed', label='Region 2 mean',zorder=20)
+
+		limits = self.set_limits(lc, [None]*4, indices=AorB(region1_ix[-40:], region2_ix[:40]))
+		ax2.set_ylim(limits[2], limits[3])
+		ax2.legend(facecolor='white', framealpha=1).set_zorder(100)
+
+		ax3 = plt.subplot(gs[1, 1]) 
+		ax3.set_title('Second template change', fontsize=12)
+		ax3.axvline(x=t2, color='k', linestyle='dotted', zorder=30)
+		ax3.axhline(color='k',zorder=0)
+		ax3.set_xlim(lc.lcs[0].t.loc[region2_ix[-40:][0], 'MJD'], lc.lcs[0].t.loc[region3_ix[:40][-1], 'MJD'])
+		ax3.set_ylim(limits[2], limits[3])
+
+		ax3.errorbar(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], yerr=lc.lcs[0].t.loc[region2_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[1], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax3.scatter(lc.lcs[0].t.loc[region2_ix,'MJD'], lc.lcs[0].t.loc[region2_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[1], marker='o', alpha=0.5, zorder=10)
+		ax3.errorbar(lc.lcs[0].t.loc[region3_ix,'MJD'], lc.lcs[0].t.loc[region3_ix,'uJy'], yerr=lc.lcs[0].t.loc[region3_ix,lc.dflux_colnames[0]], fmt='none', ecolor=colors[2], elinewidth=1, capsize=1.2, c=sn_flux, alpha=0.5, zorder=10)
+		ax3.scatter(lc.lcs[0].t.loc[region3_ix,'MJD'], lc.lcs[0].t.loc[region3_ix,'uJy'], s=marker_size, lw=marker_edgewidth, color=colors[2], marker='o', alpha=0.5, zorder=10)
+
+		ax3.axhline(y=region2b_mean, color=colors[1], linestyle='dashed', label='Region 2 mean',zorder=20)
+		ax3.axhline(y=region3_mean, color=colors[2], linestyle='dashed', label='Region 3 mean',zorder=20)
+
+		limits = self.set_limits(lc, [None]*4, indices=AorB(region2_ix[-40:], region3_ix[:40]))
+		ax3.set_ylim(limits[2], limits[3])
+		ax3.legend(facecolor='white', framealpha=1).set_zorder(100)
+
+		for ax in (ax1, ax2, ax3):
+			ax.minorticks_on()
+			ax.tick_params(direction='in', which='both')
+			ax.set_xlabel('MJD')
+			ax.set_ylabel('uJy')
 
 		self.pdf.savefig(fig)

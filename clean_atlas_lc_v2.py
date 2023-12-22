@@ -34,6 +34,12 @@ class CleanAtlasLightCurve(atlas_lc):
 		self._load(self.cfg['output_dir'], self.filt, num_controls=self.cfg['num_controls'])
 		print('Success')
 
+	def apply_template_correction(self, flags):
+		print('\nCorrecting SN light curve flux due to template changes...')
+		if self.discdate is None:
+			raise RuntimeError(f'ERROR: discovery date cannot be set to None')
+		return '\n'.join(self._template_correction(maskval=flags))
+
 	def _apply_uncert_cut(self, flag, cut):
 		print(f'\nApplying uncertainty cut of {cut:0.2f}...')
 		for control_index in range(self.num_controls+1):
@@ -650,7 +656,7 @@ class CleaningLoop():
 					  'avg_ixclip':0x1000,
 					  'avg_smallnum':0x2000}
 
-		#self.apply_template_correction = args.template_correction
+		self.apply_template_correction = args.template_correction
 		self.apply_uncert_est = args.uncert_est
 		self.apply_uncert_cut = args.uncert_cut
 		self.apply_x2_cut = args.x2_cut
@@ -699,7 +705,7 @@ class CleaningLoop():
 
 		return f
 	
-	def add_to_readme(self, f, k, uncert_cut_output=None, uncert_est_output=None, x2_cut_output=None, controls_cut_output=None, averaging_output=None):
+	def add_to_readme(self, f, k, template_correction_output=None, uncert_cut_output=None, uncert_est_output=None, x2_cut_output=None, controls_cut_output=None, averaging_output=None):
 		f.write(f'\n\n## FILTER: {self.lc_objs[k].filt}')
 
 		if self.apply_uncert_cut:
@@ -717,6 +723,10 @@ class CleaningLoop():
 		if self.apply_controls_cut:
 			f.write(f'\n\n### Control light curve cut\n')
 			f.write(controls_cut_output)
+
+		if self.apply_template_correction:
+			f.write(f'\n\n### ATLAS template change correction\n')
+			f.write(template_correction_output)
 
 		f.write(f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.')
 		percent_flagged = len(self.lc_objs[k].get_masked_ix(self.flags)) * 100 / len(self.lc_objs[k].lcs[0].t)
@@ -750,16 +760,12 @@ class CleaningLoop():
 				self.lc_objs[k].load()
 
 				print('\nPreparing for cleaning...')
-				self.lc_objs[k].prep_for_cleaning()
+				self.lc_objs[k].prep_for_cleaning(clear_offset=self.apply_template_correction)
 				
 				plot = None
 				if self.plot:
 					plot = PlotAtlasLightCurve(self.lc_objs[k], self.flags)
 					plot.plot_lcs(plot_controls = self.lc_objs[k].num_controls > 0)
-
-				#template_correction_output = None
-				#if self.apply_template_correction:
-					#template_correction_output = self.lc_objs[k].apply_template_correction()
 
 				uncert_cut_output = None
 				if self.apply_uncert_cut:
@@ -784,6 +790,15 @@ class CleaningLoop():
 					if plot:
 						plot.plot_controls_cut(self.lc_objs[k])
 
+				template_correction_output = None
+				if self.apply_template_correction:
+					if plot:
+						plot.plot_template_correction(self.lc_objs[k], title='Before template correction')
+					flags = self.flags['uncertainty'] | self.flags['chisquare'] | self.flags['controls_bad']
+					template_correction_output = self.lc_objs[k].apply_template_correction(flags)
+					if plot:
+						plot.plot_template_correction(self.lc_objs[k], title='After template correction')
+
 				averaging_output = None
 				if self.apply_averaging:
 					avglc, averaging_output = self.lc_objs[k].apply_averaging(self.flags)
@@ -801,6 +816,7 @@ class CleaningLoop():
 						   			   uncert_est_output=uncert_est_output,
 									   x2_cut_output=x2_cut_output,
 									   controls_cut_output=controls_cut_output,
+									   template_correction_output=template_correction_output,
 									   averaging_output=averaging_output)
 
 				if self.plot:
@@ -823,7 +839,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
 	parser.add_argument('--num_controls', type=int, default=None, help='Number of control light curves to load and clean')
 	
-	#parser.add_argument('-t', '--template_correction', default=False, action='store_true', help='apply automatic ATLAS template change correction')
+	parser.add_argument('-t', '--template_correction', default=False, action='store_true', help='apply automatic ATLAS template change correction')
 	parser.add_argument('-e', '--uncert_est', default=False, action='store_true', help='apply true uncertainty estimation')
 	parser.add_argument('-u', '--uncert_cut', default=False, action='store_true', help='apply uncertainty cut')
 	parser.add_argument('-x', '--x2_cut', default=False, action='store_true', help='apply chi-square cut')
@@ -869,8 +885,7 @@ def load_settings():
 	}
 
 	cleaning = CleaningLoop(args, settings)
-	
-	#if cleaning.apply_uncert_est:
+
 	cleaning.settings['prelim_x2_cut'] = float(cfg['uncert_est']['prelim_x2_cut'])
 
 	if cleaning.apply_uncert_cut:
