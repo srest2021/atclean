@@ -134,11 +134,11 @@ We also attempt to **account for an extra noise source** in the data by estimati
 Here is the procedure we use to calculate new uncertainties:
 
 1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
-2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $median_{\rm ∂µJy}$, is taken 
+2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $\rm median_{∂µJy}$, is taken 
 from the unflagged baseline flux. $σ_{\rm true, typical}$ is calculated by applying a 3-σ cut of the measurements cleaned in step 1, then getting the standard deviation.
-    - $σ_{\rm extra}^2 = σ_{\rm true, typical}^2 - median_{\rm ∂µJy}^2$
+    - $σ_{\rm extra}^2 = σ_{\rm true, typical}^2 - \rm median_{∂µJy}^2$
 3. Calculate the final extra noise source by taking the median of all $σ_{\rm extra}$.
-4. Decide whether or not to recommend addition of the extra noise source. First, get $σ_{\rm typical, old}$ by taking the median of the control light curves' $median_{\rm ∂µJy}$. Next, get $σ_{\rm typical, new}$ using the following formula:
+4. Decide whether or not to recommend addition of the extra noise source. First, get $σ_{\rm typical, old}$ by taking the median of the control light curves' $\rm median_{∂µJy}$. Next, get $σ_{\rm typical, new}$ using the following formula:
     - $σ_{\rm typical, new}^2 = σ_{\rm extra}^2 + σ_{\rm typical, old}^2$
 
     If $σ_{\rm typical, new}$ is 10% greater than $σ_{\rm typical, old}$, recommend addition of the extra noise.
