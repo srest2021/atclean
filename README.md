@@ -127,14 +127,6 @@ The 'Mask' column in each cleaned light curves will contain hex values ("flags")
 - `_clean_atlas_lc_v2.py 2019vxm -t -x -u -c -g -p -o` - corrects for ATLAS template changes, applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
 - `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
 
-#### ATLAS template change correction (`-t`)
-We take into account ATLAS's periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882. More information can be found [here](https://fallingstar-data.com/forcedphot/faq/).
-
-<details>
-<summary>Read more</summary>
-WIP
-</details>
-
 #### Uncertainty cut (`-u`) 
 The uncertainty cut, currently set to a default value of 160, cuts any measurements with an uncertainty $∂µJy$ > 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.
 
@@ -165,7 +157,6 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
 
 <details>
 <summary>Read more</summary>
-
 - When calculating contamination and loss, we decide what will determine a good measurement vs. a bad measurement using a factor outside of the chi-square values. Our chosen factor is the absolute value of flux (µJy) divided by dflux (dµJy). The recommended boundary is a value of 3, such that any measurements with |µJy/dµJy| <= 3 are regarded as "good" measurements, and any measurements with |µJy/dµJy| > 3 are regarded as "bad" measurements. You can set this boundary to a different number by setting the `[x2_cut]` `stn_bound` field.
 - We aim to separate good measurements from bad using the calculated chi-square cut by minimizing as much loss *and* contamination as possible. 
 - We define contamination $C$ for a certain chi-square cut to be the number of bad kept measurements over the total number of kept measurements.
@@ -176,7 +167,6 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
     - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (to change, set field `[x2_cut]` `cut_start`) and end at 50 (to change, set field `[x2_cut]` `cut_stop`) with a step size of 1 (to change, set field `[x2_cut]` `cut_step`). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
     - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts. However, you can use the pre-SN flux instead by setting the `[x2_cut]` `use_preSN_lc` field.
 - We output the calculated contamination and loss for the applied chi-square cut in a table with each SN's TNS name and filter in the output directory.
-
 </details>
 
 We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
@@ -190,28 +180,41 @@ The control light curve cut uses a set of quality control light curves to determ
 
 <details>
 <summary>Read more</summary>
-
 We examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (fields can be changed in `settings.ini`):
+
 - A returned chi-square > 2.5 (to change, set field `[controls_cut]` `x2_max`)
 - A returned abs(flux/dflux) > 3.0 (to change, set field `[controls_cut]` `stn_max`)
 - Number of measurements averaged < 2 (to change, set field `[controls_cut]` `Nclip_max`)
 - Number of measurements clipped > 4 (to change, set field `[controls_cut]` `Ngood_min`)
-
 </details>
 
 Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
+
+#### ATLAS template change correction (`-t`)
+We take into account ATLAS's periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882. More information can be found [here](https://fallingstar-data.com/forcedphot/faq/).
+
+<details>
+<summary>Read more</summary>
+Here is the procedure we use to correct any step discontinuities in the SN light curve flux:
+
+1. We divide the SN light curve into 3 regions using the 2 template change dates.
+2. We apply a 3σ cut to the last clean 40 measurements before the first template change date, 58417 MJD, and another 3σ cut to the first 40 clean measurements after 58417 MJD. We calculate the flux offset for Region 1 (flux before 58417 MJD) by subtracting the first resulting mean from the second. 
+3. We add this offset to the Region 1 flux.
+4. We apply a 3σ cut to the last clean 40 measurements before the second template change date, 58882 MJD, and another 3σ cut to the first 40 clean measurements after 58882 MJD. We calculate the flux offset for Region 3 (flux after 58882 MJD) by subtracting the second resulting mean from the first.
+5. We add this offset to the Region 3 flux.
+6. We obtain either the first or last 40 clean measurements of the light curve based on the SN discovery date (if discovery date > 57600 MJD, use the first 40 measurements). We apply a 3σ cut to these measurements and subtract the resulting mean from the entire light curve.
+</details>
 
 #### Averaging and cutting bad days (`-g`)
 Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. 
 
 <details>
 <summary>Read more</summary>
+For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`):
 
-For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`): 
 - A returned chi-square > 4.0 (to change, set field `[averaging]` `x2_max`)
 - Number of measurements averaged < 2 (to change, set field `[averaging]` `Nclip_max`)
 - Number of measurements clipped > 1 (to change, set field `[averaging]` `Ngood_min`)
-
 </details>
 
 For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
