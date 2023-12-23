@@ -157,6 +157,7 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
 
 <details>
 <summary>Read more</summary>
+
 - When calculating contamination and loss, we decide what will determine a good measurement vs. a bad measurement using a factor outside of the chi-square values. Our chosen factor is the absolute value of flux (µJy) divided by dflux (dµJy). The recommended boundary is a value of 3, such that any measurements with |µJy/dµJy| <= 3 are regarded as "good" measurements, and any measurements with |µJy/dµJy| > 3 are regarded as "bad" measurements. You can set this boundary to a different number by setting the `[x2_cut]` `stn_bound` field.
 - We aim to separate good measurements from bad using the calculated chi-square cut by minimizing as much loss *and* contamination as possible. 
 - We define contamination $C$ for a certain chi-square cut to be the number of bad kept measurements over the total number of kept measurements.
@@ -180,6 +181,7 @@ The control light curve cut uses a set of quality control light curves to determ
 
 <details>
 <summary>Read more</summary>
+
 We examine each SN epoch and its corresponding control light curve measurements at that epoch, apply a 3-sigma-clipped average, calculate statistics, and then cut bad epochs based on those returned statistics. We cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (fields can be changed in `settings.ini`):
 
 - A returned chi-square > 2.5 (to change, set field `[controls_cut]` `x2_max`)
@@ -210,6 +212,7 @@ Our goal with the averaging procedure is to identify and cut out bad days by tak
 
 <details>
 <summary>Read more</summary>
+
 For each day, we calculate the 3σ-clipped average of any SN measurements falling within that day and use that average as our flux for that day. Because the ATLAS survey takes about 4 exposures every 2 days, we usually average together approximately 4 measurements per epoch (can be changed in `settings.ini` by setting field `[averaging]` `mjd_bin_size` to desired number of days). However, out of these 4 exposures, only measurements not cut in the previous methods are averaged in the 3σ-clipped average cut. (The exception to this statement would be the case that all 4 measurements are cut in previous methods; in this case, they are averaged anyway and flagged as a bad day.) Then we cut any measurements in the SN light curve for the given epoch for which statistics fulfill any of the following criteria (can be changed in `settings.ini` under `[averaging]`):
 
 - A returned chi-square > 4.0 (to change, set field `[averaging]` `x2_max`)
