@@ -157,9 +157,7 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
 
 We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
 
-<div class="alert alert-block alert-warning">
-<b>Warning:</b> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and override the cut with a custom value if needed.
-</div>
+<strong>Warning:</strong> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and override the cut with a custom value if needed.
 
 <details>
 <summary>Read more</summary>
