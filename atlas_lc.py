@@ -124,26 +124,23 @@ class atlas_lc:
 				self._save_lc(output_dir, control_index, filt=filt, overwrite=overwrite, keep_empty_bins=keep_empty_bins)
 
 	# load a single light curve
-	def _load_lc(self, output_dir, filt, is_averaged=False, control_index=0, clear_mask=True):
+	def _load_lc(self, output_dir, filt, is_averaged=False, control_index=0):
 		if (len(self.lcs) > 0) and self.is_averaged != is_averaged:
 			raise RuntimeError(f'ERROR: cannot load a light curve whose is_averaged status of {is_averaged} does not match previous status of {self.is_averaged}!')
 		self.is_averaged = is_averaged
 
 		self.lcs[control_index] = pdastrostatsclass()
 		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True, hexcols=['Mask'])
-		if clear_mask:
-			# clear previous 'Mask' column
-			self.lcs[control_index].t['Mask'] = 0
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
-	def _load(self, output_dir, filt, num_controls=0, clear_mask=True):
+	def _load(self, output_dir, filt, num_controls=0):
 		output = f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...' if self.is_averaged else f'\nLoading SN light curve and {num_controls} control light curves...'
 		print(output)
 
 		self.num_controls = num_controls
-		self._load_lc(output_dir, filt, is_averaged=self.is_averaged, clear_mask=clear_mask)
+		self._load_lc(output_dir, filt, is_averaged=self.is_averaged)
 		for control_index in range(1, num_controls+1):
-			self._load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index, clear_mask=clear_mask)
+			self._load_lc(output_dir, filt, is_averaged=self.is_averaged, control_index=control_index)
 
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
 

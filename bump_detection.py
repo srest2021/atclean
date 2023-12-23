@@ -246,11 +246,9 @@ class SimDetecLightCurve(atlas_lc):
 		self.num_controls = num_controls
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
 		for control_index in range(0, num_controls+1):
-			self._load_lc(source_dir, self.filt, control_index=control_index, is_averaged=True, clear_mask=False)
+			self._load_lc(source_dir, self.filt, control_index=control_index, is_averaged=True)
 
 	def get_valid_ix(self, control_index, valid_seasons):
-		#if valid_seasons is None: # all mjds valid
-		#return get_ix(lcs[control_index].t)
 		valid_ix = []
 		for i in range(len(self.lcs[control_index].t)):
 			if in_valid_season(self.lcs[control_index].t.loc[i,'MJDbin'], valid_seasons):

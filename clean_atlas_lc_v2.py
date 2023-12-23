@@ -712,9 +712,9 @@ class CleaningLoop():
 			f.write(f'\n\n### Uncertainty cut\n')
 			f.write(uncert_cut_output)
 		
-		#if self.apply_uncert_est:
-		f.write(f'\n\n### True uncertainties estimation\n')
-		f.write(uncert_est_output)
+		if self.lc_objs[k].num_controls > 0:
+			f.write(f'\n\n### True uncertainties estimation\n')
+			f.write(uncert_est_output)
 			
 		if self.apply_x2_cut:
 			f.write(f'\n\n### Chi-square cut\n')
@@ -745,6 +745,9 @@ class CleaningLoop():
 		if self.apply_x2_cut:
 			self.x2_cut_info = ChiSquareCutInfo(filename=f'{self.settings["output_dir"]}/x2_cut_info.txt')
 
+		apply_cuts = self.apply_uncert_cut or self.apply_uncert_est or self.apply_x2_cut or self.apply_controls_cut
+		print(f'Applying cuts to original ATLAS light curves: {apply_cuts}')
+
 		for obj_index in range(len(self.tnsnames)):
 			tnsname = self.tnsnames[obj_index]
 			print(f'\nCOMMENCING LOOP FOR SN {tnsname}')
@@ -759,7 +762,7 @@ class CleaningLoop():
 				self.get_lc_data(tnsname, filt)
 				self.lc_objs[k].load()
 
-				if self.apply_uncert_cut or self.apply_uncert_est or self.apply_x2_cut or self.apply_controls_cut:
+				if apply_cuts:
 					print('\nPreparing for cleaning...')
 					self.lc_objs[k].prep_for_cleaning(clear_offset=self.apply_template_correction)
 				
@@ -807,10 +810,9 @@ class CleaningLoop():
 					if plot:
 						plot.plot_badday_cut(avglc)
 
-					if self.settings['overwrite']:
-						avglc._save(self.settings['output_dir'], filt=filt, overwrite=self.settings['overwrite'])
+					avglc._save(self.settings['output_dir'], filt=filt, overwrite=self.settings['overwrite'])
 
-				if self.settings['overwrite']:
+				if apply_cuts:
 					self.lc_objs[k].save(overwrite=self.settings['overwrite'])
 
 				f = self.add_to_readme(f, k,
