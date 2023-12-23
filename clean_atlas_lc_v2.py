@@ -759,8 +759,9 @@ class CleaningLoop():
 				self.get_lc_data(tnsname, filt)
 				self.lc_objs[k].load()
 
-				print('\nPreparing for cleaning...')
-				self.lc_objs[k].prep_for_cleaning(clear_offset=self.apply_template_correction)
+				if self.apply_uncert_cut or self.apply_uncert_est or self.apply_x2_cut or self.apply_controls_cut:
+					print('\nPreparing for cleaning...')
+					self.lc_objs[k].prep_for_cleaning(clear_offset=self.apply_template_correction)
 				
 				plot = None
 				if self.plot:
@@ -774,10 +775,11 @@ class CleaningLoop():
 						plot.plot_uncert_cut(self.lc_objs[k])
 				
 				uncert_est_output = None
-				uncert_est_info_row, uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'], save=self.apply_uncert_est)
-				self.uncert_est_info.add_row(uncert_est_info_row)
-				if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
-					plot.plot_uncert_est(self.lc_objs[k])
+				if self.lc_objs[k].num_controls > 0:
+					uncert_est_info_row, uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'], save=self.apply_uncert_est)
+					self.uncert_est_info.add_row(uncert_est_info_row)
+					if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
+						plot.plot_uncert_est(self.lc_objs[k])
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
