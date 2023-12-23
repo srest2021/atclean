@@ -138,7 +138,7 @@ We also attempt to account for an extra noise source in the data by estimating t
 Here is the procedure we use to calculate new uncertainties:
 
 1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
-2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $\rm median_{∂µJy}$, is taken from the unflagged baseline flux. $σ_{\rm true, typical}$ is calculated by applying a 3σ cut of the measurements cleaned in step 1, then getting the standard deviation.
+2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $\rm median_{∂µJy}$, is taken from the unflagged baseline flux. $σ_{\rm true, typical}$ is calculated by applying a 3σ-clipped average of the measurements cleaned in step 1, then getting the standard deviation.
     - $σ_{\rm extra}^2 = σ_{\rm true, typical}^2 - \rm median_{∂µJy}^2$
 3. Calculate the final extra noise source by taking the median of all $σ_{\rm extra}$.
 4. Decide whether or not to recommend addition of the extra noise source. First, get $σ_{\rm typical, old}$ by taking the median of the control light curves' $\rm median_{∂µJy}$. Next, get $σ_{\rm typical, new}$ using the following formula:
@@ -155,6 +155,12 @@ The chi-square cut, currently set to a default value of 5, cuts any measurements
 
 We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to analyze the effectiveness of a PSF chi-square cut for the target SN, with flux/dflux as the deciding factor of what constitutes a good measurement vs. a bad measurement. 
 
+We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
+
+<div class="alert alert-block alert-warning">
+<b>Warning:</b> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and override the cut with a custom value if needed.
+</div>
+
 <details>
 <summary>Read more</summary>
 
@@ -168,16 +174,13 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
     - We set the upper and lower bounds of a range of possible cuts for which to calculate $C$ and $L$. We start at a low value of 3 (to change, set field `[x2_cut]` `cut_start`) and end at 50 (to change, set field `[x2_cut]` `cut_stop`) with a step size of 1 (to change, set field `[x2_cut]` `cut_step`). For chi-square cuts falling on or between `cut_start` and `cut_stop` in increments of `cut_step`, we can begin to calculate contamination and loss percentages.
     - Since we can assume that the expected value of the control light curve flux is 0, we use these measurements by default to calculate and plot contamination and loss for the range of possible cuts. However, you can use the pre-SN flux instead by setting the `[x2_cut]` `use_preSN_lc` field.
 - We output the calculated contamination and loss for the applied chi-square cut in a table with each SN's TNS name and filter in the output directory.
+
 </details>
-
-We set our default chi-square cut to 5, and defer overriding of that cut for a particular SN to the user, given the optional informative plot on alternative cuts with respect to contamination and loss. Again, the user can override this cut by changing the `[x2_cut]` `cut` field and rerunning the script.
-
-<div class="alert alert-block alert-warning">
-<b>Warning:</b> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and override the cut with a custom value if needed.
-</div>
 
 #### Control light curve cut (`-c`)
 The control light curve cut uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. 
+
+Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
 
 <details>
 <summary>Read more</summary>
@@ -190,8 +193,6 @@ We examine each SN epoch and its corresponding control light curve measurements 
 - Number of measurements clipped > 4 (to change, set field `[controls_cut]` `Ngood_min`)
 </details>
 
-Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
-
 #### ATLAS template change correction (`-t`)
 We take into account ATLAS's periodic replacement of the difference image reference templates, which may cause step discontinuities in flux. Two template changes have been recorded at MJDs 58417 and 58882. More information can be found [here](https://fallingstar-data.com/forcedphot/faq/).
 
@@ -200,15 +201,17 @@ We take into account ATLAS's periodic replacement of the difference image refere
 Here is the procedure we use to correct any step discontinuities in the SN light curve flux:
 
 1. We divide the SN light curve into 3 regions using the 2 template change dates.
-2. We apply a 3σ cut to the last clean 40 measurements before the first template change date, 58417 MJD, and another 3σ cut to the first 40 clean measurements after 58417 MJD. We calculate the flux offset for Region 1 (flux before 58417 MJD) by subtracting the first resulting mean from the second. 
+2. We apply a 3σ-clipped average to the last clean 40 measurements before the first template change date, 58417 MJD, and another 3σ-clipped average to the first 40 clean measurements after 58417 MJD. We calculate the flux offset for Region 1 (flux before 58417 MJD) by subtracting the first resulting mean from the second. 
 3. We add this offset to the Region 1 flux.
-4. We apply a 3σ cut to the last clean 40 measurements before the second template change date, 58882 MJD, and another 3σ cut to the first 40 clean measurements after 58882 MJD. We calculate the flux offset for Region 3 (flux after 58882 MJD) by subtracting the second resulting mean from the first.
+4. We apply a 3σ-clipped average to the last clean 40 measurements before the second template change date, 58882 MJD, and another 3σ-clipped average to the first 40 clean measurements after 58882 MJD. We calculate the flux offset for Region 3 (flux after 58882 MJD) by subtracting the second resulting mean from the first.
 5. We add this offset to the Region 3 flux.
-6. We obtain either the first or last 40 clean measurements of the light curve based on the SN discovery date (if discovery date > 57600 MJD, use the first 40 measurements). We apply a 3σ cut to these measurements and subtract the resulting mean from the entire light curve.
+6. We obtain either the first or last 40 clean measurements of the light curve based on the SN discovery date (if discovery date > 57600 MJD, use the first 40 measurements). We apply a 3σ-clipped average to these measurements and subtract the resulting mean from the entire light curve.
 </details>
 
 #### Averaging and cutting bad days (`-g`)
 Our goal with the averaging procedure is to identify and cut out bad days by taking a 3σ-clipped average of each day. 
+
+For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
 
 <details>
 <summary>Read more</summary>
@@ -219,5 +222,3 @@ For each day, we calculate the 3σ-clipped average of any SN measurements fallin
 - Number of measurements averaged < 2 (to change, set field `[averaging]` `Nclip_max`)
 - Number of measurements clipped > 1 (to change, set field `[averaging]` `Ngood_min`)
 </details>
-
-For this part of the cleaning, we still need to improve the cutting at the peak of the SN (important epochs are sometimes cut, maybe due to fast rise, etc.).
