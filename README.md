@@ -3,7 +3,7 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc.v4.ipynb`](#clean_atlas_lcv4ipynb) (for one SN, apply all cuts, average light curve, and correct for ATLAS template changes)
+	- [`clean_atlas_lc_v4.ipynb`](#clean_atlas_lc_v4ipynb) (for one SN, apply all cuts, average light curve, and correct for ATLAS template changes)
     - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (standalone ATLAS template change correction)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
@@ -12,7 +12,7 @@
 
 ## Jupyter Notebooks
 
-### `clean_atlas_lc.v4.ipynb`
+### `clean_atlas_lc_v4.ipynb`
 #### Estimates true uncertainties, applies all cuts, averages light curves, and corrects for ATLAS template changes.
 Using previously downloaded SN and control light curves:
 - Apply uncertainty cut (flag: `0x2`)
