@@ -320,7 +320,7 @@ class atlas_lc:
 
 		return output
 	
-	def _template_correction(self, maskval=None):
+	def _template_correction(self, num_measurements=40, maskval=None):
 		print('# Proceeding with automatic template correction...')
 		output = []
 
@@ -332,13 +332,13 @@ class atlas_lc:
 		region3_ix = self.lcs[0].ix_inrange('MJD', lowlim=t2)
 
 		print(f'# Calculating offset for Region 1...')
-		region1_mean = self._get_mean(region1_ix[-40:], maskval=maskval) # last 40 measurements before t1
-		region2a_mean = self._get_mean(region2_ix[:40], maskval=maskval) # first 40 measurements after t1
+		region1_mean = self._get_mean(region1_ix[-num_measurements:], maskval=maskval) # last 40 measurements before t1
+		region2a_mean = self._get_mean(region2_ix[:num_measurements], maskval=maskval) # first 40 measurements after t1
 		region1_offset = region2a_mean - region1_mean
 		
 		print(f'# Calculating offset for Region 3...')
-		region2b_mean = self._get_mean(region2_ix[-40:], maskval=maskval) # last 40 measurements before t2
-		region3_mean = self._get_mean(region3_ix[:40], maskval=maskval) # first 40 measurements after t2
+		region2b_mean = self._get_mean(region2_ix[-num_measurements:], maskval=maskval) # last 40 measurements before t2
+		region3_mean = self._get_mean(region3_ix[:num_measurements], maskval=maskval) # first 40 measurements after t2
 		region3_offset = region2b_mean - region3_mean
 		
 		output.append(self._add_offset(region1_offset, region1_ix, region_name="first"))
@@ -346,16 +346,16 @@ class atlas_lc:
 
 		ix = self.get_ix()
 		if self.discdate > 57600:
-			global_ix = ix[:40]
+			global_ix = ix[:num_measurements]
 		else:
-			global_ix = ix[-40:]
+			global_ix = ix[-num_measurements:]
 		global_mean = self._get_mean(global_ix, maskval=maskval)
 		global_offset = -global_mean
 		output.append(self._add_offset(global_offset, ix, region_name="global"))
 
 		return output
 	
-	def template_correction(self, maskval=None, region1_offset=None, region2_offset=None, region3_offset=None):
+	def template_correction(self, maskval=None, region1_offset=None, region2_offset=None, region3_offset=None, num_measurements=40):
 		print('\nCorrecting light curve flux due to template changes...')
 		if self.discdate is None:
 			raise RuntimeError(f'ERROR: discovery date cannot be set to None')
@@ -365,4 +365,4 @@ class atlas_lc:
 															  region2_offset=region2_offset, 
 															  region3_offset=region3_offset))
 		else:
-			return '\n'.join(self._template_correction(maskval=maskval))
+			return '\n'.join(self._template_correction(maskval=maskval, num_measurements=num_measurements))

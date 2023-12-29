@@ -459,36 +459,35 @@ def load_sd_dict(sigma_kerns, peak_appmags, tables_dir):
 	return sd
 
 class EfficiencyTable:
-	def __init__(self, sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, sim_erup_sigma=None):
-		if not(len(sigma_kerns) == len(sigma_sims)):
+	def __init__(self, sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=None, sim_erup_sigma=None):
+		if len(sigma_kerns) != len(sigma_sims):
 			raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in sigma_sims')
 		self.sigma_kerns = sigma_kerns
-		self.sigma_sims = sigma_sims
-		self.fom_limits = None
+		self.set_sigma_sims(sigma_sims)
+		if not fom_limits is None:
+			self.set_fom_limits(fom_limits)
 
 		self.peak_appmags = peak_appmags
 		self.peak_fluxes = peak_fluxes
 
 		self.t = None
-		#self.sd = None
 
 		self.setup(sim_erup_sigma=sim_erup_sigma)
 
 	def setup(self, sim_erup_sigma=None):
 		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim', 'sim_erup_sigma'])
 
-		for i in range(len(self.sigma_kerns)):
-			sigma_kern = self.sigma_kerns[i]
-			n = len(self.peak_appmags) * len(self.sigma_sims[i])
+		for sigma_kern in self.sigma_kerns: 
+			n = len(self.peak_appmags) * len(self.sigma_sims[sigma_kern])
 			
 			df = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim', 'sim_erup_sigma'])
 			df['sigma_kern'] = np.full(n, sigma_kern)
-			df['peak_appmag'] = np.repeat(self.peak_appmags, len(self.sigma_sims[i]))
-			df['peak_flux'] = np.repeat(self.peak_fluxes, len(self.sigma_sims[i]))
+			df['peak_appmag'] = np.repeat(self.peak_appmags, len(self.sigma_sims[sigma_kern]))
+			df['peak_flux'] = np.repeat(self.peak_fluxes, len(self.sigma_sims[sigma_kern]))
 			
 			j = 0
 			while(j < n):
-				for sigma_sim in self.sigma_sims[i]:
+				for sigma_sim in self.sigma_sims[sigma_kern]:
 					if sigma_sim is None:
 						if sim_erup_sigma is None:
 							raise RuntimeError('ERROR: None element in sigma_sims array, but no sim_erup_sigma passed')
@@ -499,7 +498,7 @@ class EfficiencyTable:
 			self.t = pd.concat([self.t, df], ignore_index=True)
 	
 	def load(self, tables_dir, filename):
-		print(f'Loading efficiency table {filename}...')
+		print(f'Loading efficiency table at {filename}...')
 		filename = f'{tables_dir}/{filename}'
 		try:
 			self.t = pd.read_table(filename,delim_whitespace=True)
@@ -522,16 +521,27 @@ class EfficiencyTable:
 
 		for i in range(len(self.sigma_kerns)):
 			fom_limits = self.fom_limits[self.sigma_kerns[i]]
-			self.t[f'pct_detec_{fom_limits[0]}'] = np.full(len(self.t), np.nan)
-			self.t[f'pct_detec_{fom_limits[1]}'] = np.full(len(self.t), np.nan)
+			for fom_limit in fom_limits:
+				self.t[f'pct_detec_{fom_limit:0.2f}'] = np.full(len(self.t), np.nan)
+
+	def set_sigma_sims(self, sigma_sims):
+		if isinstance(sigma_sims, list):
+			self.sigma_sims = {}
+			for i in range(len(self.sigma_kerns)):
+				self.sigma_sims[self.sigma_kerns[i]] = sigma_sims[i]
+		else:
+			self.sigma_sims = sigma_sims
 
 	def set_fom_limits(self, fom_limits):
 		if not len(self.sigma_kerns) == len(self.sigma_sims) or not len(fom_limits) == len(self.sigma_kerns):
 			raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in fom_limits')
 		
-		self.fom_limits = {}
-		for i in range(len(self.sigma_kerns)):
-			self.fom_limits[self.sigma_kerns[i]] = fom_limits[i]
+		if isinstance(fom_limits, list):
+			self.fom_limits = {}
+			for i in range(len(self.sigma_kerns)):
+				self.fom_limits[self.sigma_kerns[i]] = fom_limits[i]
+		else:
+			self.fom_limits = fom_limits
 
 	def get_fom_limit(self, sigma_kern, sigma):
 		if sigma == 3:
@@ -541,12 +551,13 @@ class EfficiencyTable:
 		else:
 			raise RuntimeError('ERROR: when obtaining an FOM limit for given sigma_kern, sigma must be 3 or 5')
 
-	def get_efficiencies(self, sd, mjd_ranges=None):
+	def get_efficiencies(self, sd, mjd_ranges=None, debug=False):
 		if self.fom_limits is None:
 			raise RuntimeError('ERROR: fom_limits is None')
 		
 		for i in range(len(self.t)):
 			sigma_kern = self.t.loc[i,'sigma_kern']
+			peak_mag = self.t.loc[i,'peak_appmag']
 			
 			if pd.isnull(self.t.loc[i,'sigma_sim']):
 				sigma_sim = self.t.loc[i,'sim_erup_sigma']
@@ -555,9 +566,12 @@ class EfficiencyTable:
 				sigma_sim = self.t.loc[i,'sigma_sim']
 				erup = False
 
+			if debug:
+				print(f'# Getting efficiencies for sigma_kern {sigma_kern}, sigma_sim {sigma_sim}, peak_mag {peak_mag}...')
+
 			for fom_limit in self.fom_limits[sigma_kern]:
-				self.t.loc[i,f'pct_detec_{fom_limit}'] = \
-					sd[sd_key(sigma_kern, self.t.loc[i,'peak_appmag'])].get_efficiency(fom_limit, 
+				self.t.loc[i,f'pct_detec_{fom_limit:0.2f}'] = \
+					sd[sd_key(sigma_kern, peak_mag)].get_efficiency(fom_limit, 
 																						mjd_ranges=mjd_ranges,
 																						sigma_sim=sigma_sim, 
 																						erup=erup)
@@ -581,7 +595,7 @@ class EfficiencyTable:
 
 		if not(fom_limit is None):
 			try: 
-				colnames.append(f'pct_detec_{fom_limit}')
+				colnames.append(f'pct_detec_{fom_limit:0.2f}')
 			except Exception as e:
 				raise RuntimeError(f'ERROR: no matching FOM limit {fom_limit}: {str(e)}')
 		else:

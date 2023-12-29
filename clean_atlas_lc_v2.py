@@ -764,7 +764,7 @@ class CleaningLoop():
 
 				if apply_cuts:
 					print('\nPreparing for cleaning...')
-					self.lc_objs[k].prep_for_cleaning(clear_offset=self.apply_template_correction)
+					self.lc_objs[k].prep_for_cleaning(clear_offset=True)
 				
 				plot = None
 				if self.plot:
@@ -933,7 +933,7 @@ def load_settings():
 
 	print(f'Success: {cleaning.settings}')
 
-	if cleaning.settings['overwrite']:
+	if not cleaning.settings['overwrite']:
 		print('WARNING: overwrite set to False (add -o to command to overwrite existing files)')
 
 	return cleaning
