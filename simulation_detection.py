@@ -44,7 +44,7 @@ sigma_sims = [[2, 5, 20, 40, 80, 120], # 5
 # OPTIONAL: select FOM limits to calculate efficiencies 
 # where each list corresponds to its matching entry in sigma_kerns
 # if using a simulated eruption, add None entry
-fom_limits = None #[[3.0, 5.0], [10.4, 17.4], [15.1, 25.1], [20.0, 33.4], [25.3, 42.2], [29.0, 48.4], [33.1, 55.2]]
+fom_limits = None 
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
