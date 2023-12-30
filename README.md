@@ -3,7 +3,7 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc_v4.ipynb`](#clean_atlas_lc_v4ipynb) (for one SN, apply all cuts, average light curve, and correct for ATLAS template changes)
+	- [`clean_atlas_lc_v4.ipynb`](#clean_atlas_lc_v4ipynb) (for one SN, apply all cuts, correct for ATLAS template changes, and average light curve)
     - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (standalone ATLAS template change correction)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
@@ -19,8 +19,8 @@ Using previously downloaded SN and control light curves:
 - Estimate true uncertainties
 - Apply chi-square cut (flag: `0x1`)
 - Apply control light curve cut (flag: `0x400000`)
-- Average cleaned light curves (flag: `0x800000`)
 - Correct for ATLAS template changes
+- Average cleaned light curves (flag: `0x800000`)
 - Save both original and averaged light curves with the updated 'Mask' columns
 
 Example notebooks for example SNe are located in the `/extern` folder of this repository.
@@ -103,6 +103,7 @@ Using the default settings in `settings.ini` and previously downloaded SN and co
 - Estimate true uncertainties (`-e`) 
 - Apply chi-square cut (`-x`) (flag: `0x1`)
 - Apply control light curve cut (`-c`) (flag: `0x400000`)
+- Automatically correct for ATLAS template changes (`-t`)
 - Average cleaned light curves (`-g`) (flag: `0x800000`)
 - Save both original and averaged light curves with the updated 'Mask' columns
 
@@ -111,11 +112,11 @@ The 'Mask' column in each cleaned light curves will contain hex values ("flags")
 **Arguments** (will override default config file settings if specified):
 - First provide TNS name(s) of object(s) to clean
 - `--num_controls`: set number of control light curves to load and clean
-- `-t` or `--template_correction`: apply automatic ATLAS template change correction to flux
 - `-u` or `--uncert_cut`: apply uncertainty cut
 - `-e` or `--uncert_est`: apply uncertainties estimation
 - `-x` or `--x2_cut`: apply chi-square cut
 - `-c` or `--controls_cut`: apply control light curve cut
+- `-t` or `--template_correction`: apply automatic ATLAS template change correction to flux
 - `-g` or `--averaging`: average the light curve, cut bad days, and save as new file
 	- `-m` or `--mjd_bin_size`: set MJD bin size in days
 - `-p` or `--plot`: saves a PDF file of plots depicting the SN light curve, control light curves if necessary, and which measurements are flagged in each cut
