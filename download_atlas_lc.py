@@ -293,17 +293,17 @@ class download_atlas_lc:
 										'dec': f'{dec.degree:0.8f}',
 										'ra_offset': np.nan,
 										'dec_offset': np.nan,
-										'radius':r.arcsecond,
+										'radius_arcsec':r.arcsecond,
 										'n_detec':np.nan,
 										'n_detec_o':np.nan,
 										'n_detec_c':np.nan})
 
 		with pd.option_context('display.float_format', '{:,.8f}'.format):
-			print('Control light curve coordinates read from txt file: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
+			print('Control light curve coordinates read from txt file: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius_arcsec']])
 
 	# get RA and Dec coordinates of control light curves in a circle pattern around SN location and add to control_coords table
 	def get_control_coords(self, sn_lc):
-		self.control_coords.t = pd.DataFrame(columns=['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius','n_detec','n_detec_o','n_detec_c'])
+		self.control_coords.t = pd.DataFrame(columns=['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius_arcsec','n_detec','n_detec_o','n_detec_c'])
 
 		sn_ra = self.ra_str2angle(sn_lc.ra)
 		sn_dec = self.dec_str2angle(sn_lc.dec)
@@ -325,7 +325,7 @@ class download_atlas_lc:
 										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':0,
 										'dec_offset':0,
-										'radius':0,
+										'radius_arcsec':0,
 										'n_detec':o_len+c_len,
 										'n_detec_o':o_len,
 										'n_detec_c':c_len})
@@ -349,7 +349,7 @@ class download_atlas_lc:
 										'dec': f'{sn_dec.degree:0.8f}',
 										'ra_offset':np.nan,
 										'dec_offset':np.nan,
-										'radius':np.nan,
+										'radius_arcsec':np.nan,
 										'n_detec':o_len+c_len,
 										'n_detec_o':o_len,
 										'n_detec_c':c_len},ignore_index=True)
@@ -381,13 +381,13 @@ class download_atlas_lc:
 											'dec': f'{dec.degree:0.8f}',
 											'ra_offset': f'{ra_offset.degree:0.8f}',
 											'dec_offset': f'{dec_offset.degree:0.8f}',
-											'radius':r,
+											'radius_arcsec':f'{r.arcsecond}',
 											'n_detec':np.nan,
 											'n_detec_o':np.nan,
 											'n_detec_c':np.nan})
 
 			with pd.option_context('display.float_format', '{:,.8f}'.format):
-				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius']])
+				print('Control light curve coordinates calculated: \n',self.control_coords.t[['tnsname','control_id','ra','dec','ra_offset','dec_offset','radius_arcsec']])
 
 	# update number of control light curve detections in control_coords table
 	def update_control_coords(self, lc, control_index):

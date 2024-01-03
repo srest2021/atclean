@@ -498,8 +498,8 @@ class EfficiencyTable:
 			self.t = pd.concat([self.t, df], ignore_index=True)
 	
 	def load(self, tables_dir, filename):
-		print(f'Loading efficiency table at {filename}...')
-		filename = f'{tables_dir}/{filename}'
+		print(f'Loading efficiency table at {filename}.txt...')
+		filename = f'{tables_dir}/{filename}.txt'
 		try:
 			self.t = pd.read_table(filename,delim_whitespace=True)
 		except Exception as e:
@@ -511,7 +511,7 @@ class EfficiencyTable:
 			filename = f'{tables_dir}/efficiencies.txt'
 		else:
 			print(f'Saving efficiency table {filename}...')
-			filename = f'{tables_dir}/{filename}'
+			filename = f'{tables_dir}/{filename}.txt'
 		self.t.to_string(filename, index=False)
 
 	def reset(self):
