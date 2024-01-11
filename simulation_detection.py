@@ -13,9 +13,6 @@ source_dir = ''
 # path to directory where generated tables should be stored
 tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
 
-# OPTIONAL: path to text file with light curve of simulated eruption to add
-erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
-
 # number of control light curves to load
 num_controls = 8
 
@@ -26,7 +23,7 @@ filt = 'o'
 mjd_bin_size = 1.0
 
 # search for pre-SN bumps with the following gaussian sigmas
-sigma_kerns = [5, 15, 25, 40, 80, 130, 200, 256, 300]
+sigma_kerns = [5, 15, 25, 40, 80, 130, 200, 300]
 
 # select sets of gaussian sigmas to simulate
 # where each list corresponds to its matching entry in sigma_kerns
@@ -38,13 +35,14 @@ sigma_sims = [[2, 5, 20, 40, 80, 120], # 5
 			  [5, 20, 40, 80, 110, 150, 200, 250], # 80
 			  [20, 40, 80, 110, 150, 200, 250, 300], # 130
 			  [20, 40, 80, 110, 150, 200, 250, 300], # 200
-			  [20, 40, 80, 110, 150, 200, 250, 300], # 256
 			  [20, 40, 80, 110, 150, 200, 250, 300]] # 300
 
-# OPTIONAL: select FOM limits to calculate efficiencies 
-# where each list corresponds to its matching entry in sigma_kerns
-# if using a simulated eruption, add None entry
-fom_limits = None 
+# skip any messy control light curves (leave empty list [] if not skipping any)
+skip_ctrl = []
+
+# add observation seasons' mjd ranges to only simulate events within a season
+# (set to None if simulating regardless of season)
+seasons = None #[[57365,57622], [57762,57983], [58120,58383],  [58494,58741], [58822,59093], [59184,59445], [59566,59835], [59901,60085]]
 
 # select range of peak apparent magnitudes to simulate
 peak_mag_max = 16 # brightest magnitude
@@ -58,8 +56,13 @@ iterations = 50000
 # if more than one, use bitwise OR (this symbol: |) to combine them
 flags = 0x800000
 
-# skip any messy control light curves (leave empty list [] if not skipping any)
-skip_ctrl = []
+# OPTIONAL: add FOM limits to calculate efficiencies 
+# each list of FOM limits corresponds to its matching entry in sigma_kerns
+# if using a simulated eruption, add None entry
+fom_limits = None #[[6.02], [9.68], [12.84], [16.34], [23.63], [29.25], [36.85], [52.4]]
+
+# OPTIONAL: path to text file with light curve of simulated eruption to add
+erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
 
 """
 UTILITY
@@ -139,6 +142,24 @@ def flux2mag(flux):
 # convert magnitude to flux
 def mag2flux(mag):
 	return 10 ** ((mag - 23.9) / -2.5)
+
+# check if MJD is within valid MJD season
+def in_valid_season(mjd, valid_seasons):
+	in_season = False
+	for season in valid_seasons:
+		if mjd <= season[1] and mjd >= season[0]:
+			in_season = True
+	return in_season
+
+# generate list of peak fluxes and app mags
+def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
+	peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
+	peak_fluxes = list(map(mag2flux, peak_mags))
+
+	peak_mags = [round(item, 2) for item in peak_mags]
+	peak_fluxes = [round(item, 2) for item in peak_fluxes]
+
+	return peak_mags, peak_fluxes
 
 """
 ASYM GAUSSIAN
@@ -603,29 +624,6 @@ class EfficiencyTable:
 
 		self.t = pd.concat([self.t, other.t], ignore_index=True)
 
-
-"""
-MISCELLANEOUS
-"""
-
-# check if MJD is within valid MJD season
-def in_valid_season(mjd, valid_seasons):
-	in_season = False
-	for season in valid_seasons:
-		if mjd <= season[1] and mjd >= season[0]:
-			in_season = True
-	return in_season
-
-# generate list of peak fluxes and app mags
-def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
-	peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
-	peak_fluxes = list(map(mag2flux, peak_mags))
-
-	peak_mags = [round(item, 2) for item in peak_mags]
-	peak_fluxes = [round(item, 2) for item in peak_fluxes]
-
-	return peak_mags, peak_fluxes
-
 """
 GENERATE AND SAVE SIMULATED DETECTION AND EFFICIENCY TABLES
 """
@@ -649,7 +647,7 @@ if __name__ == "__main__":
 	peak_appmags, peak_fluxes = generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
 	
 	# print settings
-	print(f'\nRolling sum sigmas in days: ', sigma_kerns)
+	print(f'\nRolling sum sigmas (days): ', sigma_kerns)
 	sim_erup_sigma=None
 	for i in range(len(sigma_kerns)):
 		sigma_kern = sigma_kerns[i]
@@ -665,8 +663,12 @@ if __name__ == "__main__":
 	print(f'Number of iterations per peak: {iterations}')
 	print(f'Flag for bad days: {hex(flags)}')
 	valid_ctrls = [i for i in range(1, num_controls+1) if not i in skip_ctrl]
-	print(f'Simulating eruptions only within the following control light curves: ', valid_ctrls)
-	
+	print(f'Simulating events only within the following control light curves: ', valid_ctrls)
+	if not seasons is None:
+		print(f'\nSimulating events only within the following observation seasons: ', seasons)
+	else:
+		print(f'\nSimulating events throughout entire light curve (no observation seasons specified)')
+
 	# construct blank dictionary of simdetec tables
 	sd = {}
 
@@ -705,6 +707,11 @@ if __name__ == "__main__":
 				
 				# select random peak MJD from start of lc to 50 days before discovery date
 				peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
+				if not seasons is None:
+					# make sure peak MJD is within an observation season; else redraw
+					while not in_valid_season(peak_mjd, seasons):
+						# redraw random peak mjd
+						peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
 				sd[key].t.loc[j, 'peak_mjd'] = peak_mjd
 
 				# select random sim sigma
@@ -740,6 +747,6 @@ if __name__ == "__main__":
 	if not fom_limits is None:
 		print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
 		e.set_fom_limits(fom_limits)
-		e.get_efficiencies(sd)
+		e.get_efficiencies(sd, valid_seasons=seasons)
 		print(e.t.to_string())
 	e.save(tables_dir)
