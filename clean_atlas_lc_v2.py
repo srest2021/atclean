@@ -858,7 +858,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('--ylim_upper', type=float, default=None, help='if plotting, manually set upper y axis limit to a certain uJy')
 
 	parser.add_argument('-f','--cfg_filename', default='settings.ini', type=str, help='file name of ini file with settings for this class')
-	parser.add_argument('-o','--overwrite', default=False, action='store_true', help='don\'t overwrite existing file with same file name')
+	parser.add_argument('-o','--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
 		
 	return parser
 

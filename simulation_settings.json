@@ -1,0 +1,75 @@
+{
+    "sn_settings": {
+        "tnsname": "2023ixf",
+        "filt": "o", 
+        "num_controls": 16,
+        "mjd_bin_size": 1.0
+    },
+
+    "data_dir": "/Users/sofiarest/Desktop/Supernovae/data/temp2",
+    "output_dir": "/Users/sofiarest/Desktop/Supernovae/data/temp2/2023ixf/bump_analysis/tables_test",
+
+    "skip_control_ix": [2, 3],
+
+    "observation_seasons": [
+        [57365,57622], 
+        [57762,57983],
+        [58120,58383],  
+        [58494,58741], 
+        [58822,59093], 
+        [59184,59445], 
+        [59566,59835], 
+        [59901,60085]
+    ],
+
+    "sim_settings": [
+        {
+            "sigma_kern": 5,
+            "sigma_sims": [2, 5, 20, 40, 80, 120],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 15,
+            "sigma_sims": [2, 5, 20, 40, 80, 120],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 25,
+            "sigma_sims": [2, 5, 20, 40, 80, 120],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 40,
+            "sigma_sims": [5, 20, 40, 80, 110, 150, 200, 250],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 80,
+            "sigma_sims": [5, 20, 40, 80, 110, 150, 200, 250],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 130,
+            "sigma_sims": [20, 40, 80, 110, 150, 200, 250, 300],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 200,
+            "sigma_sims": [20, 40, 80, 110, 150, 200, 250, 300],
+            "fom_limits": []
+        },
+        {
+            "sigma_kern": 300,
+            "sigma_sims": [20, 40, 80, 110, 150, 200, 250, 300],
+            "fom_limits": []
+        }
+    ],
+
+    "peak_mag_settings": {
+        "peak_mag_max": 16,
+        "peak_mag_min": 23,
+        "n_peaks": 20
+    },
+
+    "iterations": 50000
+}

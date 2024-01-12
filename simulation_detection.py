@@ -1,81 +1,17 @@
 #!/usr/bin/env python
 
 """
-SETTINGS
-"""
-
-# SN TNS name
-tnsname = ''
-
-# path to directory that contains SN, control, and other light curves
-source_dir = ''
-
-# path to directory where generated tables should be stored
-tables_dir = f'{source_dir}/{tnsname}/bump_analysis/tables'
-
-# number of control light curves to load
-num_controls = 8
-
-# filter of light curve to analyze
-filt = 'o'
-
-# MJD bin size in days of light curve to analyze
-mjd_bin_size = 1.0
-
-# search for pre-SN bumps with the following gaussian sigmas
-sigma_kerns = [5, 15, 25, 40, 80, 130, 200, 300]
-
-# select sets of gaussian sigmas to simulate
-# where each list corresponds to its matching entry in sigma_kerns
-# if using a simulated eruption, add None entry
-sigma_sims = [[2, 5, 20, 40, 80, 120], # 5
-			  [2, 5, 20, 40, 80, 120], # 15
-			  [2, 5, 20, 40, 80, 120], # 15
-			  [5, 20, 40, 80, 110, 150, 200, 250], # 40
-			  [5, 20, 40, 80, 110, 150, 200, 250], # 80
-			  [20, 40, 80, 110, 150, 200, 250, 300], # 130
-			  [20, 40, 80, 110, 150, 200, 250, 300], # 200
-			  [20, 40, 80, 110, 150, 200, 250, 300]] # 300
-
-# skip any messy control light curves (leave empty list [] if not skipping any)
-skip_ctrl = []
-
-# add observation seasons' mjd ranges to only simulate events within a season
-# (set to None if simulating regardless of season)
-seasons = None #[[57365,57622], [57762,57983], [58120,58383],  [58494,58741], [58822,59093], [59184,59445], [59566,59835], [59901,60085]]
-
-# select range of peak apparent magnitudes to simulate
-peak_mag_max = 16 # brightest magnitude
-peak_mag_min = 23 # faintest magnitude
-n_peaks = 20 # number of magnitudes to generate in log space
-
-# number of iterations of random sigma and peak mjd per peak
-iterations = 50000 
-
-# define flag that defines bad measurements (to filter out bad days in lc)
-# if more than one, use bitwise OR (this symbol: |) to combine them
-flags = 0x800000
-
-# OPTIONAL: add FOM limits to calculate efficiencies 
-# each list of FOM limits corresponds to its matching entry in sigma_kerns
-# if using a simulated eruption, add None entry
-fom_limits = None #[[6.02], [9.68], [12.84], [16.34], [23.63], [29.25], [36.85], [52.4]]
-
-# OPTIONAL: path to text file with light curve of simulated eruption to add
-erup_filename = None #f'{source_dir}/{tnsname}/bump_analysis/eruption_m3e-07.dat'
-
-"""
 UTILITY
 """
 
 import pandas as pd
 import numpy as np
-import sys,random,re,os
+import sys, random, re, os, argparse, json
 from copy import deepcopy
 from scipy.interpolate import interp1d
 from astropy.modeling.functional_models import Gaussian1D
 
-from pdastro import pdastrostatsclass
+#from pdastro import pdastrostatsclass
 from atlas_lc import atlas_lc
 
 # suppress deprecation warnings
@@ -106,10 +42,8 @@ def ix_equals(df, colname, val, indices=None):
 		ix = get_ix(df)
 	else:
 		ix = indices
-
 	(keep,) = np.where(df.loc[ix,colname].eq(val))
 	ix = ix[keep] 
-	
 	return ix 
 
 # Adapted from A. Rest
@@ -246,7 +180,7 @@ APPLY ROLLING SUM TO LIGHT CURVE
 """
 	
 class SimDetecLightCurve(atlas_lc):
-	def __init__(self, filt, mjd_bin_size, tnsname=tnsname, discdate=None):
+	def __init__(self, filt, mjd_bin_size, tnsname=None, discdate=None):
 		atlas_lc.__init__(self, tnsname=tnsname, mjd_bin_size=mjd_bin_size, discdate=discdate, is_averaged=True)
 		self.filt = filt
 		self.sigma = None
@@ -428,22 +362,20 @@ class SimDetecTable:
 		self.t.to_string(filename, index=False)
 
 	def setup(self, iterations):
-		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'peak_mjd', 'sigma_sim', 'sim_erup_sigma', 'max_fom', 'max_fom_mjd'])
+		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'peak_mjd', 'sigma_sim', 'max_fom', 'max_fom_mjd'])
 		self.t['sigma_kern'] = np.full(iterations, self.sigma_kern)
 		self.t['peak_appmag'] = np.full(iterations, self.peak_appmag)
 		self.t['peak_flux'] = np.full(iterations, self.peak_flux)
 	
-	def get_efficiency(self, fom_limit, valid_seasons=None, sigma_sim=None, erup=False):
+	def get_efficiency(self, fom_limit, valid_seasons=None, sigma_sim=None):
 		if sigma_sim is None: # get efficiency for all sigma_sims (entire table)
 			sigma_sim_ix = get_ix(self.t)
 		elif pd.isnull(sigma_sim):
 			return np.nan
-		elif erup: # simulated eruption
-			sigma_sim_ix = np.where(self.t['sim_erup_sigma'] == sigma_sim)[0]
 		else: # simulated gaussian
 			sigma_sim_ix = np.where(self.t['sigma_sim'] == sigma_sim)[0]
 		if len(sigma_sim_ix) < 1:
-			print(f'WARNING: No sim sigma matches for {sigma_sim}, where erup={erup}; returning NaN...')
+			print(f'WARNING: No sim sigma matches for {sigma_sim}; returning NaN...')
 			return np.nan
 		
 		if not valid_seasons is None:
@@ -470,28 +402,27 @@ def load_sd_dict(sigma_kerns, peak_appmags, tables_dir):
 	return sd
 
 class EfficiencyTable:
-	def __init__(self, sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=None, sim_erup_sigma=None):
+	def __init__(self, sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=None):
 		if len(sigma_kerns) != len(sigma_sims):
 			raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in sigma_sims')
 		self.sigma_kerns = sigma_kerns
 		self.set_sigma_sims(sigma_sims)
-		if not fom_limits is None:
-			self.set_fom_limits(fom_limits)
+		self.set_fom_limits(fom_limits)
 
 		self.peak_appmags = peak_appmags
 		self.peak_fluxes = peak_fluxes
 
 		self.t = None
 
-		self.setup(sim_erup_sigma=sim_erup_sigma)
+		self.setup()
 
-	def setup(self, sim_erup_sigma=None):
-		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim', 'sim_erup_sigma'])
+	def setup(self):
+		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim'])
 
 		for sigma_kern in self.sigma_kerns: 
 			n = len(self.peak_appmags) * len(self.sigma_sims[sigma_kern])
 			
-			df = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim', 'sim_erup_sigma'])
+			df = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim'])
 			df['sigma_kern'] = np.full(n, sigma_kern)
 			df['peak_appmag'] = np.repeat(self.peak_appmags, len(self.sigma_sims[sigma_kern]))
 			df['peak_flux'] = np.repeat(self.peak_fluxes, len(self.sigma_sims[sigma_kern]))
@@ -499,12 +430,7 @@ class EfficiencyTable:
 			j = 0
 			while(j < n):
 				for sigma_sim in self.sigma_sims[sigma_kern]:
-					if sigma_sim is None:
-						if sim_erup_sigma is None:
-							raise RuntimeError('ERROR: None element in sigma_sims array, but no sim_erup_sigma passed')
-						df.loc[j, 'sim_erup_sigma'] = sim_erup_sigma
-					else: 
-						df.loc[j, 'sigma_sim'] = sigma_sim
+					df.loc[j, 'sigma_sim'] = sigma_sim
 					j += 1
 			self.t = pd.concat([self.t, df], ignore_index=True)
 	
@@ -536,6 +462,9 @@ class EfficiencyTable:
 				self.t[f'pct_detec_{fom_limit:0.2f}'] = np.full(len(self.t), np.nan)
 
 	def set_sigma_sims(self, sigma_sims):
+		if len(sigma_sims) != len(self.sigma_kerns):
+			raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in sigma_sims')
+		
 		if isinstance(sigma_sims, list):
 			self.sigma_sims = {}
 			for i in range(len(self.sigma_kerns)):
@@ -544,7 +473,10 @@ class EfficiencyTable:
 			self.sigma_sims = sigma_sims
 
 	def set_fom_limits(self, fom_limits):
-		if not len(self.sigma_kerns) == len(self.sigma_sims) or not len(fom_limits) == len(self.sigma_kerns):
+		if fom_limits is None:
+			return
+
+		if len(fom_limits) != len(self.sigma_kerns):
 			raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in fom_limits')
 		
 		if isinstance(fom_limits, list):
@@ -554,14 +486,6 @@ class EfficiencyTable:
 		else:
 			self.fom_limits = fom_limits
 
-	def get_fom_limit(self, sigma_kern, sigma):
-		if sigma == 3:
-			return self.fom_limits[sigma_kern][0]
-		elif sigma == 5:
-			return self.fom_limits[sigma_kern][1]
-		else:
-			raise RuntimeError('ERROR: when obtaining an FOM limit for given sigma_kern, sigma must be 3 or 5')
-
 	def get_efficiencies(self, sd, valid_seasons=None, debug=False):
 		if self.fom_limits is None:
 			raise RuntimeError('ERROR: fom_limits is None')
@@ -569,39 +493,27 @@ class EfficiencyTable:
 		for i in range(len(self.t)):
 			sigma_kern = self.t.loc[i,'sigma_kern']
 			peak_mag = self.t.loc[i,'peak_appmag']
-			
-			if pd.isnull(self.t.loc[i,'sigma_sim']):
-				sigma_sim = self.t.loc[i,'sim_erup_sigma']
-				erup = True
-			else:
-				sigma_sim = self.t.loc[i,'sigma_sim']
-				erup = False
+			sigma_sim = self.t.loc[i,'sigma_sim']
 
 			if debug:
 				print(f'# Getting efficiencies for sigma_kern {sigma_kern}, sigma_sim {sigma_sim}, peak_mag {peak_mag}...')
 
 			for fom_limit in self.fom_limits[sigma_kern]:
 				self.t.loc[i,f'pct_detec_{fom_limit:0.2f}'] = \
-					sd[sd_key(sigma_kern, peak_mag)].get_efficiency(fom_limit, valid_seasons=valid_seasons, sigma_sim=sigma_sim, erup=erup)
+					sd[sd_key(sigma_kern, peak_mag)].get_efficiency(fom_limit, valid_seasons=valid_seasons, sigma_sim=sigma_sim)
 
-	def get_subset(self, sigma_kern=None, fom_limit=None, sigma_sim=None, erup=False):
-		colnames = ['sigma_kern', 'peak_appmag', 'peak_flux']
+	def get_subset(self, sigma_kern=None, fom_limit=None, sigma_sim=None):
+		colnames = ['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim']
 		
-		ix = get_ix(self.t)
-		if not(sigma_kern is None):
+		if sigma_kern is None:
+			ix = get_ix(self.t)
+		else:
 			ix = ix_equals(self.t, 'sigma_kern', sigma_kern) 
 
-		if sigma_sim is None:
-			colnames += ['sigma_sim', 'sim_erup_sigma']
-		else: 
-			if erup:
-				sigma_sim_colname = 'sim_erup_sigma'
-			else:
-				sigma_sim_colname = 'sigma_sim'
-			colnames.append(sigma_sim_colname)
-			ix = ix_equals(self.t, sigma_sim_colname, sigma_sim, indices=ix)
+		if not sigma_sim is None: 
+			ix = ix_equals(self.t, 'sigma_sim', sigma_sim, indices=ix)
 
-		if not(fom_limit is None):
+		if not fom_limit is None:
 			try: 
 				colnames.append(f'pct_detec_{fom_limit:0.2f}')
 			except Exception as e:
@@ -628,125 +540,147 @@ class EfficiencyTable:
 GENERATE AND SAVE SIMULATED DETECTION AND EFFICIENCY TABLES
 """
 
-if __name__ == "__main__":
-	# load SN and control light currves
-	print(f'Source directory: {source_dir}')
-	print(f'Tables directory: {tables_dir}')
-	lc = SimDetecLightCurve(filt, mjd_bin_size, tnsname=tnsname)
-	lc.load(source_dir, num_controls=num_controls)
-
-	# load simulated eruption
-	if not(erup_filename is None):
-		erup = Eruption(erup_filename)
-
-	# check if tables_dir exists; if not, create new
-	if not os.path.exists(tables_dir):
-		os.mkdir(tables_dir)
-
-	# generate list of peaks
-	peak_appmags, peak_fluxes = generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
+# define command line arguments
+def define_args(parser=None, usage=None, conflict_handler='resolve'):
+	if parser is None:
+		parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
+		
+	parser.add_argument('-f', '--cfg_filename', default='simulation_settings.json', type=str, help='file name of JSON file with settings for this class')
+	parser.add_argument('-e', '--efficiencies', default=False, action='store_true', help='calculate efficiencies using FOM limits')
 	
-	# print settings
-	print(f'\nRolling sum sigmas (days): ', sigma_kerns)
-	sim_erup_sigma=None
-	for i in range(len(sigma_kerns)):
-		sigma_kern = sigma_kerns[i]
-		print(f'For rolling sum sigma {sigma_kern}, simulating: ')
-		for sigma_sim in sigma_sims[i]:
-			if sigma_sim is None:
-				sim_erup_sigma = erup.sigma
-				print(f'- eruption from file with sigma {erup.sigma}')
-			else:
-				print(f'- gaussian with sigma {sigma_sim}')
-	print(f'\nPeak magnitudes: ', peak_appmags)
-	print(f'Peak fluxes (uJy): ', peak_fluxes)
-	print(f'Number of iterations per peak: {iterations}')
-	print(f'Flag for bad days: {hex(flags)}')
-	valid_ctrls = [i for i in range(1, num_controls+1) if not i in skip_ctrl]
-	print(f'Simulating events only within the following control light curves: ', valid_ctrls)
-	if not seasons is None:
-		print(f'\nSimulating events only within the following observation seasons: ', seasons)
-	else:
-		print(f'\nSimulating events throughout entire light curve (no observation seasons specified)')
+	return parser
 
-	# construct blank dictionary of simdetec tables
-	sd = {}
+class SimDetecLoop:
+	def __init__(self, args):
+		self.settings = self.load_settings(args)
 
-	# construct blank efficiency table
-	e = EfficiencyTable(sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, sim_erup_sigma=sim_erup_sigma)
+		print(f'Data directory: {self.settings["data_dir"]}')
+		print(f'Output directory: {self.settings["output_dir"]}')
+		self.efficiencies = args.efficiencies
+		print(f'Efficiency calculation: {self.efficiencies}')
+		print(f'Number of simulated events per peak magnitude: {self.settings["iterations"]}')
 
-	for i in range(len(sigma_kerns)):
-		sigma_kern = sigma_kerns[i]
-		print(f'\nUsing rolling sum sigma of {sigma_kern} days...')
+		# load lcs
+		self.lc = SimDetecLightCurve(self.settings['sn_settings']['filt'], 
+									 self.settings['sn_settings']['mjd_bin_size'], 
+									 tnsname=self.settings['sn_settings']['tnsname'])
+		self.lc.load(self.settings["data_dir"], num_controls=self.settings['sn_settings']['num_controls'])
 
-		# apply rolling sum to all control light curves
-		lc.apply_rolling_sums(sigma_kern)#, num_controls)
+		self.valid_ctrls = [i for i in range(1, self.lc.num_controls+1) if not i in self.settings['skip_control_ix']]
+		print(f'\nSimulating events only within the following control light curves: \n', self.valid_ctrls)
+		self.seasons = None
+		if len(self.settings['observation_seasons']) > 0:
+			self.seasons = self.settings['observation_seasons']
+			print(f'Simulating events only within the following observation seasons: \n', self.seasons)
+		else:
+			print(f'Simulating events throughout entire light curve (no observation seasons specified)')
 
-		for peak_index in range(len(peak_appmags)):
-			peak_appmag = peak_appmags[peak_index]
-			peak_flux = peak_fluxes[peak_index]
+		if not os.path.exists(self.settings["output_dir"]):
+			os.mkdir(self.settings["output_dir"])
+		
+		peak_appmags, peak_fluxes = generate_peaks(self.settings['peak_mag_settings']['peak_mag_min'], 
+												   self.settings['peak_mag_settings']['peak_mag_max'], 
+												   self.settings['peak_mag_settings']['n_peaks'])
+		print(f'\nSimulation peak magnitudes: \n', peak_appmags)
+		print(f'Simulation peak fluxes (uJy): \n', peak_fluxes)
+		
+		sigma_kerns = []
+		sigma_sims = {}
+		fom_limits = None
+		if self.efficiencies:
+			fom_limits = {}
+		for obj in self.settings['sim_settings']:
+			sigma_kerns.append(obj['sigma_kern'])
+			sigma_sims[obj['sigma_kern']] = obj['sigma_sims']
+			if self.efficiencies:
+				if  len(obj['fom_limits']) < 1:
+					raise RuntimeError(f'ERROR: Efficiency calculation set to {self.efficiencies}, but no FOM limits provided for sigma_kern={obj["sigma_kern"]}')
+				fom_limits[obj['sigma_kern']] = obj['fom_limits']
 
-			# construct new simulation detection table
-			key = sd_key(sigma_kern, peak_appmag)
-			sd[key] = SimDetecTable(sigma_kern=sigma_kern, iterations=iterations, peak_appmag=peak_appmag)
+		# construct blank dictionary of simdetec tables
+		self.sd = {}
 
-			# construct list of gaussians for each sigma_sim
-			gaussians = []
-			for k in range(len(sigma_sims[i])):
-				if not(sigma_sims[i][k] is None):
-					gaussians.append(Gaussian(sigma_sims[i][k], peak_appmag))
-			
-			print(f'Commencing {iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
-			j = 0
-			while j < iterations:
-				# reset row in case previous iteration failed
-				sd[key].t.loc[j, ['peak_mjd', 'sigma_sim', 'sim_erup_sigma', 'max_fom', 'max_fom_mjd']] = np.full(5, np.nan)
+		# construct blank efficiency table
+		self.e = EfficiencyTable(sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=fom_limits)
 
-				# pick random control light curve
-				rand_control_index = random.choice(valid_ctrls)
-				
-				# select random peak MJD from start of lc to 50 days before discovery date
-				peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
-				if not seasons is None:
-					# make sure peak MJD is within an observation season; else redraw
-					while not in_valid_season(peak_mjd, seasons):
-						# redraw random peak mjd
-						peak_mjd = random.randrange(lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
-				sd[key].t.loc[j, 'peak_mjd'] = peak_mjd
+		print(f'\nRolling sum kernel sizes (sigma_kerns): \n\t', self.e.sigma_kerns)
+		print(f'\nSimulated event kernel sizes (sigma_sims) for each sigma_kern: \n\t', self.e.sigma_sims)
+		if self.efficiencies:
+			print(f'\nFOM limits for each sigma_kern: \n\t', self.e.fom_limits)
 
-				# select random sim sigma
-				k = random.randrange(0, len(sigma_sims[i]), 1)
-				if sigma_sims[i][k] is None:
-					# add simulated eruption
-					sigma_sim = erup.sigma
-					sd[key].t.loc[j, 'sim_erup_sigma'] = sigma_sim
-					sim_lc = lc.add_simulation(rand_control_index, peak_mjd, eruption=erup, peak_appmag=peak_appmag)
-				else:
-					# add simulated gaussian
-					sigma_sim = gaussians[k].sigma
-					sd[key].t.loc[j, 'sigma_sim'] = sigma_sim
-					sim_lc = lc.add_simulation(rand_control_index, peak_mjd, gaussians[k])
+	def load_settings(self, args):
+		with open(args.cfg_filename) as config_file:
+			return json.load(config_file)
 
-				# get max FOM from measurements within 1 sigma of the simulated bump
-				sigma_ix = sim_lc.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
-				sigma_ix = sim_lc.ix_not_null(colnames='MJD', indices=sigma_ix)
-				if len(sigma_ix) > 0:
-					max_fom_idx = sim_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
-					sd[key].t.loc[j, 'max_fom'] = sim_lc.t.loc[max_fom_idx, 'SNRsimsum']
-					sd[key].t.loc[j, 'max_fom_mjd'] = sim_lc.t.loc[max_fom_idx, 'MJD']
-				else:
-					# no valid measurements within this range
-					continue
+	def loop(self):
+		iterations = self.settings['iterations']
 
-				j += 1
+		for sigma_kern in self.e.sigma_kerns:
+			print(f'\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...')
 
-			sd[key].save(tables_dir)
+			# apply rolling sum to all control light curves
+			self.lc.apply_rolling_sums(sigma_kern)
 
-	print('\nSuccess')
+			for peak_index in range(len(self.e.peak_appmags)):
+				peak_appmag = self.e.peak_appmags[peak_index]
+				peak_flux = self.e.peak_fluxes[peak_index]
+				sigma_sims = self.e.sigma_sims[sigma_kern]
 
-	if not fom_limits is None:
-		print(f'\nUsing FOM limits {fom_limits} to calculate efficiencies...')
-		e.set_fom_limits(fom_limits)
-		e.get_efficiencies(sd, valid_seasons=seasons)
-		print(e.t.to_string())
-	e.save(tables_dir)
+				# construct new simulation detection table
+				key = sd_key(sigma_kern, peak_appmag)
+				self.sd[key] = SimDetecTable(sigma_kern=sigma_kern, iterations=iterations, peak_appmag=peak_appmag)
+
+				# construct list of gaussians for each sigma_sim
+				gaussians = {}
+				for sigma_sim in sigma_sims:
+					gaussians[sigma_sim] = Gaussian(sigma_sim, peak_appmag)
+
+				print(f'Commencing {iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
+				j = 0
+				while j < iterations:
+					# pick random control light curve
+					rand_control_index = random.choice(self.valid_ctrls)
+
+					# pick random sigma_sim		
+					sigma_sim = random.choice(sigma_sims)
+
+					# pick random peak MJD
+					peak_mjd = random.randrange(self.lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, 
+								 				self.lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
+					if not self.seasons is None:
+						# make sure peak MJD is within an observation season; else redraw
+						while not in_valid_season(peak_mjd, self.seasons):
+							peak_mjd = random.randrange(self.lc.lcs[rand_control_index].t['MJDbin'].iloc[0]-0.5, 
+								   						self.lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
+
+					self.sd[key].t.loc[j, ['peak_mjd', 'sigma_sim', 'max_fom', 'max_fom_mjd']] = np.array([peak_mjd, sigma_sim, np.nan, np.nan])
+
+					sim_lc = self.lc.add_simulation(rand_control_index, peak_mjd, gaussians[sigma_sim])
+
+					# get max FOM from measurements within 1 sigma of the simulated bump
+					sigma_ix = sim_lc.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
+					sigma_ix = sim_lc.ix_not_null(colnames='MJD', indices=sigma_ix)
+					if len(sigma_ix) > 0:
+						max_fom_idx = sim_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
+						self.sd[key].t.loc[j, 'max_fom'] = sim_lc.t.loc[max_fom_idx, 'SNRsimsum']
+						self.sd[key].t.loc[j, 'max_fom_mjd'] = sim_lc.t.loc[max_fom_idx, 'MJD']
+					else:
+						# no valid measurements within this range
+						continue
+
+					j += 1
+
+				self.sd[key].save(self.settings["output_dir"])
+		
+		print('\nSuccess')
+
+		if self.efficiencies:
+			print(f'\nCalculating efficiencies...')
+			self.e.get_efficiencies(self.sd, valid_seasons=self.seasons)
+			print(self.e.t.to_string())
+		self.e.save(self.settings['output_dir'])
+
+if __name__ == "__main__":
+	args = define_args().parse_args()
+	simdetec = SimDetecLoop(args)
+	simdetec.loop()
