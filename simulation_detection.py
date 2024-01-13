@@ -547,7 +547,8 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 		
 	parser.add_argument('-f', '--cfg_filename', default='simulation_settings.json', type=str, help='file name of JSON file with settings for this class')
 	parser.add_argument('-e', '--efficiencies', default=False, action='store_true', help='calculate efficiencies using FOM limits')
-	
+	parser.add_argument('-m', '--obs_seasons', default=False, action='store_true', help='only simulate events with peak MJDs within the observation season MJD ranges')
+
 	return parser
 
 class SimDetecLoop:
@@ -568,10 +569,14 @@ class SimDetecLoop:
 
 		self.valid_ctrls = [i for i in range(1, self.lc.num_controls+1) if not i in self.settings['skip_control_ix']]
 		print(f'\nSimulating events only within the following control light curves: \n', self.valid_ctrls)
+
 		self.seasons = None
-		if len(self.settings['observation_seasons']) > 0:
-			self.seasons = self.settings['observation_seasons']
-			print(f'Simulating events only within the following observation seasons: \n', self.seasons)
+		if args.obs_seasons:
+			if len(self.settings['observation_seasons']) > 0:
+				self.seasons = self.settings['observation_seasons']
+				print(f'Simulating events only within the following observation seasons: \n', self.seasons)
+			else:
+				raise RuntimeError(f'ERROR: observation seasons set to {args.obs_seasons} but no MJD ranges found in config file {args.cfg_filename}')
 		else:
 			print(f'Simulating events throughout entire light curve (no observation seasons specified)')
 
@@ -603,10 +608,10 @@ class SimDetecLoop:
 		# construct blank efficiency table
 		self.e = EfficiencyTable(sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=fom_limits)
 
-		print(f'\nRolling sum kernel sizes (sigma_kerns): \n\t', self.e.sigma_kerns)
-		print(f'\nSimulated event kernel sizes (sigma_sims) for each sigma_kern: \n\t', self.e.sigma_sims)
+		print(f'\nRolling sum kernel sizes (sigma_kerns): \n', self.e.sigma_kerns)
+		print(f'\nSimulated event kernel sizes (sigma_sims) for each sigma_kern: \n', self.e.sigma_sims)
 		if self.efficiencies:
-			print(f'\nFOM limits for each sigma_kern: \n\t', self.e.fom_limits)
+			print(f'\nFOM limits for each sigma_kern: \n', self.e.fom_limits)
 
 	def load_settings(self, args):
 		with open(args.cfg_filename) as config_file:
@@ -636,8 +641,7 @@ class SimDetecLoop:
 					gaussians[sigma_sim] = Gaussian(sigma_sim, peak_appmag)
 
 				print(f'Commencing {iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
-				j = 0
-				while j < iterations:
+				for j in range(iterations):
 					# pick random control light curve
 					rand_control_index = random.choice(self.valid_ctrls)
 
@@ -654,21 +658,13 @@ class SimDetecLoop:
 								   						self.lc.lcs[rand_control_index].t['MJDbin'].iloc[-1]+0.5, 1) + 0.5
 
 					self.sd[key].t.loc[j, ['peak_mjd', 'sigma_sim', 'max_fom', 'max_fom_mjd']] = np.array([peak_mjd, sigma_sim, np.nan, np.nan])
-
 					sim_lc = self.lc.add_simulation(rand_control_index, peak_mjd, gaussians[sigma_sim])
 
 					# get max FOM from measurements within 1 sigma of the simulated bump
 					sigma_ix = sim_lc.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
-					sigma_ix = sim_lc.ix_not_null(colnames='MJD', indices=sigma_ix)
-					if len(sigma_ix) > 0:
-						max_fom_idx = sim_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
-						self.sd[key].t.loc[j, 'max_fom'] = sim_lc.t.loc[max_fom_idx, 'SNRsimsum']
-						self.sd[key].t.loc[j, 'max_fom_mjd'] = sim_lc.t.loc[max_fom_idx, 'MJD']
-					else:
-						# no valid measurements within this range
-						continue
-
-					j += 1
+					max_fom_idx = sim_lc.t.loc[sigma_ix,'SNRsimsum'].idxmax()
+					self.sd[key].t.loc[j, 'max_fom'] = sim_lc.t.loc[max_fom_idx, 'SNRsimsum']
+					self.sd[key].t.loc[j, 'max_fom_mjd'] = sim_lc.t.loc[max_fom_idx, 'MJDbin'] #'MJD']
 
 				self.sd[key].save(self.settings["output_dir"])
 		
