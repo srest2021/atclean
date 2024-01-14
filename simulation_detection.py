@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 
 """
+- open config file simulation_settings.json and edit as needed
+	- to only simulate events within observation seasons:
+		- add MJD ranges of observation seasons as lists [STARTMJD, ENDMJD] to "observation_seasons"
+		- ./simulation_detection.py -m
+	- to automatically calculate efficiencies:
+		- add FOM limits to "sim_settings" for each sigma_kern 
+		- ./simulation_detection.py -e
+- to change config file loaded: ./simulation_detection.py --cfg_filename simulation_settings_copy.json
+- after script finishes running, open simulation_analysis.ipynb and load in light curves and tables to get a walkthrough analysis
+"""
+
+"""
 UTILITY
 """
 

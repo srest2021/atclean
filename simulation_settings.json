@@ -7,7 +7,15 @@
     },
 
     "data_dir": "/Users/sofiarest/Desktop/Supernovae/data/temp2",
-    "output_dir": "/Users/sofiarest/Desktop/Supernovae/data/temp2/2023ixf/bump_analysis/tables_test",
+    "output_dir": "/Users/sofiarest/Desktop/Supernovae/data/temp2/2023ixf/bump_analysis/tables_allseasons",
+
+    "peak_mag_settings": {
+        "peak_mag_max": 16,
+        "peak_mag_min": 23,
+        "n_peaks": 20
+    },
+
+    "iterations": 50000,
 
     "skip_control_ix": [2, 3],
 
@@ -63,13 +71,5 @@
             "sigma_sims": [20, 40, 80, 110, 150, 200, 250, 300],
             "fom_limits": []
         }
-    ],
-
-    "peak_mag_settings": {
-        "peak_mag_max": 16,
-        "peak_mag_min": 23,
-        "n_peaks": 20
-    },
-
-    "iterations": 50000
+    ]
 }

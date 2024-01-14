@@ -843,6 +843,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
 	parser.add_argument('--num_controls', type=int, default=None, help='Number of control light curves to load and clean')
 	
+	#parser.add_argument('-t', '--template_correction', default=False, const=True, nargs='?', type=str, help='apply automatic ATLAS template change correction; for manual correction, add comma-separated list of offsets for regions 1, 2, and 3')
 	parser.add_argument('-t', '--template_correction', default=False, action='store_true', help='apply automatic ATLAS template change correction')
 	parser.add_argument('-e', '--uncert_est', default=False, action='store_true', help='apply true uncertainty estimation')
 	parser.add_argument('-u', '--uncert_cut', default=False, action='store_true', help='apply uncertainty cut')
