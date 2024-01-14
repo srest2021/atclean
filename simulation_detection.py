@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 
 """
-- open config file simulation_settings.json and edit as needed
-	- to only simulate events within observation seasons:
+This script adds series of simulated Gaussian events to the control light curves of a target SN.
+We do this for different rolling sum kernel sizes ("sigma_kerns"). 
+For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size ("sigma_sims") of the simulated event.
+
+- Open the config file simulation_settings.json and edit as needed.
+	- To only simulate events within observation seasons:
 		- add MJD ranges of observation seasons as lists [STARTMJD, ENDMJD] to "observation_seasons"
 		- ./simulation_detection.py -m
-	- to automatically calculate efficiencies:
-		- add FOM limits to "sim_settings" for each sigma_kern 
+	- To automatically calculate efficiencies:
+		- add FOM limits to "sim_settings" for each sigma_kern object
 		- ./simulation_detection.py -e
-- to change config file loaded: ./simulation_detection.py --cfg_filename simulation_settings_copy.json
-- after script finishes running, open simulation_analysis.ipynb and load in light curves and tables to get a walkthrough analysis
+- To load a config file with a different file name: ./simulation_detection.py --cfg_filename simulation_settings_copy.json
+- After script finishes running, open simulation_analysis.ipynb and load in light curves and tables to get a walkthrough analysis.
 """
 
 """
