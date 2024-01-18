@@ -10,10 +10,10 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 		- add MJD ranges of observation seasons as lists [STARTMJD, ENDMJD] to "observation_seasons"
 		- ./simulation_detection.py -m
 	- To automatically calculate efficiencies:
-		- add FOM limits to "sim_settings" for each sigma_kern object
+		- add detection limits to "sim_settings" for each sigma_kern object
 		- ./simulation_detection.py -e
 - To load a config file with a different file name: ./simulation_detection.py --cfg_filename simulation_settings_copy.json
-- After script finishes running, open simulation_analysis.ipynb and load in light curves and tables to get a walkthrough analysis.
+- After script finishes running, open simulation_analysis.ipynb and load in light curves and saved tables to get a walkthrough analysis.
 """
 
 """
@@ -386,9 +386,7 @@ class SimDetecTable:
 	def get_efficiency(self, fom_limit, valid_seasons=None, sigma_sim=None):
 		if sigma_sim is None: # get efficiency for all sigma_sims (entire table)
 			sigma_sim_ix = get_ix(self.t)
-		elif pd.isnull(sigma_sim):
-			return np.nan
-		else: # simulated gaussian
+		else:
 			sigma_sim_ix = np.where(self.t['sigma_sim'] == sigma_sim)[0]
 		if len(sigma_sim_ix) < 1:
 			print(f'WARNING: No sim sigma matches for {sigma_sim}; returning NaN...')
