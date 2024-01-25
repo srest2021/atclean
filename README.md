@@ -138,7 +138,7 @@ We also attempt to account for an extra noise source in the data by estimating t
 <summary>Read more</summary>
 Here is the procedure we use to calculate new uncertainties:
 
-1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `uncert_est` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
+1. Keep the previously applied uncertainty cut and apply a preliminary chi-square cut at 20 (default value; to change, set the `[uncert_est]` `prelim_x2_cut` field in `settings.ini`). Filter out any measurements flagged by these two cuts.
 2.  Calculate the extra noise source for each control light curve using the following formula. The median uncertainty, $\rm median_{∂µJy}$, is taken from the unflagged baseline flux. $σ_{\rm true, typical}$ is calculated by applying a 3σ-clipped average of the measurements cleaned in step 1, then getting the standard deviation.
     - $σ_{\rm extra}^2 = σ_{\rm true, typical}^2 - \rm median_{∂µJy}^2$
 3. Calculate the final extra noise source by taking the median of all $σ_{\rm extra}$.
