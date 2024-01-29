@@ -93,13 +93,6 @@ def flux2mag(flux):
 def mag2flux(mag):
 	return 10 ** ((mag - 23.9) / -2.5)
 
-# check if MJD is within valid MJD season
-def in_valid_season(mjd, valid_seasons):
-	in_season = False
-	for season in valid_seasons:
-		if mjd <= season[1] and mjd >= season[0]:
-			in_season = True
-	return in_season
 
 # generate list of peak fluxes and app mags
 def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
@@ -110,6 +103,21 @@ def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
 	peak_fluxes = [round(item, 2) for item in peak_fluxes]
 
 	return peak_mags, peak_fluxes
+
+# check if MJD is within valid MJD season
+def in_valid_season(mjd, valid_seasons):
+	in_season = False
+	for season in valid_seasons:
+		if mjd <= season[1] and mjd >= season[0]:
+			in_season = True
+	return in_season
+
+def get_valid_ix(table, colname, mjd_ranges):
+    valid_ix = []
+    for i in range(len(table)):
+        if in_valid_season(table.loc[i,colname], mjd_ranges):
+            valid_ix.append(i)
+    return valid_ix
 
 """
 ASYM GAUSSIAN
@@ -210,11 +218,12 @@ class SimDetecLightCurve(atlas_lc):
 			self._load_lc(source_dir, self.filt, control_index=control_index, is_averaged=True)
 
 	def get_valid_ix(self, control_index, valid_seasons):
-		valid_ix = []
+		"""valid_ix = []
 		for i in range(len(self.lcs[control_index].t)):
 			if in_valid_season(self.lcs[control_index].t.loc[i,'MJDbin'], valid_seasons):
 				valid_ix.append(i)
-		return valid_ix
+		return valid_ix"""
+		return get_valid_ix(self.lcs[control_index].t, 'MJDbin', valid_seasons)
 
 	# clean rolling sum columns
 	def clean_rolling_sum(self, control_index):
