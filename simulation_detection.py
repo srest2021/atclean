@@ -210,19 +210,21 @@ class SimDetecLightCurve(atlas_lc):
 		self.sigma = None
 
 	# load averaged SN and control light curves without overwriting the 'Mask' column (override)
-	def load(self, source_dir, num_controls):
+	def load(self, source_dir, num_controls, override_filename=False):
 		print(f'\nLoading averaged SN light curve and {num_controls} averaged control light curves...')
 		self.num_controls = num_controls
 		self.dflux_colnames = ['duJy'] * (num_controls+1)
 		for control_index in range(0, num_controls+1):
-			self._load_lc(source_dir, self.filt, control_index=control_index, is_averaged=True)
+			if override_filename:
+				if control_index == 0:
+					filename = f'{source_dir}/{self.tnsname}.{self.filt}.{self.mjd_bin_size:0.2f}days.lc.txt'
+				else:
+					filename = f'{source_dir}/controls/{self.tnsname}_i{control_index:03d}.{self.filt}.{self.mjd_bin_size:0.2f}days.lc.txt'
+			else:
+				filename = source_dir
+			self._load_lc(filename, self.filt, control_index=control_index, is_averaged=True, override_filename=override_filename)
 
 	def get_valid_ix(self, control_index, valid_seasons):
-		"""valid_ix = []
-		for i in range(len(self.lcs[control_index].t)):
-			if in_valid_season(self.lcs[control_index].t.loc[i,'MJDbin'], valid_seasons):
-				valid_ix.append(i)
-		return valid_ix"""
 		return get_valid_ix(self.lcs[control_index].t, 'MJDbin', valid_seasons)
 
 	# clean rolling sum columns

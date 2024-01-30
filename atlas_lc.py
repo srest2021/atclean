@@ -124,13 +124,17 @@ class atlas_lc:
 				self._save_lc(output_dir, control_index, filt=filt, overwrite=overwrite, keep_empty_bins=keep_empty_bins)
 
 	# load a single light curve
-	def _load_lc(self, output_dir, filt, is_averaged=False, control_index=0):
+	def _load_lc(self, output_dir, filt, is_averaged=False, control_index=0, override_filename=False):
 		if (len(self.lcs) > 0) and self.is_averaged != is_averaged:
 			raise RuntimeError(f'ERROR: cannot load a light curve whose is_averaged status of {is_averaged} does not match previous status of {self.is_averaged}!')
 		self.is_averaged = is_averaged
 
 		self.lcs[control_index] = pdastrostatsclass()
-		self.lcs[control_index].load_spacesep(self.get_filename(filt, control_index, output_dir), delim_whitespace=True, hexcols=['Mask'])
+		if override_filename:
+			filename = output_dir
+		else:
+			filename = self.get_filename(filt, control_index, output_dir)
+		self.lcs[control_index].load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
 
 	# load SN light curve and, if necessary, control light curves for a certain filter
 	def _load(self, output_dir, filt, num_controls=0):
