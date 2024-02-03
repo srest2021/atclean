@@ -3,16 +3,16 @@
 
 ## Table of Contents
 - [Jupyter Notebooks](#jupyter-notebooks)
-	- [`clean_atlas_lc_v4.ipynb`](#clean_atlas_lc_v4ipynb) (for one SN, apply all cuts, correct for ATLAS template changes, and average light curve)
+	- [`clean_atlas_lc.ipynb`](#clean_atlas_lcipynb) (for one SN, apply all cuts, correct for ATLAS template changes, and average light curve)
     - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (standalone ATLAS template change correction)
 - [Python Scripts](#python-scripts)
     - [Quick setup in `settings.ini`](#quick-setup-in-settingsini)
     - [`download_atlas_lc.py`](#download_atlas_lcpy) (for one or more SNe, download light curves and, optionally, control light curves)
-    - [`clean_atlas_lc_v2.py`](#clean_atlas_lc_v2py) (for one or more SNe, apply all cuts and average light curves)
+    - [`clean_atlas_lc.py`](#clean_atlas_lcpy) (for one or more SNe, apply all cuts and average light curves)
 
 ## Jupyter Notebooks
 
-### `clean_atlas_lc_v4.ipynb`
+### `clean_atlas_lc.ipynb`
 #### Estimates true uncertainties, applies all cuts, averages light curves, and corrects for ATLAS template changes.
 Using previously downloaded SN and control light curves:
 - Apply uncertainty cut (flag: `0x2`)
@@ -96,7 +96,7 @@ In order to change the number of control light curves downloaded, replace `[gene
 - `download_atlas_lc.py 2019vxm -o -c` downloads full SN 2019vxm and control light curves (and saves & overwrites any old light curves)
 - `download_atlas_lc.py 2019vxm 2020lse -o -c` downloads full SN and control light curves for SN 2019vxm AND SN 2020lse (and saves & overwrites any old light curves)
 
-### `clean_atlas_lc_v2.py`
+### `clean_atlas_lc.py`
 #### Estimates true uncertainties, applies all cuts, and averages light curves.
 Using the default settings in `settings.ini` and previously downloaded SN and control light curves:
 - Apply uncertainty cut (`-u`) (flag: `0x2`)
@@ -125,8 +125,8 @@ The 'Mask' column in each cleaned light curves will contain hex values ("flags")
 - `-o` or `--overwrite`: overwrite existing light curves with the same filename
 
 **Example commands**:
-- `_clean_atlas_lc_v2.py 2019vxm -t -x -u -c -g -p -o` - corrects for ATLAS template changes, applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
-- `clean_atlas_lc_v2.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
+- `_clean_atlas_lc.py 2019vxm -t -x -u -c -g -p -o` - corrects for ATLAS template changes, applies chi-square, uncertainty, and control light curve cuts to SN 2019vxm and saves the light curves, averages the SN light curves and saves the averaged light curves, then saves plots of these cuts into PDF
+- `clean_atlas_lc.py 2019vxm -x -o` - applies ONLY chi-square cut to SN 2019vxm, then saves the light curves
 
 #### Uncertainty cut (`-u`) 
 The uncertainty cut, currently set to a default value of 160, cuts any measurements with an uncertainty $∂µJy$ > 160. To change, set the `[uncert_cut]` `cut` field in `settings.ini`.

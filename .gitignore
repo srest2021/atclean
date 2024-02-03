@@ -1,0 +1,8 @@
+__pycache__/
+*.zip
+.DS_Store
+archive/
+old/
+lc_lists/
+brightstars/
+.ipynb_checkpoints/
