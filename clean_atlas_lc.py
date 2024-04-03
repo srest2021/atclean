@@ -10,7 +10,7 @@ import numpy as np
 
 from pdastro import pdastrostatsclass, AandB, AnotB
 from atlas_lc import atlas_lc
-from plot_atlas_lc_v2 import PlotAtlasLightCurve
+from plot_atlas_lc import PlotAtlasLightCurve
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
