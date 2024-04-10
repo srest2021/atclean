@@ -92,6 +92,9 @@ class atlas_lc:
 
 	# save a single light curve
 	def _save_lc(self, output_dir, control_index=0, filt=None, overwrite=True, keep_empty_bins=True):
+		if not overwrite:
+			return
+		
 		if filt is None:
 			# split lc up by filt and save to two separate files
 			for filt_ in ['o','c']:
@@ -111,6 +114,9 @@ class atlas_lc:
 
 	# save SN light curve and, if necessary, control light curves
 	def _save(self, output_dir, filt=None, overwrite=True, keep_empty_bins=True):
+		if not overwrite:
+			return
+			
 		if len(self.lcs) < 1:
 			print('WARNING: No light curves to save! Skipping...')
 		else:
