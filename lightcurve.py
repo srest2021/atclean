@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from typing import Dict, Type
 import re, json, requests, time, sys, io, copy
 from astropy import units as u
@@ -108,12 +110,12 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
     print(json_data['data']['reply'])
     raise RuntimeError('ERROR in get_tns_json_data(): '+str(e))
 
-def query_atlas(token, ra, dec, min_mjd, max_mjd):
+def query_atlas(headers, ra, dec, min_mjd, max_mjd):
   baseurl = 'https://fallingstar-data.com/forcedphot'
   task_url = None
   while not task_url:
     with requests.Session() as s:
-      resp = s.post(f"{baseurl}/queue/",headers=token,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":min_mjd,"mjd_max":max_mjd})
+      resp = s.post(f"{baseurl}/queue/",headers=headers,data={'ra':ra,'dec':dec,'send_email':False,"mjd_min":min_mjd,"mjd_max":max_mjd})
       if resp.status_code == 201: 
         task_url = resp.json()['url']
         print(f'Task url: {task_url}')
@@ -141,7 +143,7 @@ def query_atlas(token, ra, dec, min_mjd, max_mjd):
   print('Waiting for job to start...')
   while not result_url:
     with requests.Session() as s:
-      resp = s.get(task_url, headers=token)
+      resp = s.get(task_url, headers=headers)
       if resp.status_code == 200: 
         if not(resp.json()['finishtimestamp'] is None):
           result_url = resp.json()['result_url']
@@ -165,10 +167,63 @@ def query_atlas(token, ra, dec, min_mjd, max_mjd):
       print('WARNING: Empty light curve (no data within this MJD range).')
       dfresult = pd.DataFrame(columns=['MJD','m','dm','uJy','duJy','F','err','chi/N','RA','Dec','x','y','maj','min','phi','apfit','Sky','ZP','Obs','Mask'])
     else:
-      result = s.get(result_url, headers=token).text
+      result = s.get(result_url, headers=headers).text
       dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), delim_whitespace=True)
   
   return dfresult
+
+# input/output table containing TNS names, RA, Dec, and discovery dates
+class SnInfo():
+  def __init__(self, output_dir, filename=None):
+    if filename is None:
+      self.filename = f'{output_dir}/sninfo.txt'
+    else:
+      self.filename = filename
+
+    try:
+      print(f'Loading SN info table at {self.filename}...')
+      self.t = pd.read_table(self.filename, delim_whitespace=True)
+      if not 'tnsname' in self.t.columns:
+        raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
+      print('Success')
+    except Exception as e:
+      if filename is None:
+        print(f'No existing SN info table; creating blank table...')
+        self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+      else:
+        raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
+
+  def get_row(self, tnsname):
+    if self.t.empty:
+      return None
+    
+    matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
+    if len(matching_ix) > 1:
+      raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}.')
+    if len(matching_ix) > 0:
+      return self.t.loc[matching_ix[0],:]
+    return None
+
+  def add_row(self, row):
+    if len(self.t) > 0:
+      matching_ix = np.where(self.t['tnsname'].eq(row['tnsname']))[0]
+      if len(matching_ix) > 1:
+        raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {row["tnsname"]}.')
+    
+      if len(matching_ix) > 0:
+        # update existing row
+        idx = matching_ix[0]
+        self.t.loc[idx,:] = row
+      else:
+        # new row
+        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+    else:
+      # new row
+      self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+  def save(self):
+    print(f'Saving SN info table at {self.filename}...')
+    self.t.to_string(self.filename)
   
 """
 LIGHT CURVES
@@ -227,7 +282,7 @@ class FullLightCurve:
     self.control_index = control_index
 
   # download the full light curve from ATLAS
-  def download(self, token, lookbacktime=None, max_mjd=None):
+  def download(self, headers, lookbacktime=None, max_mjd=None):
     if lookbacktime:
       min_mjd = 50000.0
     else:
@@ -243,7 +298,7 @@ class FullLightCurve:
     
     while(True):
       try:
-        result = query_atlas(self.coords.ra.degrees, self.coords.dec.degrees, token, min_mjd, max_mjd)
+        result = query_atlas(self.coords.ra.degrees, self.coords.dec.degrees, headers, min_mjd, max_mjd)
         break
       except Exception as e:
         print('Exception caught: '+str(e))
