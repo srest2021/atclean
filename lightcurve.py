@@ -1,5 +1,5 @@
 from typing import Dict, Type
-import re, json, requests, time, sys, io
+import re, json, requests, time, sys, io, copy
 from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
@@ -261,18 +261,18 @@ class FullLightCurve:
     lc.set_df(self.t)
 
     # sort data by mjd
-    self.t = self.t.sort_values(by=['MJD'],ignore_index=True)
+    lc.t = lc.t.sort_values(by=['MJD'],ignore_index=True)
 
     # remove rows with duJy=0 or uJy=NaN
     dflux_zero_ix = lc.ix_equal(colnames=['duJy'], val=0)
     flux_nan_ix = lc.ix_is_null(colnames=['uJy'])
     if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
       print(f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN...')
-      self.t = self.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
+      lc.t = lc.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
 
     for filt in ['o','c']:
       filename = get_filename(output_dir, tnsname, filt=filt, control_index=self.control_index)
-      indices = self.t.ix_equal(colnames=['F'], val=filt)
+      indices = lc.t.ix_equal(colnames=['F'], val=filt)
       print(f'Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}...')
       lc.save_by_filename(filename, indices=indices)
 
@@ -283,7 +283,7 @@ class LightCurve(pdastrostatsclass):
     self.control_index = control_index
 
   def set_df(self, t:pd.DataFrame):
-    self.t = t
+    self.t = copy.deepcopy(t)
 
   def load(self):
     pass
