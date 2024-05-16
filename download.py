@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-'''
-Code adapted from Qinan Wang and Armin Rest by Sofia Rest
-'''
 
 """
+Code adapted from Qinan Wang and Armin Rest by Sofia Rest
+
 Possible inputs:
 - .txt table with TNS names and either (RA, Dec, and discovery dates) or (TNS bot credentials)
 - list of TNS names in command line and either (.txt table with TNS names, RA, Dec, and discovery dates) or (TNS credentials)
@@ -40,7 +39,8 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 
 class DownloadLoop:
   def __init__(self, args):
-    pass
+    self.control_coords = None
+
 
   def connect_atlas(self):
     baseurl = 'https://fallingstar-data.com/forcedphot'

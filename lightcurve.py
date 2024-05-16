@@ -13,6 +13,9 @@ import pandas as pd
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20 
 
+# required columns for the script to work
+REQUIRED_COLUMN_NAMES = ['MJD', 'uJy', 'duJy']
+
 """
 UTILITY
 """
@@ -172,7 +175,8 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
   
   return dfresult
 
-# input/output table containing TNS names, RA, Dec, and discovery dates
+# input/output table containing TNS names, RA, Dec, and MJD0
+# (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
 class SnInfo():
   def __init__(self, output_dir, filename=None):
     if filename is None:
@@ -189,7 +193,7 @@ class SnInfo():
     except Exception as e:
       if filename is None:
         print(f'No existing SN info table; creating blank table...')
-        self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'discovery_date', 'closebright_ra', 'closebright_dec'])
+        self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0', 'closebright_ra', 'closebright_dec'])
       else:
         raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
 
@@ -230,11 +234,11 @@ LIGHT CURVES
 """
 
 class Supernova:
-  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, disc_date:float|None=None):
+  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None=None):
     self.tnsname = tnsname
     self.num_controls = 0
     self.coords:Coordinates = Coordinates(ra,dec)
-    self.disc_date = self.set_disc_date(disc_date)
+    self.mjd0 = mjd0 
 
     self.lcs: Dict[int, Type[LightCurve]] = {}
   
@@ -243,27 +247,24 @@ class Supernova:
       return self.lcs[control_index].t
     except: 
       raise RuntimeError(f'ERROR: Cannot get control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary.')
-  
-  def set_disc_date(self, disc_date:float):
-    self.disc_date = disc_date - DISC_DATE_BUFFER
 
   def get_tns_data(self, api_key, tns_id, bot_name):
-    if self.coords.is_empty() or self.disc_date is None:
+    if self.coords.is_empty() or self.mjd0 is None:
       json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
 
       if self.coords.is_empty():
         self.coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
       
-      if self.disc_date is None:
+      if self.mjd0 is None:
         disc_date = json_data['data']['reply']['discoverydate']
         date = list(disc_date.partition(' '))[0]
         time = list(disc_date.partition(' '))[2]
         date_object = Time(date+"T"+time, format='isot', scale='utc')
-        self.set_disc_date(date_object.mjd)
+        self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
 
 class AveragedSupernova(Supernova):
-  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, disc_date:float|None = None, mjdbinsize:float=1.0):
-    Supernova.__init__(self, tnsname, ra, dec, disc_date)
+  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None = None, mjdbinsize:float=1.0):
+    Supernova.__init__(self, tnsname, ra, dec, mjd0)
     self.mjdbinsize = mjdbinsize
 
     self.avg_lcs: Dict[int, Type[AveragedLightCurve]] = {}
@@ -333,18 +334,33 @@ class FullLightCurve:
 
 # contains either o-band or c-band measurements
 class LightCurve(pdastrostatsclass):
-  def __init__(self, control_index=0):
+  def __init__(self, control_index=0, filt='o'):
     pdastrostatsclass.__init__(self)
     self.control_index = control_index
+    self.filt = filt
 
   def set_df(self, t:pd.DataFrame):
     self.t = copy.deepcopy(t)
 
-  def load(self):
-    pass
+  def check_column_names(self):
+    if self.t is None:
+      return
+    
+    for column_name in REQUIRED_COLUMN_NAMES:
+      if not column_name in self.t.columns:
+        raise RuntimeError(f'Missing required column: {column_name}')
 
-  def save(self):
-    pass
+  def load(self, output_dir, tnsname):
+    filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
+    self.load_by_filename(filename)
+    self.check_column_names()
+
+  def load_by_filename(self, filename):
+    self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
+
+  def save(self, output_dir, tnsname, indices=None):
+    filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
+    self.save_by_filename(filename, indices=indices)
 
   def save_by_filename(self, filename, indices=None):
     self.t.write(filename=filename, indices=indices, overwrite=True, hexcols=['Mask'])
@@ -353,3 +369,12 @@ class AveragedLightCurve(LightCurve):
   def __init__(self, control_index=0, filt='o', mjdbinsize=1.0): 
     LightCurve.__init__(self, control_index, filt) 
     self.mjdbinsize = mjdbinsize
+
+  def load(self, output_dir, tnsname):
+    filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
+    self.load_by_filename(filename)
+    self.check_column_names()
+  
+  def save(self, output_dir, tnsname, indices=None):
+    filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
+    self.save_by_filename(filename, indices=indices)
