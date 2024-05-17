@@ -13,7 +13,7 @@ import pandas as pd
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20 
 
-# required columns for the script to work
+# required light curve column names for the script to work
 REQUIRED_COLUMN_NAMES = ['MJD', 'uJy', 'duJy']
 
 """
@@ -178,9 +178,9 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
 # input/output table containing TNS names, RA, Dec, and MJD0
 # (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
 class SnInfo():
-  def __init__(self, output_dir, filename=None):
+  def __init__(self, directory, filename=None):
     if filename is None:
-      self.filename = f'{output_dir}/sninfo.txt'
+      self.filename = f'{directory}/sninfo.txt'
     else:
       self.filename = filename
 
@@ -348,15 +348,15 @@ class LightCurve(pdastrostatsclass):
     
     for column_name in REQUIRED_COLUMN_NAMES:
       if not column_name in self.t.columns:
-        raise RuntimeError(f'Missing required column: {column_name}')
+        raise RuntimeError(f'ERROR: Missing required column: {column_name}')
 
   def load(self, output_dir, tnsname):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
     self.load_by_filename(filename)
-    self.check_column_names()
 
   def load_by_filename(self, filename):
     self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
+    self.check_column_names()
 
   def save(self, output_dir, tnsname, indices=None):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
@@ -373,7 +373,6 @@ class AveragedLightCurve(LightCurve):
   def load(self, output_dir, tnsname):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
     self.load_by_filename(filename)
-    self.check_column_names()
   
   def save(self, output_dir, tnsname, indices=None):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
