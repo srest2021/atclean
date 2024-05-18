@@ -35,11 +35,11 @@ def not_AandB(A,B):
 class RA:
   def __init__(self, string:str|None=None):
     self.string:str|None = string
-    self.degrees:u.degree|None = self.to_degrees()
+    self.degrees:u.degree = self.to_degrees()
 
   def to_degrees(self):
     if self.string is None:
-      return None
+      return np.nan
     
     s = re.compile('\:')
     if isinstance(self.string,str) and s.search(self.string):
@@ -54,11 +54,11 @@ class RA:
 class Dec:
   def __init__(self, string:str|None=None):
     self.string:str|None = string
-    self.degrees:u.degree|None = self.to_degrees()
+    self.degrees:u.degree = self.to_degrees()
 
   def to_degrees(self):
     if self.string is None:
-      return None
+      return np.nan
     
     A = Angle(self.string, u.degree)
     return A.degree
@@ -83,7 +83,7 @@ class Coordinates:
   def __str__(self):
     if self.is_empty():
       raise RuntimeError(f'ERROR: Coordinates are empty and cannot be printed.')
-    return f'RA {self.ra.degrees:0.8f}, Dec {self.dec.degrees:0.8f}'
+    return f'RA {self.ra.degrees:0.14f}, Dec {self.dec.degrees:0.14f}'
   
 def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None):
   filename = f'{output_dir}/{tnsname}'
@@ -227,6 +227,13 @@ class SnInfo():
       return matching_ix[0], self.t.loc[matching_ix[0],:]
     else:
       return -1, None
+    
+  def add_row_info(self, tnsname, coords:Coordinates=None, mjd0=None):
+    if mjd0 is None:
+      mjd0 = np.nan
+    row = {'tnsname':tnsname, 'ra':coords.ra.string, 'dec':coords.dec.string, 'mjd0':mjd0}
+    #row = {'tnsname':tnsname, 'ra':f'{coords.ra.degrees:0.14f}', 'dec':f'{coords.dec.degrees:0.14f}', 'mjd0':mjd0}
+    self.add_row(row)
 
   def add_row(self, row):
     if len(self.t) > 0:
@@ -247,10 +254,10 @@ class SnInfo():
 
   def save(self):
     print(f'Saving SN info table at {self.filename}...')
-    self.t.to_string(self.filename)
+    self.t.to_string(self.filename, index=False)
 
   def __str__(self):
-    print(self.t.to_string())
+    return self.t.to_string()
   
 """
 LIGHT CURVES
@@ -313,21 +320,21 @@ class FullLightCurve:
     self.control_index = control_index
 
   def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
-    if self.coords.is_empty() or self.mjd0 is None:
+    if self.coords.is_empty() or self.mjd0 is None or np.isnan(self.mjd0):
       print('Querying TNS for RA, Dec, and discovery date...')
       json_data = query_tns(tnsname, api_key, tns_id, bot_name)
 
       if self.coords.is_empty():
         self.coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
-        #print(f'Setting coordinates to TNS coordinates: {self.coords}')
+        print(f'Setting coordinates to TNS coordinates: {self.coords}')
       
-      if self.mjd0 is None:
+      if self.mjd0 is None or np.isnan(self.mjd0):
         disc_date = json_data['data']['reply']['discoverydate']
         date = list(disc_date.partition(' '))[0]
         time = list(disc_date.partition(' '))[2]
         date_object = Time(date+"T"+time, format='isot', scale='utc')
         self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
-        #print(f'Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}')
+        print(f'Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}')
 
   # download the full light curve from ATLAS
   def download(self, headers, lookbacktime=None, max_mjd=None):

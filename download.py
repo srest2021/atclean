@@ -14,8 +14,9 @@ Outputs:
 
 import os, sys, requests, argparse, configparser
 import pandas as pd
+import numpy as np
 from getpass import getpass
-from lightcurve import Coordinates, SnInfo, FullLightCurve
+from lightcurve import RA, Dec, Coordinates, SnInfo, FullLightCurve
 
 class ControlCoordinates:
   def __init__(self):
@@ -155,20 +156,15 @@ class DownloadLoop:
     # first try SN info table
     sninfo_index, sninfo_row = self.sninfo.get_row(tnsname)
     if not sninfo_row is None:
-      # TODO: FIX
       ra, dec, mjd0 = sninfo_row['ra'], sninfo_row['dec'], sninfo_row['mjd0']
-    
-      #print('got from sninfo: ',ra,dec,mjd0)
 
     # next try command line args
     if args.coords:
       ra, dec = self.split_arg_coords(args)
-      #print('got from cmd: ',ra,dec)
+      print(f'Setting coordinates to --coords argument: RA {ra}, Dec {dec}')
     if args.mjd0:
       mjd0 = args.mjd0
-      #print('got from cmd: ',mjd0)
-
-    #print(ra, dec, mjd0)
+      print(f'Setting MJD0 to --mjd0 argument: {mjd0} MJD')
     
     try:
       self.lcs[0] = FullLightCurve(0, ra, dec, mjd0)
@@ -182,10 +178,12 @@ class DownloadLoop:
                              self.credentials['tns_id'], 
                              self.credentials['tns_bot_name'])
     
+    # add final RA, Dec, MJD0 to SN info table
+    self.sninfo.add_row_info(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
     print(self.lcs[0])
   
   def download_lcs(self, args, headers, tnsname):
-    print(f'\nDOWNLOADING  ATLAS LIGHT CURVES FOR: SN {tnsname}')
+    print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}')
 
     self.lcs = {}
     try:
@@ -193,15 +191,13 @@ class DownloadLoop:
     except Exception as e:
       print(f'ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN...')
       return
-  
-    #self.ctrl_coords.construct(self.lcs[0].coords)
+    
+    self.ctrl_coords.construct(self.lcs[0].coords)
 
     # download SN light curves
     self.lcs[0].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
     self.lcs[0].save(self.output_dir, tnsname, overwrite=args.overwrite)
     self.sninfo.save()
-
-    sys.exit()
 
     # download control light curves
     for i in range(1, len(self.ctrl_coords.t)):
