@@ -48,6 +48,9 @@ class RA:
       A = Angle(self.string, u.degree)
     return A.degree
   
+  # def __str__(self):
+  #   return f'{self.degrees}'
+  
 class Dec:
   def __init__(self, string:str|None=None):
     self.string:str|None = string
@@ -59,6 +62,9 @@ class Dec:
     
     A = Angle(self.string, u.degree)
     return A.degree
+  
+  # def __str__(self):
+  #   return f'{self.degrees}'
   
 class Coordinates:
   def __init__(self, ra:str|None=None, dec:str|None=None):
@@ -77,7 +83,7 @@ class Coordinates:
   def __str__(self):
     if self.is_empty():
       raise RuntimeError(f'ERROR: Coordinates are empty and cannot be printed.')
-    return f'{self.ra.degrees:0.8f} {self.dec.degrees:0.8f}'
+    return f'RA {self.ra.degrees:0.8f}, Dec {self.dec.degrees:0.8f}'
   
 def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None):
   filename = f'{output_dir}/{tnsname}'
@@ -191,11 +197,8 @@ class SnInfo():
         raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
       print('Success')
     except Exception as e:
-      #if filename is None:
-        print(f'No existing SN info table at that path; creating blank table...')
-        self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0', 'closebright_ra', 'closebright_dec'])
-      #else:
-      #  raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
+      print(f'No existing SN info table at that path; creating blank table...')
+      self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0', 'closebright_ra', 'closebright_dec'])
 
   def get_index(self, tnsname):
     if self.t.empty:
@@ -245,6 +248,9 @@ class SnInfo():
   def save(self):
     print(f'Saving SN info table at {self.filename}...')
     self.t.to_string(self.filename)
+
+  def __str__(self):
+    print(self.t.to_string())
   
 """
 LIGHT CURVES
@@ -279,6 +285,9 @@ class Supernova:
         date_object = Time(date+"T"+time, format='isot', scale='utc')
         self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
 
+  def __str__(self):
+    return f'SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
+
 class AveragedSupernova(Supernova):
   def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None = None, mjdbinsize:float=1.0):
     Supernova.__init__(self, tnsname, ra, dec, mjd0)
@@ -292,6 +301,9 @@ class AveragedSupernova(Supernova):
     except:
       raise RuntimeError(f'Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.avg_lcs)} lcs in dictionary.')
 
+  def __str__(self):
+    return f'Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
+
 # will contain measurements from both filters (o-band and c-band)
 class FullLightCurve:
   def __init__(self, control_index=0, ra:str=None, dec:str=None, mjd0:float=None):
@@ -302,10 +314,12 @@ class FullLightCurve:
 
   def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
     if self.coords.is_empty() or self.mjd0 is None:
+      print('Querying TNS for RA, Dec, and discovery date...')
       json_data = query_tns(tnsname, api_key, tns_id, bot_name)
 
       if self.coords.is_empty():
         self.coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
+        #print(f'Setting coordinates to TNS coordinates: {self.coords}')
       
       if self.mjd0 is None:
         disc_date = json_data['data']['reply']['discoverydate']
@@ -313,6 +327,7 @@ class FullLightCurve:
         time = list(disc_date.partition(' '))[2]
         date_object = Time(date+"T"+time, format='isot', scale='utc')
         self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
+        #print(f'Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}')
 
   # download the full light curve from ATLAS
   def download(self, headers, lookbacktime=None, max_mjd=None):
@@ -324,14 +339,14 @@ class FullLightCurve:
     if not max_mjd:
       max_mjd = float(Time.now().mjd)
 
-    print(f'Downloading ATLAS light curve at coordinates {self.coords} from {min_mjd} - {max_mjd} MJD...')
+    print(f'Downloading ATLAS light curve at {self.coords} from {min_mjd} MJD to {max_mjd} MJD...')
 
     if min_mjd > max_mjd:
       raise RuntimeError(f'ERROR: max MJD {max_mjd} cannot be than min MJD {min_mjd}.')
     
     while(True):
       try:
-        result = query_atlas(self.coords.ra.degrees, self.coords.dec.degrees, headers, min_mjd, max_mjd)
+        result = query_atlas(headers, self.coords.ra.degrees, self.coords.dec.degrees, min_mjd, max_mjd)
         break
       except Exception as e:
         print('Exception caught: '+str(e))
@@ -341,7 +356,7 @@ class FullLightCurve:
     self.t = result
 
   # divide the light curve by filter and save into separate files
-  def save(self, output_dir, tnsname):
+  def save(self, output_dir, tnsname, overwrite=False):
     if self.t is None:
       raise RuntimeError('ERROR: Cannot save light curve that hasn\'t been downloaded yet.')
 
@@ -360,9 +375,12 @@ class FullLightCurve:
 
     for filt in ['o','c']:
       filename = get_filename(output_dir, tnsname, filt=filt, control_index=self.control_index)
-      indices = lc.t.ix_equal(colnames=['F'], val=filt)
+      indices = lc.ix_equal(colnames=['F'], val=filt)
       print(f'Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}...')
-      lc.save_by_filename(filename, indices=indices)
+      lc.save_by_filename(filename, indices=indices, overwrite=overwrite)
+
+  def __str__(self):
+    return f'Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}'
 
 # contains either o-band or c-band measurements
 class LightCurve(pdastrostatsclass):
@@ -390,12 +408,12 @@ class LightCurve(pdastrostatsclass):
     self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
     self.check_column_names()
 
-  def save(self, output_dir, tnsname, indices=None):
+  def save(self, output_dir, tnsname, indices=None, overwrite=False):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
-    self.save_by_filename(filename, indices=indices)
+    self.save_by_filename(filename, indices=indices, overwrite=overwrite)
 
-  def save_by_filename(self, filename, indices=None):
-    self.t.write(filename=filename, indices=indices, overwrite=True, hexcols=['Mask'])
+  def save_by_filename(self, filename, indices=None, overwrite=False):
+    self.write(filename=filename, indices=indices, overwrite=overwrite, hexcols=['Mask'])
 
 class AveragedLightCurve(LightCurve):
   def __init__(self, control_index=0, filt='o', mjdbinsize=1.0): 
@@ -406,6 +424,6 @@ class AveragedLightCurve(LightCurve):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
     self.load_by_filename(filename)
   
-  def save(self, output_dir, tnsname, indices=None):
+  def save(self, output_dir, tnsname, indices=None, overwrite=False):
     filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
-    self.save_by_filename(filename, indices=indices)
+    self.save_by_filename(filename, indices=indices, overwrite=overwrite)

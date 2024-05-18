@@ -64,7 +64,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
   
   # for control light curves
   parser.add_argument('-c','--controls', default=False, action='store_true', help='download control light curves in addition to transient light curve')
-  parser.add_argument('-n','--num_controls', default=None, type=float, help='number of control light curves per SN')
+  parser.add_argument('-n','--num_controls', default=None, type=int, help='number of control light curves per SN')
   parser.add_argument('-r','--radius', default=None, type=float, help='radius of control light curve circle pattern around SN')
   parser.add_argument('--ctrl_coords', type=str, default=None, help='file name of text file in atclean_input containing table of control light curve coordinates')
   #parser.add_argument('--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
@@ -77,15 +77,16 @@ class DownloadLoop:
     self.ctrl_coords = ControlCoordinates()
     self.overwrite = args.overwrite
 
-    config = self.load_config(args.config_file)
-
     self.tnsnames = args.tnsnames
     print(f'List of transients to download from ATLAS: {self.tnsnames}')
     if len(self.tnsnames) < 1:
       raise RuntimeError('ERROR: Please specify at least one TNS name to download.')
     if len(self.tnsnames) > 1 and (not args.coords is None or not args.mjd0 is None or not args.ctrl_coords is None):
       raise RuntimeError(f'ERROR: Cannot specify the same coordinates, MJD0, or control coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.')
+    
+    config = self.load_config(args.config_file)
     self.flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
+    print(f'Sigma limit when converting flux to magnitude : {self.flux2mag_sigmalimit}')
 
     # input/output directories
     self.input_dir = config["dir"]["atclean_input"]
@@ -98,11 +99,12 @@ class DownloadLoop:
       os.makedirs(self.output_dir)
     
     # SN info table
+    print()
     self.sninfo = SnInfo(self.input_dir, filename=config["dir"]["sninfo_filename"])
     
     # ATLAS and TNS credentials
     self.credentials = config["credentials"]
-    print(f'ATLAS username: {self.credentials["atlas_username"]}')
+    print(f'\nATLAS username: {self.credentials["atlas_username"]}')
     if self.credentials["atlas_password"]  == 'None':
       self.credentials["atlas_password"] = getpass(prompt='Enter ATLAS password: ')
     print(f'TNS ID: {self.credentials["tns_id"]}')
@@ -110,19 +112,19 @@ class DownloadLoop:
 
     # control light curves
     self.controls = bool(args.controls)
-    print(f'Download control light curves: {self.controls}')
+    print(f'\nDownload control light curves: {self.controls}')
     if self.controls:
       if args.ctrl_coords:
         self.ctrl_coords.read(args.ctrl_coords)
       else:
         self.ctrl_coords.radius = args.radius if args.radius else float(config["download"]["radius"])
         self.ctrl_coords.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-        print(f'Setting circle pattern of {self.ctrl_coords.num_controls} control light curves with radius of {self.ctrl_coords.radius}\"')
+        print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves with radius of {self.ctrl_coords.radius}\"')
 
   def load_config(self, config_file):
     cfg = configparser.ConfigParser()
     try:
-      print(f'Loading config file at {config_file}...')
+      print(f'\nLoading config file at {config_file}...')
       cfg.read(config_file)
     except Exception as e:
       raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
@@ -153,13 +155,20 @@ class DownloadLoop:
     # first try SN info table
     sninfo_index, sninfo_row = self.sninfo.get_row(tnsname)
     if not sninfo_row is None:
+      # TODO: FIX
       ra, dec, mjd0 = sninfo_row['ra'], sninfo_row['dec'], sninfo_row['mjd0']
     
+      #print('got from sninfo: ',ra,dec,mjd0)
+
     # next try command line args
     if args.coords:
       ra, dec = self.split_arg_coords(args)
+      #print('got from cmd: ',ra,dec)
     if args.mjd0:
       mjd0 = args.mjd0
+      #print('got from cmd: ',mjd0)
+
+    #print(ra, dec, mjd0)
     
     try:
       self.lcs[0] = FullLightCurve(0, ra, dec, mjd0)
@@ -172,22 +181,27 @@ class DownloadLoop:
                              self.credentials['tns_api_key'], 
                              self.credentials['tns_id'], 
                              self.credentials['tns_bot_name'])
+    
+    print(self.lcs[0])
   
   def download_lcs(self, args, headers, tnsname):
     print(f'\nDOWNLOADING  ATLAS LIGHT CURVES FOR: SN {tnsname}')
 
     self.lcs = {}
-    
     try:
       self.construct_full_lc(args, tnsname)
     except Exception as e:
       print(f'ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN...')
       return
-    
-    self.ctrl_coords.construct(self.lcs[0].coords)
+  
+    #self.ctrl_coords.construct(self.lcs[0].coords)
 
     # download SN light curves
-    self.lcs[0].download(headers, args.lookbacktime, args.max_mjd)
+    self.lcs[0].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
+    self.lcs[0].save(self.output_dir, tnsname, overwrite=args.overwrite)
+    self.sninfo.save()
+
+    sys.exit()
 
     # download control light curves
     for i in range(1, len(self.ctrl_coords.t)):
@@ -195,7 +209,8 @@ class DownloadLoop:
                                    self.ctrl_coords.t['ra'], 
                                    self.ctrl_coords.t['dec'], 
                                    self.ctrl_coords.t['mjd0'])
-      self.lcs[i].download(headers, args.lookbacktime, args.max_mjd)
+      self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
+      self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')
