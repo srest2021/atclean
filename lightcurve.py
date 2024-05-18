@@ -100,7 +100,7 @@ def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None
 
 def query_tns(tnsname, api_key, tns_id, bot_name):
   if tns_id == 'None' or bot_name == 'None':
-      raise RuntimeError('Cannot query TNS without TNS ID and bot name. Please specify these parameters in settings.ini.')
+      raise RuntimeError('ERROR: Cannot query TNS without TNS ID and bot name. Please specify these parameters in settings.ini.')
   
   try:
     url = 'https://www.wis-tns.org/api/get/object'
@@ -111,7 +111,7 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
     return json_data
   except Exception as e:
     print(json_data['data']['reply'])
-    raise RuntimeError('ERROR in get_tns_json_data(): '+str(e))
+    raise RuntimeError('ERROR in query_tns(): '+str(e))
 
 def query_atlas(headers, ra, dec, min_mjd, max_mjd):
   baseurl = 'https://fallingstar-data.com/forcedphot'
@@ -197,16 +197,33 @@ class SnInfo():
       #else:
       #  raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
 
-  def get_row(self, tnsname):
+  def get_index(self, tnsname):
     if self.t.empty:
-      return None
+      return -1
     
     matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
-    if len(matching_ix) > 1:
-      raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}.')
-    if len(matching_ix) > 0:
-      return self.t.loc[matching_ix[0],:]
-    return None
+    if len(matching_ix) >= 2:
+      print(f'WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows...')
+      self.t.drop(matching_ix[1:], inplace=True)
+      return matching_ix[0]
+    elif len(matching_ix) == 1:
+      return matching_ix[0]
+    else:
+      return -1
+
+  def get_row(self, tnsname):
+    if self.t.empty:
+      return -1, None
+    
+    matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
+    if len(matching_ix) >= 2:
+      print(f'WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows...')
+      self.t.drop(matching_ix[1:], inplace=True)
+      return matching_ix[0], self.t.loc[matching_ix[0],:]
+    elif len(matching_ix) == 1:
+      return matching_ix[0], self.t.loc[matching_ix[0],:]
+    else:
+      return -1, None
 
   def add_row(self, row):
     if len(self.t) > 0:
@@ -277,17 +294,32 @@ class AveragedSupernova(Supernova):
 
 # will contain measurements from both filters (o-band and c-band)
 class FullLightCurve:
-  def __init__(self, control_index=0, ra:str=None, dec:str=None):
+  def __init__(self, control_index=0, ra:str=None, dec:str=None, mjd0:float=None):
     self.t = None
+    self.mjd0 = mjd0
     self.coords = Coordinates(ra,dec)
     self.control_index = control_index
+
+  def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
+    if self.coords.is_empty() or self.mjd0 is None:
+      json_data = query_tns(tnsname, api_key, tns_id, bot_name)
+
+      if self.coords.is_empty():
+        self.coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
+      
+      if self.mjd0 is None:
+        disc_date = json_data['data']['reply']['discoverydate']
+        date = list(disc_date.partition(' '))[0]
+        time = list(disc_date.partition(' '))[2]
+        date_object = Time(date+"T"+time, format='isot', scale='utc')
+        self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
 
   # download the full light curve from ATLAS
   def download(self, headers, lookbacktime=None, max_mjd=None):
     if lookbacktime:
-      min_mjd = 50000.0
-    else:
       min_mjd = float(Time.now().mjd - lookbacktime)
+    else:
+      min_mjd = 50000.0
     
     if not max_mjd:
       max_mjd = float(Time.now().mjd)

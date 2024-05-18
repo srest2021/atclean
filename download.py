@@ -54,7 +54,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
   parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
   parser.add_argument('--config_file', default='config.ini', type=str, help='file name of ini file with settings for this class')
   parser.add_argument('-l', '--lookbacktime', default=None, type=int, help='lookback time (MJD)')
-  parser.add_argument('--min_mjd', default=None, type=float, help='minimum MJD to download')
+  #parser.add_argument('--min_mjd', default=None, type=float, help='minimum MJD to download')
   parser.add_argument('--max_mjd', default=None, type=float, help='maximum MJD to download')
   parser.add_argument('-o','--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
 
@@ -115,45 +115,9 @@ class DownloadLoop:
       if args.ctrl_coords:
         self.ctrl_coords.read(args.ctrl_coords)
       else:
-        #radius = args.radius if args.radius else float(config["download"]["radius"])
-        #num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-        #print(f'Setting circle pattern of {num_controls} control light curves with radius of {radius}\"')
         self.ctrl_coords.radius = args.radius if args.radius else float(config["download"]["radius"])
         self.ctrl_coords.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
         print(f'Setting circle pattern of {self.ctrl_coords.num_controls} control light curves with radius of {self.ctrl_coords.radius}\"')
-        #self.ctrl_coords.construct(, num_controls, radius)
-
-    """if args.coords:
-      parsed_coords = [coord.strip() for coord in args.coords.split(",")]
-      if len(parsed_coords) > 2:
-        raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy.')
-      if len(parsed_coords) < 2:
-        raise RuntimeError('ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec.')
-      self.settings["coords"] = Coordinates(parsed_coords[0], parsed_coords[1])
-    
-    if args.mjd0:
-      self.settings["mjd0"] = float(args.mjd0)
-
-    if args.lookbacktime:
-      self.settings["lookbacktime"] = float(args.lookbacktime)
-
-    # control light curves
-    self.controls = False
-    if bool(args.controls):
-      self.controls = True
-      print(f'Downloading control light curves: {self.controls}')
-      if args.ctrl_coords:
-        self.settings['ctrl_coords'] = args.ctrl_coords
-      else:
-        self.settings['num_controls'] = int(config["download"]["num_controls"])
-        self.settings['radius'] = float(config["download"]["radius"])
-        self.settings['flux2mag_sigmalimit'] = float(config["download"]["flux2mag_sigmalimit"])
-
-        # TODO: closebright arguments
-    else:
-      if args.ctrl_coords:
-        print(f'WARNING: In order to download control light curves using the coordinates in {args.ctrl_coords}, use the -c argument')
-"""
 
   def load_config(self, config_file):
     cfg = configparser.ConfigParser()
@@ -163,14 +127,6 @@ class DownloadLoop:
     except Exception as e:
       raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
     return cfg
-    
-  def get_arg_coords(self, args):
-    parsed_coords = [coord.strip() for coord in args.coords.split(",")]
-    if len(parsed_coords) > 2:
-      raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy.')
-    if len(parsed_coords) < 2:
-      raise RuntimeError('ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec.')
-    return Coordinates(parsed_coords[0], parsed_coords[1])
 
   def connect_atlas(self):
     baseurl = 'https://fallingstar-data.com/forcedphot'
@@ -182,12 +138,73 @@ class DownloadLoop:
     else:
       raise RuntimeError(f'ERROR in connect_atlas(): {resp.status_code}')
     return headers
+  
+  def split_arg_coords(self, args):
+    parsed_coords = [coord.strip() for coord in args.coords.split(",")]
+    if len(parsed_coords) > 2:
+      raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy.')
+    if len(parsed_coords) < 2:
+      raise RuntimeError('ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec.')
+    return parsed_coords[0], parsed_coords[1]
+  
+  def construct_full_lc(self, args, tnsname):
+    ra, dec, mjd0 = None, None, None
+    
+    # first try SN info table
+    sninfo_index, sninfo_row = self.sninfo.get_row(tnsname)
+    if not sninfo_row is None:
+      ra, dec, mjd0 = sninfo_row['ra'], sninfo_row['dec'], sninfo_row['mjd0']
+    
+    # next try command line args
+    if args.coords:
+      ra, dec = self.split_arg_coords(args)
+    if args.mjd0:
+      mjd0 = args.mjd0
+    
+    try:
+      self.lcs[0] = FullLightCurve(0, ra, dec, mjd0)
+    except Exception as e:
+      print(f'WARNING: Could not construct light curve object with RA {ra}, Dec {dec}, and MJD0 {mjd0}: {str(e)}.')
+      self.lcs[0] = FullLightCurve(0)
+    
+    # try to query TNS for any missing data
+    self.lcs[0].get_tns_data(tnsname, 
+                             self.credentials['tns_api_key'], 
+                             self.credentials['tns_id'], 
+                             self.credentials['tns_bot_name'])
+  
+  def download_lcs(self, args, headers, tnsname):
+    print(f'\nDOWNLOADING  ATLAS LIGHT CURVES FOR: SN {tnsname}')
+
+    self.lcs = {}
+    
+    try:
+      self.construct_full_lc(args, tnsname)
+    except Exception as e:
+      print(f'ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN...')
+      return
+    
+    self.ctrl_coords.construct(self.lcs[0].coords)
+
+    # download SN light curves
+    self.lcs[0].download(headers, args.lookbacktime, args.max_mjd)
+
+    # download control light curves
+    for i in range(1, len(self.ctrl_coords.t)):
+      self.lcs[i] = FullLightCurve(i, 
+                                   self.ctrl_coords.t['ra'], 
+                                   self.ctrl_coords.t['dec'], 
+                                   self.ctrl_coords.t['mjd0'])
+      self.lcs[i].download(headers, args.lookbacktime, args.max_mjd)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')
     headers = self.connect_atlas()
     if headers is None: 
       raise RuntimeError('ERROR: No token header!')
+    
+    for obj_index in range(len(args.tnsnames)):
+      self.download_lcs(args, headers, args.tnsnames[obj_index])      
     
 if __name__ == "__main__":
   args = define_args().parse_args()
