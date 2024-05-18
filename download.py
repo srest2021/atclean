@@ -12,10 +12,39 @@ Outputs:
 - if using TNS credentials, new or updated .txt table with TNS names, RA, Dec, and MJD0
 """
 
-import requests, argparse, json
+import os, sys, requests, argparse, configparser
 import pandas as pd
 from getpass import getpass
 from lightcurve import Coordinates, SnInfo, FullLightCurve
+
+class ControlCoordinates:
+  def __init__(self):
+    self.num_controls = None
+    self.radius = None
+    self.t = None
+
+  def read(self, filename:str):
+    try:
+      print(f'Loading control coordinates table at {filename}...')
+      self.t = pd.read_table(filename, delim_whitespace=True)
+      if not 'ra' in self.t.columns or not 'dec' in self.t.columns:
+        raise RuntimeError('ERROR: Control coordinates table must have "ra" and "dec" columns.')
+      print('Success')
+    except Exception as e:
+        raise RuntimeError(f'ERROR: Could not load control coordinates table at {filename}: {str(e)}')
+
+  def construct(self, center_coords:Coordinates, num_controls:int=None, radius:float=None):
+    if num_controls:
+      self.num_controls = num_controls
+    if radius:
+      self.radius = radius
+    
+    self.t = pd.DataFrame(columns=['control_index','ra','dec'])
+    # TODO
+
+  def save(self):
+    pass
+    # TODO
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -44,10 +73,11 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 
 class DownloadLoop:
   def __init__(self, args):
-    self.control_coords = None
+    self.lcs = {}
+    self.ctrl_coords = ControlCoordinates()
     self.overwrite = args.overwrite
 
-    config = self.load_config(args)
+    config = self.load_config(args.config_file)
 
     self.tnsnames = args.tnsnames
     print(f'List of transients to download from ATLAS: {self.tnsnames}')
@@ -62,6 +92,10 @@ class DownloadLoop:
     self.output_dir = config["dir"]["output"]
     print(f'ATClean input directory: {self.input_dir}')
     print(f'Output directory: {self.output_dir}')
+    if not os.path.isdir(self.input_dir):
+      os.makedirs(self.input_dir)
+    if not os.path.isdir(self.output_dir):
+      os.makedirs(self.output_dir)
     
     # SN info table
     self.sninfo = SnInfo(self.input_dir, filename=config["dir"]["sninfo_filename"])
@@ -76,14 +110,18 @@ class DownloadLoop:
 
     # control light curves
     self.controls = bool(args.controls)
-    print(f'Downloading control light curves: {self.controls}')
+    print(f'Download control light curves: {self.controls}')
     if self.controls:
       if args.ctrl_coords:
-        pass
+        self.ctrl_coords.read(args.ctrl_coords)
       else:
-        self.radius = args.radius if args.radius else float(config["download"]["radius"])
-        self.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-        print(f'Getting circle pattern of {self.num_controls} control light curves with radius of {self.radius}\"')
+        #radius = args.radius if args.radius else float(config["download"]["radius"])
+        #num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
+        #print(f'Setting circle pattern of {num_controls} control light curves with radius of {radius}\"')
+        self.ctrl_coords.radius = args.radius if args.radius else float(config["download"]["radius"])
+        self.ctrl_coords.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
+        print(f'Setting circle pattern of {self.ctrl_coords.num_controls} control light curves with radius of {self.ctrl_coords.radius}\"')
+        #self.ctrl_coords.construct(, num_controls, radius)
 
     """if args.coords:
       parsed_coords = [coord.strip() for coord in args.coords.split(",")]
@@ -116,9 +154,15 @@ class DownloadLoop:
       if args.ctrl_coords:
         print(f'WARNING: In order to download control light curves using the coordinates in {args.ctrl_coords}, use the -c argument')
 """
-  def load_config(self, args):
-    with open(args.config_file) as config_file:
-      return json.load(config_file)
+
+  def load_config(self, config_file):
+    cfg = configparser.ConfigParser()
+    try:
+      print(f'Loading config file at {config_file}...')
+      cfg.read(config_file)
+    except Exception as e:
+      raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
+    return cfg
     
   def get_arg_coords(self, args):
     parsed_coords = [coord.strip() for coord in args.coords.split(",")]
@@ -130,7 +174,7 @@ class DownloadLoop:
 
   def connect_atlas(self):
     baseurl = 'https://fallingstar-data.com/forcedphot'
-    resp = requests.post(url=f"{baseurl}/api-token-auth/",data={'username':self.username,'password':self.password})
+    resp = requests.post(url=f"{baseurl}/api-token-auth/",data={'username':self.credentials['atlas_username'],'password':self.credentials['atlas_password']})
     if resp.status_code == 200:
       token = resp.json()['token']
       print(f'Token: {token}')
@@ -140,7 +184,7 @@ class DownloadLoop:
     return headers
 
   def loop(self, args):
-    print('Connecting to ATLAS API...')
+    print('\nConnecting to ATLAS API...')
     headers = self.connect_atlas()
     if headers is None: 
       raise RuntimeError('ERROR: No token header!')

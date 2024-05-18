@@ -37,7 +37,7 @@ class RA:
     self.string:str|None = string
     self.degrees:u.degree|None = self.to_degrees()
 
-  def to_degrees(self) -> u.degree|None:
+  def to_degrees(self):
     if self.string is None:
       return None
     
@@ -53,7 +53,7 @@ class Dec:
     self.string:str|None = string
     self.degrees:u.degree|None = self.to_degrees()
 
-  def to_degrees(self) -> u.degree|None:
+  def to_degrees(self):
     if self.string is None:
       return None
     
@@ -182,7 +182,7 @@ class SnInfo():
     if filename is None:
       self.filename = f'{directory}/sninfo.txt'
     else:
-      self.filename = filename
+      self.filename = f'{directory}/{filename}'
 
     try:
       print(f'Loading SN info table at {self.filename}...')
@@ -191,11 +191,11 @@ class SnInfo():
         raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
       print('Success')
     except Exception as e:
-      if filename is None:
-        print(f'No existing SN info table; creating blank table...')
+      #if filename is None:
+        print(f'No existing SN info table at that path; creating blank table...')
         self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0', 'closebright_ra', 'closebright_dec'])
-      else:
-        raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
+      #else:
+      #  raise RuntimeError(f'ERROR: Could not load SN info table at {self.filename}: {str(e)}')
 
   def get_row(self, tnsname):
     if self.t.empty:
