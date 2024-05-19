@@ -78,7 +78,7 @@ class Coordinates:
   def __str__(self):
     if self.is_empty():
       raise RuntimeError(f'ERROR: Coordinates are empty and cannot be printed.')
-    return f'RA {self.ra.degree:0.14f}, Dec {self.dec.degree:0.14f}'
+    return f'RA {self.ra.angle.degree:0.14f}, Dec {self.dec.angle.degree:0.14f}'
   
 def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None):
   filename = f'{output_dir}/{tnsname}'
@@ -178,7 +178,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
 
 # input/output table containing TNS names, RA, Dec, and MJD0
 # (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
-class SnInfo():
+class SnInfoTable():
   def __init__(self, directory, filename=None):
     if filename is None:
       self.filename = f'{directory}/sninfo.txt'
@@ -227,7 +227,7 @@ class SnInfo():
     if mjd0 is None:
       mjd0 = np.nan
     #row = {'tnsname':tnsname, 'ra':coords.ra.string, 'dec':coords.dec.string, 'mjd0':mjd0}
-    row = {'tnsname':tnsname, 'ra':f'{coords.ra.degree:0.14f}', 'dec':f'{coords.dec.degree:0.14f}', 'mjd0':mjd0}
+    row = {'tnsname':tnsname, 'ra':f'{coords.ra.angle.degree:0.14f}', 'dec':f'{coords.dec.angle.degree:0.14f}', 'mjd0':mjd0}
     self.add_row(row)
 
   def add_row(self, row):
@@ -348,7 +348,7 @@ class FullLightCurve:
     
     while(True):
       try:
-        result = query_atlas(headers, self.coords.ra.degree, self.coords.dec.degree, min_mjd, max_mjd)
+        result = query_atlas(headers, self.coords.ra.angle.degree, self.coords.dec.angle.degree, min_mjd, max_mjd)
         break
       except Exception as e:
         print('Exception caught: '+str(e))
@@ -357,10 +357,10 @@ class FullLightCurve:
         continue
     self.t = result
 
-  def get_filt_lens(self, control_index=0):
-    total_len = len(self.lcs[control_index].t)
-    o_len = len(np.where(self.lcs[control_index]['F'] == 'o')[0])
-    c_len = len(np.where(self.lcs[control_index]['F'] == 'c')[0])
+  def get_filt_lens(self):
+    total_len = len(self.t)
+    o_len = len(np.where(self.t['F'] == 'o')[0])
+    c_len = len(np.where(self.t['F'] == 'c')[0])
     return total_len, o_len, c_len
 
   # divide the light curve by filter and save into separate files

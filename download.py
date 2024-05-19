@@ -19,18 +19,13 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import Coordinates, SnInfo, FullLightCurve
+from lightcurve import Coordinates, SnInfoTable, FullLightCurve
 
 """
 UTILITY
 """
 
-def get_distance(coord1:Coordinates, coord2:Coordinates) -> Angle:
-  c1 = SkyCoord(coord1.ra.angle.degree, coord1.dec.angle.degree, frame='fk5')
-  c2 = SkyCoord(coord2.ra.angle.degree, coord2.dec.angle.degree, frame='fk5')
-  return c1.separation(c2)
-
-class ControlCoordinates:
+class ControlCoordinatesTable:
   def __init__(self):
     self.num_controls = None
     self.radius = None
@@ -72,15 +67,20 @@ class ControlCoordinates:
       'control_index': control_index,
       'ra': f'{coords.ra.angle.degree:0.14f}',
       'dec': f'{coords.dec.angle.degree:0.14f}',
-      'ra_offset': 0 if ra_offset == 0 else f'{ra_offset.degree:0.14f}',
-      'dec_offset': 0 if dec_offset == 0 else f'{dec_offset.degree:0.14f}',
-      'radius_arcsec': 0 if radius == 0 else radius.arcsecond,
+      'ra_offset': f'{ra_offset.degree:0.14f}' if isinstance(ra_offset, Angle) else ra_offset,
+      'dec_offset': f'{dec_offset.degree:0.14f}' if isinstance(dec_offset, Angle) else dec_offset,
+      'radius_arcsec': radius.arcsecond if isinstance(radius, Angle) else radius,
       'n_detec': n_detec,
       'n_detec_o': n_detec_o,
       'n_detec_c': n_detec_c
     }
     
     self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+  def get_distance(self, coord1:Coordinates, coord2:Coordinates) -> Angle:
+    c1 = SkyCoord(coord1.ra.angle, coord1.dec.angle, frame='fk5')
+    c2 = SkyCoord(coord2.ra.angle, coord2.dec.angle, frame='fk5')
+    return c1.separation(c2)
 
   def construct_row(self, i:int, sn_coords:Coordinates, center_coords:Coordinates, r:Angle, closebright=False):
     angle = Angle(i*360.0 / self.num_controls, u.degree)
@@ -97,7 +97,7 @@ class ControlCoordinates:
     coords.dec.angle = dec
 
     if closebright: # check to see if control light curve location is within minimum distance from SN location
-      offset_sep = get_distance(sn_coords, coords).arcsecond
+      offset_sep = self.get_distance(sn_coords, coords).arcsecond
       if offset_sep < self.closebright_min_dist:
         print(f'Control light curve {i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
         return
@@ -116,7 +116,7 @@ class ControlCoordinates:
     total_len, o_len, c_len = full_sn_lc.get_filt_lens()
     if closebright:
       # circle pattern radius is distance between SN and bright object
-      r = get_distance(full_sn_lc.coords, center_coords)
+      r = self.get_distance(full_sn_lc.coords, center_coords)
 
       self.add_row(tnsname, 0, full_sn_lc.coords, ra_offset=np.nan, dec_offset=np.nan, radius=r, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
     else:
@@ -174,7 +174,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 class DownloadLoop:
   def __init__(self, args):
     self.lcs: Dict[int, Type[FullLightCurve]] = {}
-    self.ctrl_coords = ControlCoordinates()
+    self.ctrl_coords = ControlCoordinatesTable()
 
     self.tnsnames = args.tnsnames
     print(f'List of transients to download from ATLAS: {self.tnsnames}')
@@ -206,7 +206,7 @@ class DownloadLoop:
     
     # SN info table
     print()
-    self.sninfo = SnInfo(self.input_dir, filename=config["dir"]["sninfo_filename"])
+    self.sninfo = SnInfoTable(self.input_dir, filename=config["dir"]["sninfo_filename"])
     
     # ATLAS and TNS credentials
     self.credentials = config["credentials"]
@@ -250,8 +250,8 @@ class DownloadLoop:
       raise RuntimeError(f'ERROR in connect_atlas(): {resp.status_code}')
     return headers
   
-  def split_arg_coords(self, args):
-    parsed_coords = [coord.strip() for coord in args.coords.split(",")]
+  def split_arg_coords(self, arg_coords):
+    parsed_coords = [coord.strip() for coord in arg_coords.split(",")]
     if len(parsed_coords) > 2:
       raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy.')
     if len(parsed_coords) < 2:
@@ -268,7 +268,7 @@ class DownloadLoop:
 
     # next try command line args
     if args.coords:
-      ra, dec = self.split_arg_coords(args)
+      ra, dec = self.split_arg_coords(args.coords)
       print(f'Setting coordinates to --coords argument: RA {ra}, Dec {dec}')
     if args.mjd0:
       mjd0 = args.mjd0
@@ -288,7 +288,6 @@ class DownloadLoop:
     
     # add final RA, Dec, MJD0 to SN info table
     self.sninfo.add_row_info(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
-    print(self.lcs[0])
   
   def download_lcs(self, args, headers, tnsname):
     print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}')
@@ -317,20 +316,20 @@ class DownloadLoop:
       else:
         self.ctrl_coords.construct(self.lcs[0], tnsname, self.lcs[0].coords, closebright=False)
 
-    if args.controls:
-      # download control light curves
-      for i in range(1, len(self.ctrl_coords.t)):
-        print(f'\nControl light curve {i}')
-        self.lcs[i] = FullLightCurve(i, 
-                                    self.ctrl_coords.t['ra'], 
-                                    self.ctrl_coords.t['dec'], 
-                                    self.ctrl_coords.t['mjd0'])
-        self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
-        self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
-        self.ctrl_coords.update_row(i, self.lcs[i])
+    # if args.controls:
+    #   # download control light curves
+    #   for i in range(1, len(self.ctrl_coords.t)):
+    #     print(f'\nControl light curve {i}')
+    #     self.lcs[i] = FullLightCurve(i, 
+    #                                 self.ctrl_coords.t['ra'], 
+    #                                 self.ctrl_coords.t['dec'], 
+    #                                 self.ctrl_coords.t['mjd0'])
+    #     self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
+    #     self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
+    #     self.ctrl_coords.update_row(i, self.lcs[i])
 
       # save control coordinates table
-      self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
+    self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')

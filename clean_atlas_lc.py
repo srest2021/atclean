@@ -237,12 +237,12 @@ class CleanAtlasLightCurve(atlas_lc):
 			ix = lc_temp.t.index.values
 		good_ix, bad_ix = self._get_goodbad_ix(lc_temp, ix, self.cfg['x2_cut_params']['stn_cut'])
 		limcuts = self._get_limcuts_table(lc_temp, 
-										  ix, 
-										  good_ix, 
-										  bad_ix, 
-										  self.cfg['x2_cut_params']['cut_start'], 
-										  self.cfg['x2_cut_params']['cut_stop'],
-										  self.cfg['x2_cut_params']['cut_step'])
+											ix, 
+											good_ix, 
+											bad_ix, 
+											self.cfg['x2_cut_params']['cut_start'], 
+											self.cfg['x2_cut_params']['cut_stop'],
+											self.cfg['x2_cut_params']['cut_step'])
 		print('Success')
 
 		data = self._get_limcuts_data(lc_temp, self.cfg['x2_cut'], ix, good_ix, bad_ix)
@@ -326,11 +326,11 @@ class CleanAtlasLightCurve(atlas_lc):
 
 		# copy over SN's control cut flags to control light curve 'Mask' column
 		flags_arr = np.full(self.lcs[0].t['Mask'].shape, (flags['controls_bad']|
-														  flags['controls_questionable']|
-														  flags['controls_x2']|
-														  flags['controls_stn']|
-														  flags['controls_Nclip']|
-														  flags['controls_Ngood']))
+															flags['controls_questionable']|
+															flags['controls_x2']|
+															flags['controls_stn']|
+															flags['controls_Nclip']|
+															flags['controls_Ngood']))
 		flags_to_copy = np.bitwise_and(self.lcs[0].t['Mask'], flags_arr)
 		for control_index in range(1,self.num_controls+1):
 			self.lcs[control_index].t['Mask'] = self.lcs[control_index].t['Mask'].astype(np.int32)
@@ -346,17 +346,17 @@ class CleanAtlasLightCurve(atlas_lc):
 		len_ix = len(self.get_ix())
 		output = []
 		output.append('Percent of data above x2_max bound (%s): %0.2f%%' 
-		   % (hex(flags['controls_x2']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_x2'])) / len_ix))
+			 % (hex(flags['controls_x2']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_x2'])) / len_ix))
 		output.append('Percent of data above stn_max bound (%s): %0.2f%%' 
-		   % (hex(flags['controls_stn']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_stn'])) / len_ix))
+			 % (hex(flags['controls_stn']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_stn'])) / len_ix))
 		output.append('Percent of data above Nclip_max bound (%s): %0.2f%%' 
-		   % (hex(flags['controls_Nclip']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Nclip'])) / len_ix))
+			 % (hex(flags['controls_Nclip']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Nclip'])) / len_ix))
 		output.append('Percent of data below Ngood_min bound (%s): %0.2f%%' 
-		   % (hex(flags['controls_Ngood']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Ngood'])) / len_ix))
+			 % (hex(flags['controls_Ngood']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_Ngood'])) / len_ix))
 		output.append('Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) (%s): %0.2f%%' 
-		   % (hex(flags['controls_questionable']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable'])) / len_ix))
+			 % (hex(flags['controls_questionable']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_questionable'])) / len_ix))
 		output.append('Total percent of data flagged as bad (%s): %0.2f%%' 
-		   % (hex(flags['controls_bad']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_bad'])) / len_ix))
+			 % (hex(flags['controls_bad']), 100 * len(self.lcs[0].ix_masked('Mask',maskval=flags['controls_bad'])) / len_ix))
 		print('# Control light curve cut results:')
 		print('\n'.join(f'## {s}' for s in output))
 		print('Success')
@@ -364,7 +364,7 @@ class CleanAtlasLightCurve(atlas_lc):
 	
 	def apply_controls_cut(self, flags):
 		return self._apply_controls_cut(flags, 
-								  		self.cfg['controls_cut_params']['x2_max'],
+											self.cfg['controls_cut_params']['x2_max'],
 										self.cfg['controls_cut_params']['stn_max'],
 										self.cfg['controls_cut_params']['Nclip_max'],
 										self.cfg['controls_cut_params']['Ngood_min'])
@@ -383,8 +383,8 @@ class CleanAtlasLightCurve(atlas_lc):
 		while mjd <= mjd_max:
 			range_ix = self.lcs[control_index].ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjd_bin_size, exclude_uplim=True)
 			range_good_ix = self.lcs[control_index].ix_unmasked('Mask', 
-													   maskval=flags['chisquare']|flags['uncertainty']|flags['controls_bad'], 
-													   indices=range_ix) #AandB(good_ix,range_ix)
+														 maskval=flags['chisquare']|flags['uncertainty']|flags['controls_bad'], 
+														 indices=range_ix) #AandB(good_ix,range_ix)
 
 			# add new row to averaged light curve
 			new_row = {'MJDbin':mjd+0.5*mjd_bin_size, 'Nclip':0, 'Ngood':0, 'Nexcluded':len(range_ix)-len(range_good_ix), 'Mask':0}
@@ -409,13 +409,13 @@ class CleanAtlasLightCurve(atlas_lc):
 
 				# add row and flag
 				avglc.lcs[control_index].add2row(avglc_index, {'MJD':avg_mjd, 
-															   'uJy':fluxstatparams['mean'] if not fluxstatparams['mean'] is None else np.nan, 
-															   'duJy':fluxstatparams['mean_err'] if not fluxstatparams['mean_err'] is None else np.nan, 
-															   'stdev':fluxstatparams['stdev'] if not fluxstatparams['stdev'] is None else np.nan,
-															   'x2':fluxstatparams['X2norm'] if not fluxstatparams['X2norm'] is None else np.nan,
-															   'Nclip':fluxstatparams['Nclip'] if not fluxstatparams['Nclip'] is None else np.nan,
-															   'Ngood':fluxstatparams['Ngood'] if not fluxstatparams['Ngood'] is None else np.nan,
-															   'Mask':0})
+																 'uJy':fluxstatparams['mean'] if not fluxstatparams['mean'] is None else np.nan, 
+																 'duJy':fluxstatparams['mean_err'] if not fluxstatparams['mean_err'] is None else np.nan, 
+																 'stdev':fluxstatparams['stdev'] if not fluxstatparams['stdev'] is None else np.nan,
+																 'x2':fluxstatparams['X2norm'] if not fluxstatparams['X2norm'] is None else np.nan,
+																 'Nclip':fluxstatparams['Nclip'] if not fluxstatparams['Nclip'] is None else np.nan,
+																 'Ngood':fluxstatparams['Ngood'] if not fluxstatparams['Ngood'] is None else np.nan,
+																 'Mask':0})
 				self.update_mask_col(flags['avg_badday'], range_ix, control_index=control_index, remove_old=False)
 				avglc.update_mask_col(flags['avg_badday'], [avglc_index], control_index=control_index, remove_old=False)
 
@@ -439,13 +439,13 @@ class CleanAtlasLightCurve(atlas_lc):
 
 			# add row to averaged light curve
 			avglc.lcs[control_index].add2row(avglc_index, {'MJD':avg_mjd, 
-														   'uJy':fluxstatparams['mean'], 
-														   'duJy':fluxstatparams['mean_err'], 
-														   'stdev':fluxstatparams['stdev'],
-														   'x2':fluxstatparams['X2norm'],
-														   'Nclip':fluxstatparams['Nclip'],
-														   'Ngood':fluxstatparams['Ngood'],
-														   'Mask':0})
+															 'uJy':fluxstatparams['mean'], 
+															 'duJy':fluxstatparams['mean_err'], 
+															 'stdev':fluxstatparams['stdev'],
+															 'x2':fluxstatparams['X2norm'],
+															 'Nclip':fluxstatparams['Nclip'],
+															 'Ngood':fluxstatparams['Ngood'],
+															 'Mask':0})
 			
 			# flag clipped measurements in lc
 			if len(fluxstatparams['ix_clip']) > 0:
@@ -479,7 +479,7 @@ class CleanAtlasLightCurve(atlas_lc):
 	def _apply_averaging(self, flags, Nclip_max, Ngood_min, x2_max, mjd_bin_size=1.0, flux2mag_sigmalimit=3.0):
 		print('\nAveraging light curve(s)...')
 		avglc = CleanAtlasLightCurve(self.filt, 
-							   		 tnsname=self.tnsname, 
+											tnsname=self.tnsname, 
 									 is_averaged=True, 
 									 mjd_bin_size=mjd_bin_size, 
 									 discdate=self.discdate)
@@ -497,7 +497,7 @@ class CleanAtlasLightCurve(atlas_lc):
 
 	def apply_averaging(self, flags):
 		return self._apply_averaging(flags,
-							   		 self.cfg['averaging_params']['Nclip_max'],
+											self.cfg['averaging_params']['Nclip_max'],
 									 self.cfg['averaging_params']['Ngood_min'],
 									 self.cfg['averaging_params']['x2_max'],
 									 self.cfg['averaging_params']['mjd_bin_size'],
@@ -643,18 +643,18 @@ class CleaningLoop():
 		# flags for each cut
 		self.flags = {'chisquare':0x1,
 
-					  'uncertainty':0x2,
+						'uncertainty':0x2,
 
-					  'controls_bad':0x400000,
-					  'controls_questionable':0x80000,
-					  'controls_x2':0x100,
-					  'controls_stn':0x200,
-					  'controls_Nclip':0x400,
-					  'controls_Ngood':0x800,
+						'controls_bad':0x400000,
+						'controls_questionable':0x80000,
+						'controls_x2':0x100,
+						'controls_stn':0x200,
+						'controls_Nclip':0x400,
+						'controls_Ngood':0x800,
 
-					  'avg_badday':0x800000,
-					  'avg_ixclip':0x1000,
-					  'avg_smallnum':0x2000}
+						'avg_badday':0x800000,
+						'avg_ixclip':0x1000,
+						'avg_smallnum':0x2000}
 
 		self.apply_template_correction = args.template_correction
 		self.apply_uncert_est = args.uncert_est
@@ -769,20 +769,29 @@ class CleaningLoop():
 				plot = None
 				if self.plot:
 					plot = PlotAtlasLightCurve(self.lc_objs[k], self.flags)
-					plot.plot_lcs(plot_controls = self.lc_objs[k].num_controls > 0)
+					try: 
+						plot.plot_lcs(plot_controls = self.lc_objs[k].num_controls > 0)
+					except Exception as e:
+						print(f'WARNING: Error when plotting light curves: {str(e)}')
 
 				uncert_cut_output = None
 				if self.apply_uncert_cut:
 					uncert_cut_output = self.lc_objs[k].apply_uncert_cut(self.flags['uncertainty'])
 					if self.plot:
-						plot.plot_uncert_cut(self.lc_objs[k])
+						try:
+							plot.plot_uncert_cut(self.lc_objs[k])
+						except Exception as e:
+							print(f'WARNING: Error when plotting uncertainty cut: {str(e)}')
 				
 				uncert_est_output = None
 				if self.lc_objs[k].num_controls > 0:
 					uncert_est_info_row, uncert_est_output = self.lc_objs[k].apply_uncert_est(self.flags['uncertainty'], save=self.apply_uncert_est)
 					self.uncert_est_info.add_row(uncert_est_info_row)
 					if self.plot and 'duJy_new' in self.lc_objs[k].dflux_colnames:
-						plot.plot_uncert_est(self.lc_objs[k])
+						try:
+							plot.plot_uncert_est(self.lc_objs[k])
+						except Exception as e:
+							print(f'WARNING: Error when plotting uncertainty estimation: {str(e)}')
 
 				x2_cut_output = None
 				if self.apply_x2_cut:
@@ -793,22 +802,34 @@ class CleaningLoop():
 				if self.apply_controls_cut:
 					controls_cut_output = self.lc_objs[k].apply_controls_cut(self.flags)
 					if plot:
-						plot.plot_controls_cut(self.lc_objs[k])
+						try:
+							plot.plot_controls_cut(self.lc_objs[k])
+						except Exception as e:
+							print(f'WARNING: Error when plotting control light curve cut: {str(e)}')
 
 				template_correction_output = None
 				if self.apply_template_correction:
 					if plot:
-						plot.plot_template_correction(self.lc_objs[k], title='Before template correction')
+						try:
+							plot.plot_template_correction(self.lc_objs[k], title='Before template correction')
+						except Exception as e:
+							print(f'WARNING: Error when plotting template correction: {str(e)}')
 					flags = self.flags['uncertainty'] | self.flags['chisquare'] | self.flags['controls_bad']
 					template_correction_output = self.lc_objs[k].apply_template_correction(flags)
 					if plot:
-						plot.plot_template_correction(self.lc_objs[k], title='After template correction')
+						try:
+							plot.plot_template_correction(self.lc_objs[k], title='After template correction')
+						except Exception as e:
+							print(f'WARNING: Error when plotting template correction: {str(e)}')
 
 				averaging_output = None
 				if self.apply_averaging:
 					avglc, averaging_output = self.lc_objs[k].apply_averaging(self.flags)
 					if plot:
-						plot.plot_badday_cut(avglc)
+						try:
+							plot.plot_badday_cut(avglc)
+						except Exception as e:
+							print(f'WARNING: Error when plotting averaged light curves: {str(e)}')
 
 					avglc._save(self.settings['output_dir'], filt=filt, overwrite=self.settings['overwrite'])
 
@@ -816,12 +837,12 @@ class CleaningLoop():
 					self.lc_objs[k].save(overwrite=self.settings['overwrite'])
 
 				f = self.add_to_readme(f, k,
-						   			   uncert_cut_output=uncert_cut_output,
-						   			   uncert_est_output=uncert_est_output,
-									   x2_cut_output=x2_cut_output,
-									   controls_cut_output=controls_cut_output,
-									   template_correction_output=template_correction_output,
-									   averaging_output=averaging_output)
+															uncert_cut_output=uncert_cut_output,
+															uncert_est_output=uncert_est_output,
+															x2_cut_output=x2_cut_output,
+															controls_cut_output=controls_cut_output,
+															template_correction_output=template_correction_output,
+															averaging_output=averaging_output)
 
 				if self.plot:
 					plot.save()
