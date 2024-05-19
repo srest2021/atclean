@@ -33,35 +33,30 @@ def not_AandB(A,B):
   return np.setxor1d(A,B)
 
 class RA:
-  def __init__(self, string:str|None=None):
-    self.string:str|None = string
-    self.degrees:u.degree = self.to_degrees()
+  def __init__(self, string=None):
+    self.angle = None
+    if string:
+      self.set_angle(string)
 
-  def to_degrees(self):
-    if self.string is None:
-      return np.nan
-    
+  def set_angle(self, string):
     s = re.compile('\:')
-    if isinstance(self.string,str) and s.search(self.string):
-      A = Angle(self.string, u.hour)
+    if isinstance(string, str) and s.search(string):
+      A = Angle(string, u.hour)
     else:
-      A = Angle(self.string, u.degree)
-    return A.degree
+      A = Angle(string, u.degree)
+    self.angle:Angle = A
   
   # def __str__(self):
   #   return f'{self.degrees}'
   
 class Dec:
-  def __init__(self, string:str|None=None):
-    self.string:str|None = string
-    self.degrees:u.degree = self.to_degrees()
+  def __init__(self, string=None):
+    self.angle = None
+    if string:
+      self.set_angle(string)
 
-  def to_degrees(self):
-    if self.string is None:
-      return np.nan
-    
-    A = Angle(self.string, u.degree)
-    return A.degree
+  def set_angle(self, string):
+    self.angle:Angle = Angle(string, u.degree)
   
   # def __str__(self):
   #   return f'{self.degrees}'
@@ -78,12 +73,12 @@ class Coordinates:
     self.dec = Dec(dec)
 
   def is_empty(self) -> bool:
-    return self.ra.string is None or self.dec.string is None
+    return self.ra.angle is None or self.dec.angle is None
 
   def __str__(self):
     if self.is_empty():
       raise RuntimeError(f'ERROR: Coordinates are empty and cannot be printed.')
-    return f'RA {self.ra.degrees:0.14f}, Dec {self.dec.degrees:0.14f}'
+    return f'RA {self.ra.degree:0.14f}, Dec {self.dec.degree:0.14f}'
   
 def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None):
   filename = f'{output_dir}/{tnsname}'
@@ -198,7 +193,7 @@ class SnInfo():
       print('Success')
     except Exception as e:
       print(f'No existing SN info table at that path; creating blank table...')
-      self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0', 'closebright_ra', 'closebright_dec'])
+      self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0']) #, 'closebright_ra', 'closebright_dec'])
 
   def get_index(self, tnsname):
     if self.t.empty:
@@ -231,8 +226,8 @@ class SnInfo():
   def add_row_info(self, tnsname, coords:Coordinates=None, mjd0=None):
     if mjd0 is None:
       mjd0 = np.nan
-    row = {'tnsname':tnsname, 'ra':coords.ra.string, 'dec':coords.dec.string, 'mjd0':mjd0}
-    #row = {'tnsname':tnsname, 'ra':f'{coords.ra.degrees:0.14f}', 'dec':f'{coords.dec.degrees:0.14f}', 'mjd0':mjd0}
+    #row = {'tnsname':tnsname, 'ra':coords.ra.string, 'dec':coords.dec.string, 'mjd0':mjd0}
+    row = {'tnsname':tnsname, 'ra':f'{coords.ra.degree:0.14f}', 'dec':f'{coords.dec.degree:0.14f}', 'mjd0':mjd0}
     self.add_row(row)
 
   def add_row(self, row):
@@ -353,7 +348,7 @@ class FullLightCurve:
     
     while(True):
       try:
-        result = query_atlas(headers, self.coords.ra.degrees, self.coords.dec.degrees, min_mjd, max_mjd)
+        result = query_atlas(headers, self.coords.ra.degree, self.coords.dec.degree, min_mjd, max_mjd)
         break
       except Exception as e:
         print('Exception caught: '+str(e))
@@ -361,6 +356,12 @@ class FullLightCurve:
         time.sleep(20)
         continue
     self.t = result
+
+  def get_filt_lens(self, control_index=0):
+    total_len = len(self.lcs[control_index].t)
+    o_len = len(np.where(self.lcs[control_index]['F'] == 'o')[0])
+    c_len = len(np.where(self.lcs[control_index]['F'] == 'c')[0])
+    return total_len, o_len, c_len
 
   # divide the light curve by filter and save into separate files
   def save(self, output_dir, tnsname, overwrite=False):

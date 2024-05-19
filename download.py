@@ -12,21 +12,23 @@ Outputs:
 - if using TNS credentials, new or updated .txt table with TNS names, RA, Dec, and MJD0
 """
 
-import os, sys, requests, argparse, configparser
+from typing import Dict, Type
+import os, sys, requests, argparse, configparser, math
 import pandas as pd
 import numpy as np
 from getpass import getpass
-from astropy.coordinates import SkyCoord
+from astropy import units as u
+from astropy.coordinates import Angle, SkyCoord
 from lightcurve import Coordinates, SnInfo, FullLightCurve
 
 """
 UTILITY
 """
 
-def get_distance(coord1:Coordinates, coord2:Coordinates):
-	c1 = SkyCoord(coord1.ra.degrees, coord1.dec.degrees, frame='fk5')
-	c2 = SkyCoord(coord2.ra.degrees, coord2.dec.degrees, frame='fk5')
-	return c1.separation(c2)
+def get_distance(coord1:Coordinates, coord2:Coordinates) -> Angle:
+  c1 = SkyCoord(coord1.ra.degrees, coord1.dec.degrees, frame='fk5')
+  c2 = SkyCoord(coord2.ra.degrees, coord2.dec.degrees, frame='fk5')
+  return c1.separation(c2)
 
 class ControlCoordinates:
   def __init__(self):
@@ -34,8 +36,9 @@ class ControlCoordinates:
     self.radius = None
     self.t = None
 
+    self.closebright_min_dist = None
+
   def read(self, filename:str):
-    # TODO: read into temp
     try:
       print(f'Loading control coordinates table at {filename}...')
       self.t = pd.read_table(filename, delim_whitespace=True)
@@ -45,20 +48,96 @@ class ControlCoordinates:
     except Exception as e:
         raise RuntimeError(f'ERROR: Could not load control coordinates table at {filename}: {str(e)}')
 
-    # TODO: construct table with other columns blank
+    self.num_controls = len(self.t)
+    self.t['control_index'] = range(1,self.num_controls+1)
+    
+    with pd.option_context('display.float_format', '{:,.8f}'.format):
+      print('Control light curve coordinates read from file: \n',self.t.to_string())
 
-  def construct(self, center_coords:Coordinates, num_controls:int=None, radius:float=None):
+  def update_row(self, control_index:int, full_control_lc:FullLightCurve):
+    ix = np.where(self.t['control_index'] == control_index)[0]
+    if len(ix) > 1:
+      raise RuntimeError(f'ERROR: Cannot update row in control coordinates table for control index {control_index}: duplicate rows.')
+    index = ix[0]
+
+    # update corresponding row in table with n_detec, n_detec_o, and n_detec_c counts
+    total_len, o_len, c_len = full_control_lc.get_filt_lens()
+    self.t[index, 'n_detec'] = total_len
+    self.t[index, 'n_detec_o'] = o_len
+    self.t[index, 'n_detec_c'] = c_len
+
+  def add_row(self, tnsname:str, control_index:int, coords:Coordinates, ra_offset=0, dec_offset=0, radius_arcsec=0, n_detec=0, n_detec_o=0, n_detec_c=0):
+    row = {
+      'tnsname': tnsname,
+      'control_index': control_index,
+      'ra': f'{coords.ra.degrees:0.14f}',
+      'dec': f'{coords.dec.degrees:0.14f}',
+      'ra_offset': ra_offset,
+      'dec_offset': dec_offset,
+      'radius_arcsec': radius_arcsec,
+      'n_detec': n_detec,
+      'n_detec_o': n_detec_o,
+      'n_detec_c': n_detec_c
+    }
+    
+    self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+  def construct_row(self, i:int, sn_coords:Coordinates, center_coords:Coordinates, r:float, closebright=False):
+    angle = Angle(i*360.0 / self.num_controls, u.degree)
+    
+    ra_distance = Angle(r.degree * math.cos(angle.radian), u.degree)
+    ra_offset = Angle(ra_distance.degree * (1.0/math.cos(center_coords.dec.radian)), u.degree)
+    ra = Angle(center_coords.ra.degree + ra_offset.degree, u.degree)
+
+    dec_offset = Angle(r.degree * math.sin(angle.radian), u.degree)
+    dec = Angle(center_coords.dec.degree + dec_offset.degree, u.degree)
+
+    coords = Coordinates(ra, dec)
+
+    if closebright: # check to see if control light curve location is within minimum distance from SN location
+      offset_sep = get_distance(sn_coords, coords).arcsecond
+      if offset_sep < self.closebright_min_dist:
+        print(f'Control light curve {i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
+        return
+    
+    self.add_row(np.nan, i, coords, ra_offset=ra_offset, dec_offset=dec_offset, radius_arcsec=r)
+
+  def construct(self, full_sn_lc:FullLightCurve, tnsname:str, center_coords:Coordinates, num_controls:int=None, radius:float=None, closebright=False):
     if num_controls:
       self.num_controls = num_controls
     if radius:
       self.radius = radius
     
     self.t = pd.DataFrame(columns=['tnsname','control_index','ra','dec','ra_offset','dec_offset','radius_arcsec','n_detec','n_detec_o','n_detec_c'])
-    # TODO
 
-  def save(self):
-    pass
-    # TODO
+    # add row for SN position
+    total_len, o_len, c_len = full_sn_lc.get_filt_lens()
+    if closebright:
+      # circle pattern radius is distance between SN and bright object
+      r = get_distance(full_sn_lc.coords, center_coords).arcsecond
+
+      self.add_row(tnsname, 0, full_sn_lc.coords, ra_offset=np.nan, dec_offset=np.nan, radius_arcsec=r, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
+    else:
+      r = Angle(self.radius, u.arcsec)
+      self.add_row(tnsname, 0, center_coords, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
+
+    # add row for each control light curve
+    for i in range(1,self.num_controls+1):
+      self.construct_row(i, full_sn_lc.coords, center_coords, r, closebright=closebright)
+
+    with pd.option_context('display.float_format', '{:,.8f}'.format):
+      print('Control light curve coordinates generated: \n',self.t.to_string())
+
+  def save(self, directory, filename=None, tnsname=None):
+    if filename is None:
+      if tnsname is None:
+        raise RuntimeError('ERROR: Please provide either a filename or a TNS name to save the control coordinates table.')
+      filename = f'{directory}/{tnsname}_control_coords.txt'
+    else: 
+      filename = f'{directory}/{filename}'
+
+    print(f'Saving control coordinates table at {filename}...')
+    self.t.to_string(filename, index=False)
 
 """
 DOWNLOADING ATLAS LIGHT CURVES
@@ -85,13 +164,14 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
   parser.add_argument('-n','--num_controls', default=None, type=int, help='number of control light curves per SN')
   parser.add_argument('-r','--radius', default=None, type=float, help='radius of control light curve circle pattern around SN')
   parser.add_argument('--ctrl_coords', type=str, default=None, help='file name of text file in atclean_input containing table of control light curve coordinates')
-  #parser.add_argument('--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
+  # for downloading single SN with control light curves only
+  parser.add_argument('--closebright', type=str, default=None, help='comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle')
   
   return parser
 
 class DownloadLoop:
   def __init__(self, args):
-    self.lcs = {}
+    self.lcs: Dict[int, Type[FullLightCurve]] = {}
     self.ctrl_coords = ControlCoordinates()
     self.overwrite = args.overwrite
 
@@ -99,8 +179,8 @@ class DownloadLoop:
     print(f'List of transients to download from ATLAS: {self.tnsnames}')
     if len(self.tnsnames) < 1:
       raise RuntimeError('ERROR: Please specify at least one TNS name to download.')
-    if len(self.tnsnames) > 1 and (not args.coords is None or not args.mjd0 is None or not args.ctrl_coords is None):
-      raise RuntimeError(f'ERROR: Cannot specify the same coordinates, MJD0, or control coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.')
+    if len(self.tnsnames) > 1 and (not args.coords is None or not args.mjd0 is None or not args.ctrl_coords is None or not args.closebright is None):
+      raise RuntimeError(f'ERROR: Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.')
     
     config = self.load_config(args.config_file)
     self.flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
@@ -135,9 +215,12 @@ class DownloadLoop:
       if args.ctrl_coords:
         self.ctrl_coords.read(args.ctrl_coords)
       else:
+        if args.closebright:
+          self.ctrl_coords.closebright_min_dist = float(config["download"]["closebright_min_dist"])
+          print(f'Circle pattern centered around close bright object at {args.closebright}; minimum distance from SN set to {self.ctrl_coords.closebright_min_dist}')
         self.ctrl_coords.radius = args.radius if args.radius else float(config["download"]["radius"])
         self.ctrl_coords.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-        print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves with radius of {self.ctrl_coords.radius}\"')
+        print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves with radius of {self.ctrl_coords.radius}\" from center')
 
   def load_config(self, config_file):
     cfg = configparser.ConfigParser()
@@ -208,13 +291,23 @@ class DownloadLoop:
     except Exception as e:
       print(f'ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN...')
       return
-    
-    self.ctrl_coords.construct(self.lcs[0].coords)
 
     # download SN light curves
     self.lcs[0].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
     self.lcs[0].save(self.output_dir, tnsname, overwrite=args.overwrite)
+
+    # save SN info table
     self.sninfo.save()
+
+    if not args.ctrl_coords:
+      # construct control coordinates table
+      if args.closebright:
+        # TODO: option to parse from SN info table
+        parsed_ra, parsed_dec = self.split_arg_coords(args.closebright)
+        center_coords = Coordinates(parsed_ra, parsed_dec)
+        self.ctrl_coords.construct(self.lcs[0], tnsname, center_coords, closebright=True)
+      else:
+        self.ctrl_coords.construct(self.lcs[0], tnsname, self.lcs[0].coords, closebright=False)
 
     # download control light curves
     for i in range(1, len(self.ctrl_coords.t)):
@@ -224,6 +317,10 @@ class DownloadLoop:
                                    self.ctrl_coords.t['mjd0'])
       self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
       self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
+      self.ctrl_coords.update_row(i, self.lcs[i])
+
+    # save control coordinates table
+    self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')
