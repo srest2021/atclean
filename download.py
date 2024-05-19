@@ -26,8 +26,8 @@ UTILITY
 """
 
 def get_distance(coord1:Coordinates, coord2:Coordinates) -> Angle:
-  c1 = SkyCoord(coord1.ra.degrees, coord1.dec.degrees, frame='fk5')
-  c2 = SkyCoord(coord2.ra.degrees, coord2.dec.degrees, frame='fk5')
+  c1 = SkyCoord(coord1.ra.angle.degree, coord1.dec.angle.degree, frame='fk5')
+  c2 = SkyCoord(coord2.ra.angle.degree, coord2.dec.angle.degree, frame='fk5')
   return c1.separation(c2)
 
 class ControlCoordinates:
@@ -66,15 +66,15 @@ class ControlCoordinates:
     self.t[index, 'n_detec_o'] = o_len
     self.t[index, 'n_detec_c'] = c_len
 
-  def add_row(self, tnsname:str, control_index:int, coords:Coordinates, ra_offset=0, dec_offset=0, radius_arcsec=0, n_detec=0, n_detec_o=0, n_detec_c=0):
+  def add_row(self, tnsname:str, control_index:int, coords:Coordinates, ra_offset=0, dec_offset=0, radius=0, n_detec=0, n_detec_o=0, n_detec_c=0):
     row = {
       'tnsname': tnsname,
       'control_index': control_index,
-      'ra': f'{coords.ra.degrees:0.14f}',
-      'dec': f'{coords.dec.degrees:0.14f}',
-      'ra_offset': ra_offset,
-      'dec_offset': dec_offset,
-      'radius_arcsec': radius_arcsec,
+      'ra': f'{coords.ra.angle.degree:0.14f}',
+      'dec': f'{coords.dec.angle.degree:0.14f}',
+      'ra_offset': 0 if ra_offset == 0 else f'{ra_offset.degree:0.14f}',
+      'dec_offset': 0 if dec_offset == 0 else f'{dec_offset.degree:0.14f}',
+      'radius_arcsec': 0 if radius == 0 else radius.arcsecond,
       'n_detec': n_detec,
       'n_detec_o': n_detec_o,
       'n_detec_c': n_detec_c
@@ -82,17 +82,19 @@ class ControlCoordinates:
     
     self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
-  def construct_row(self, i:int, sn_coords:Coordinates, center_coords:Coordinates, r:float, closebright=False):
+  def construct_row(self, i:int, sn_coords:Coordinates, center_coords:Coordinates, r:Angle, closebright=False):
     angle = Angle(i*360.0 / self.num_controls, u.degree)
     
     ra_distance = Angle(r.degree * math.cos(angle.radian), u.degree)
-    ra_offset = Angle(ra_distance.degree * (1.0/math.cos(center_coords.dec.radian)), u.degree)
-    ra = Angle(center_coords.ra.degree + ra_offset.degree, u.degree)
+    ra_offset = Angle(ra_distance.degree * (1.0/math.cos(center_coords.dec.angle.radian)), u.degree)
+    ra = Angle(center_coords.ra.angle.degree + ra_offset.degree, u.degree)
 
     dec_offset = Angle(r.degree * math.sin(angle.radian), u.degree)
-    dec = Angle(center_coords.dec.degree + dec_offset.degree, u.degree)
+    dec = Angle(center_coords.dec.angle.degree + dec_offset.degree, u.degree)
 
-    coords = Coordinates(ra, dec)
+    coords = Coordinates()
+    coords.ra.angle = ra
+    coords.dec.angle = dec
 
     if closebright: # check to see if control light curve location is within minimum distance from SN location
       offset_sep = get_distance(sn_coords, coords).arcsecond
@@ -100,7 +102,7 @@ class ControlCoordinates:
         print(f'Control light curve {i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
         return
     
-    self.add_row(np.nan, i, coords, ra_offset=ra_offset, dec_offset=dec_offset, radius_arcsec=r)
+    self.add_row(np.nan, i, coords, ra_offset=ra_offset, dec_offset=dec_offset, radius=r)
 
   def construct(self, full_sn_lc:FullLightCurve, tnsname:str, center_coords:Coordinates, num_controls:int=None, radius:float=None, closebright=False):
     if num_controls:
@@ -114,9 +116,9 @@ class ControlCoordinates:
     total_len, o_len, c_len = full_sn_lc.get_filt_lens()
     if closebright:
       # circle pattern radius is distance between SN and bright object
-      r = get_distance(full_sn_lc.coords, center_coords).arcsecond
+      r = get_distance(full_sn_lc.coords, center_coords)
 
-      self.add_row(tnsname, 0, full_sn_lc.coords, ra_offset=np.nan, dec_offset=np.nan, radius_arcsec=r, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
+      self.add_row(tnsname, 0, full_sn_lc.coords, ra_offset=np.nan, dec_offset=np.nan, radius=r, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
     else:
       r = Angle(self.radius, u.arcsec)
       self.add_row(tnsname, 0, center_coords, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
@@ -132,9 +134,9 @@ class ControlCoordinates:
     if filename is None:
       if tnsname is None:
         raise RuntimeError('ERROR: Please provide either a filename or a TNS name to save the control coordinates table.')
-      filename = f'{directory}/{tnsname}_control_coords.txt'
+      filename = f'{directory}/{tnsname}/{tnsname}_control_coords.txt'
     else: 
-      filename = f'{directory}/{filename}'
+      filename = f'{directory}/{tnsname}/{filename}'
 
     print(f'Saving control coordinates table at {filename}...')
     self.t.to_string(filename, index=False)
@@ -173,7 +175,6 @@ class DownloadLoop:
   def __init__(self, args):
     self.lcs: Dict[int, Type[FullLightCurve]] = {}
     self.ctrl_coords = ControlCoordinates()
-    self.overwrite = args.overwrite
 
     self.tnsnames = args.tnsnames
     print(f'List of transients to download from ATLAS: {self.tnsnames}')
@@ -181,11 +182,18 @@ class DownloadLoop:
       raise RuntimeError('ERROR: Please specify at least one TNS name to download.')
     if len(self.tnsnames) > 1 and (not args.coords is None or not args.mjd0 is None or not args.ctrl_coords is None or not args.closebright is None):
       raise RuntimeError(f'ERROR: Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.')
-    
+
+    self.overwrite = args.overwrite
+    print(f'Overwrite existing files: {self.overwrite}')
+    if args.lookbacktime:
+      print(f'Lookback time (days): {args.lookbacktime}')
+    if args.max_mjd:
+      print(f'Max MJD: {args.max_mjd} MJD')
+
     config = self.load_config(args.config_file)
     self.flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
     print(f'Sigma limit when converting flux to magnitude : {self.flux2mag_sigmalimit}')
-
+    
     # input/output directories
     self.input_dir = config["dir"]["atclean_input"]
     self.output_dir = config["dir"]["output"]
@@ -254,7 +262,7 @@ class DownloadLoop:
     ra, dec, mjd0 = None, None, None
     
     # first try SN info table
-    sninfo_index, sninfo_row = self.sninfo.get_row(tnsname)
+    _, sninfo_row = self.sninfo.get_row(tnsname)
     if not sninfo_row is None:
       ra, dec, mjd0 = sninfo_row['ra'], sninfo_row['dec'], sninfo_row['mjd0']
 
@@ -299,7 +307,7 @@ class DownloadLoop:
     # save SN info table
     self.sninfo.save()
 
-    if not args.ctrl_coords:
+    if args.controls and not args.ctrl_coords:
       # construct control coordinates table
       if args.closebright:
         # TODO: option to parse from SN info table
@@ -309,18 +317,20 @@ class DownloadLoop:
       else:
         self.ctrl_coords.construct(self.lcs[0], tnsname, self.lcs[0].coords, closebright=False)
 
-    # download control light curves
-    for i in range(1, len(self.ctrl_coords.t)):
-      self.lcs[i] = FullLightCurve(i, 
-                                   self.ctrl_coords.t['ra'], 
-                                   self.ctrl_coords.t['dec'], 
-                                   self.ctrl_coords.t['mjd0'])
-      self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
-      self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
-      self.ctrl_coords.update_row(i, self.lcs[i])
+    if args.controls:
+      # download control light curves
+      for i in range(1, len(self.ctrl_coords.t)):
+        print(f'\nControl light curve {i}')
+        self.lcs[i] = FullLightCurve(i, 
+                                    self.ctrl_coords.t['ra'], 
+                                    self.ctrl_coords.t['dec'], 
+                                    self.ctrl_coords.t['mjd0'])
+        self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
+        self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
+        self.ctrl_coords.update_row(i, self.lcs[i])
 
-    # save control coordinates table
-    self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
+      # save control coordinates table
+      self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')

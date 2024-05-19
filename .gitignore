@@ -6,3 +6,8 @@ old/
 lc_lists/
 brightstars/
 .ipynb_checkpoints/
+
+# old
+atlas_lc.py
+download_atlas_lc.py
+settings.ini
