@@ -16,7 +16,17 @@ import os, sys, requests, argparse, configparser
 import pandas as pd
 import numpy as np
 from getpass import getpass
-from lightcurve import RA, Dec, Coordinates, SnInfo, FullLightCurve
+from astropy.coordinates import SkyCoord
+from lightcurve import Coordinates, SnInfo, FullLightCurve
+
+"""
+UTILITY
+"""
+
+def get_distance(coord1:Coordinates, coord2:Coordinates):
+	c1 = SkyCoord(coord1.ra.degrees, coord1.dec.degrees, frame='fk5')
+	c2 = SkyCoord(coord2.ra.degrees, coord2.dec.degrees, frame='fk5')
+	return c1.separation(c2)
 
 class ControlCoordinates:
   def __init__(self):
@@ -25,6 +35,7 @@ class ControlCoordinates:
     self.t = None
 
   def read(self, filename:str):
+    # TODO: read into temp
     try:
       print(f'Loading control coordinates table at {filename}...')
       self.t = pd.read_table(filename, delim_whitespace=True)
@@ -34,18 +45,24 @@ class ControlCoordinates:
     except Exception as e:
         raise RuntimeError(f'ERROR: Could not load control coordinates table at {filename}: {str(e)}')
 
+    # TODO: construct table with other columns blank
+
   def construct(self, center_coords:Coordinates, num_controls:int=None, radius:float=None):
     if num_controls:
       self.num_controls = num_controls
     if radius:
       self.radius = radius
     
-    self.t = pd.DataFrame(columns=['control_index','ra','dec'])
+    self.t = pd.DataFrame(columns=['tnsname','control_index','ra','dec','ra_offset','dec_offset','radius_arcsec','n_detec','n_detec_o','n_detec_c'])
     # TODO
 
   def save(self):
     pass
     # TODO
+
+"""
+DOWNLOADING ATLAS LIGHT CURVES
+"""
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
