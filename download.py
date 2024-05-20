@@ -99,7 +99,7 @@ class ControlCoordinatesTable:
     if closebright: # check to see if control light curve location is within minimum distance from SN location
       offset_sep = self.get_distance(sn_coords, coords).arcsecond
       if offset_sep < self.closebright_min_dist:
-        print(f'Control light curve {i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}; skipping control light curve...')
+        print(f'Control light curve {i:3d} too close to SN location ({offset_sep}\" away) with minimum distance to SN as {self.closebright_min_dist}\"; skipping control light curve...')
         return
     
     self.add_row(np.nan, i, coords, ra_offset=ra_offset, dec_offset=dec_offset, radius=r)
@@ -121,7 +121,7 @@ class ControlCoordinatesTable:
       self.add_row(tnsname, 0, full_sn_lc.coords, ra_offset=np.nan, dec_offset=np.nan, radius=r, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
     else:
       r = Angle(self.radius, u.arcsec)
-      self.add_row(tnsname, 0, center_coords, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
+      self.add_row(tnsname, 0, full_sn_lc.coords, n_detec=total_len, n_detec_o=o_len, n_detec_c=c_len)
 
     # add row for each control light curve
     for i in range(1,self.num_controls+1):
@@ -228,7 +228,9 @@ class DownloadLoop:
           print(f'Circle pattern centered around close bright object at {args.closebright}; minimum distance from SN set to {self.ctrl_coords.closebright_min_dist}')
         self.ctrl_coords.radius = args.radius if args.radius else float(config["download"]["radius"])
         self.ctrl_coords.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-        print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves with radius of {self.ctrl_coords.radius}\" from center')
+        print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves', end='')
+        if args.closebright:
+          print(f'with radius of {self.ctrl_coords.radius}\" from center')
 
   def load_config(self, config_file):
     cfg = configparser.ConfigParser()
@@ -316,20 +318,20 @@ class DownloadLoop:
       else:
         self.ctrl_coords.construct(self.lcs[0], tnsname, self.lcs[0].coords, closebright=False)
 
-    # if args.controls:
-    #   # download control light curves
-    #   for i in range(1, len(self.ctrl_coords.t)):
-    #     print(f'\nControl light curve {i}')
-    #     self.lcs[i] = FullLightCurve(i, 
-    #                                 self.ctrl_coords.t['ra'], 
-    #                                 self.ctrl_coords.t['dec'], 
-    #                                 self.ctrl_coords.t['mjd0'])
-    #     self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
-    #     self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
-    #     self.ctrl_coords.update_row(i, self.lcs[i])
+    if args.controls:
+      # download control light curves
+      for i in range(1, len(self.ctrl_coords.t)):
+        print(f'\nControl light curve {i}')
+        self.lcs[i] = FullLightCurve(i, 
+                                    self.ctrl_coords.t['ra'], 
+                                    self.ctrl_coords.t['dec'], 
+                                    self.ctrl_coords.t['mjd0'])
+        self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
+        self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
+        self.ctrl_coords.update_row(i, self.lcs[i])
 
       # save control coordinates table
-    self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
+      self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')
