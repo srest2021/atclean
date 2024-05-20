@@ -151,7 +151,8 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
     parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
     
   parser.add_argument('tnsnames', nargs='+', help='TNS names of the objects to download from ATLAS')
-  parser.add_argument('--config_file', default='config.ini', type=str, help='file name of ini file with settings for this class')
+  parser.add_argument('--sninfo_file', default=None, type=str, help='file name of .txt file with SN info table')
+  parser.add_argument('--config_file', default='config.ini', type=str, help='file name of .ini file with settings for this class')
   parser.add_argument('-l', '--lookbacktime', default=None, type=int, help='lookback time (MJD)')
   #parser.add_argument('--min_mjd', default=None, type=float, help='minimum MJD to download')
   parser.add_argument('--max_mjd', default=None, type=float, help='maximum MJD to download')
@@ -206,7 +207,8 @@ class DownloadLoop:
     
     # SN info table
     print()
-    self.sninfo = SnInfoTable(self.input_dir, filename=config["dir"]["sninfo_filename"])
+    sninfo_filename = args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
+    self.sninfo = SnInfoTable(self.input_dir, filename=sninfo_filename)
     
     # ATLAS and TNS credentials
     self.credentials = config["credentials"]
@@ -231,6 +233,8 @@ class DownloadLoop:
         print(f'Setting circle pattern of {self.ctrl_coords.num_controls:d} control light curves', end='')
         if args.closebright:
           print(f'with radius of {self.ctrl_coords.radius}\" from center')
+    elif args.ctrl_coords or args.closebright or args.num_controls or args.radius:
+      raise RuntimeError('ERROR: Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius.')
 
   def load_config(self, config_file):
     cfg = configparser.ConfigParser()
@@ -338,6 +342,7 @@ class DownloadLoop:
     headers = self.connect_atlas()
     if headers is None: 
       raise RuntimeError('ERROR: No token header!')
+    #headers = {}
     
     for obj_index in range(len(args.tnsnames)):
       self.download_lcs(args, headers, args.tnsnames[obj_index])      
