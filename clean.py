@@ -5,13 +5,9 @@ import os, sys, argparse
 import pandas as pd
 import numpy as np
 from lightcurve import SnInfoTable
-from download import load_config
+from download import load_config, make_dir_if_not_exists
 
 DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'averaging']
-
-def make_dir_if_not_exists(directory):
-  if not os.path.isdir(directory):
-    os.makedirs(directory)
 
 def hexstring_to_int(hexstring):
   return int(hexstring, 16)
@@ -57,6 +53,9 @@ class CutList:
 
   def get_cut(self, name:str):
     return self.list[name]
+  
+  def has_cut(self, name:str):
+    return name in self.list
 
   def can_apply_directly(self, name:str):
     return self.list[name].can_apply_directly()
@@ -67,13 +66,95 @@ class CutList:
       output += f'\n{name}: ' + self.list[name].__str__()
     return output
 
+class UncertEstInfoTable():
+  def __init__(self, directory, filename=None):
+    if filename is None:
+      self.filename = f'{directory}/uncert_est_info.txt'
+    else:
+      self.filename = f'{directory}/{filename}'
+
+    try:
+      print(f'\nLoading true uncertainties estimation table at {self.filename}...')
+      self.t = pd.read_table(self.filename, delim_whitespace=True)
+      print('Success')
+    except:
+      print(f'No existing true uncertainties estimation table; creating blank table...')
+      self.t = pd.DataFrame(columns=['tnsname', 'filter', 'sigma_extra', 'sigma_typical_old', 'sigma_typical_new', 'sigma_typical_new_pct_greater', 'recommended', 'applied'])
+    
+  def add_row(self, row):
+    tnsname = row['tnsname']
+    filt = row['filter']
+
+    if len(self.t) > 0:
+      matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filter'].eq(filt))[0]
+      if len(matching_ix) > 1:
+        raise RuntimeError(f'ERROR: true uncertainties estimation table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
+    
+      if len(matching_ix) > 0:
+        # update existing row
+        idx = matching_ix[0]
+        self.t.loc[idx,:] = row
+      else:
+        # new row
+        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+    else:
+      # new row
+      self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+  
+  def save(self):
+    print(f'\nSaving true uncertainties estimation table at {self.filename}...')
+    self.t.to_string(self.filename)
+
+class ChiSquareCutInfoTable():
+  def __init__(self, directory, filename=None):
+    if filename is None:
+      self.filename = f'{directory}/x2_cut_info.txt'
+    else:
+      self.filename = f'{directory}/{filename}'
+
+    try:
+      print(f'\nLoading chi-square cut table at {self.filename}...')
+      self.t = pd.read_table(self.filename, delim_whitespace=True)
+      print('Success')
+    except:
+      print(f'No existing chi-square cut table; creating blank table...')
+      self.t = pd.DataFrame(columns=['tnsname', 'filter', 'x2_cut', 'use_preSN_lc', 'stn_bound', 'pct_contamination', 'pct_loss'])
+
+  def add_row(self, row):
+    tnsname = row['tnsname']
+    filt = row['filter']
+
+    if len(self.t) > 0:
+      matching_ix = np.where(self.t['tnsname'].eq(tnsname) & self.t['filter'].eq(filt))[0]
+      if len(matching_ix) > 1:
+        raise RuntimeError(f'ERROR: chi-square cut table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}')
+    
+      if len(matching_ix) > 0:
+        # update existing row
+        idx = matching_ix[0]
+        self.t.loc[idx,:] = row
+      else:
+        # new row
+        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+    else:
+      # new row
+      self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+  def save(self):
+    print(f'\nSaving chi-square cut table at {self.filename}...')
+    self.t.to_string(self.filename)
+
 class CleanLoop:
-  def __init__(self, settings:Dict, sninfo:SnInfoTable, cut_list:CutList):
+  def __init__(self, settings:Dict, cut_list:CutList):
     self.sn = None
 
     self.settings = settings
-    self.sninfo = sninfo
     self.cut_list = cut_list
+
+    self.sninfo = SnInfoTable(settings["output_dir"], filename=settings['sninfo_filename'])
+    self.uncert_est_info = UncertEstInfoTable(settings["output_dir"])
+    if cut_list.has_cut('x2_cut'):
+      self.x2_cut_info = ChiSquareCutInfoTable(settings["output_dir"])
 
   def clean_lcs(self, tnsname):
     print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}')
@@ -126,26 +207,21 @@ def parse_settings(args, config):
     'tns_api_key': config["credentials"]["tns_api_key"],
     'tns_id': config["credentials"]["tns_id"],
     'tns_bot_name': config["credentials"]["tns_bot_name"],
+    'sninfo_filename': args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
   }
 
   if len(args.tnsnames) < 1:
     raise RuntimeError('ERROR: Please specify at least one TNS name to clean.')
   settings['tnsnames'] = args.tnsnames
-  print(f'List of transients to clean: {settings["tnsnames"]}')
+  print(f'\nList of transients to clean: {settings["tnsnames"]}')
   
   print(f'\nOverwrite existing files: {settings["overwrite"]}')
   make_dir_if_not_exists(settings["input_dir"])
   make_dir_if_not_exists(settings["output_dir"])
   print(f'ATClean input directory: {settings["input_dir"]}')
   print(f'Output directory: {settings["output_dir"]}')
-
-  print(f'\nTNS ID: {settings["tns_id"]}')
+  print(f'TNS ID: {settings["tns_id"]}')
   print(f'TNS bot name: {settings["tns_bot_name"]}')
-
-  # SN info table
-  print()
-  sninfo_filename = args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
-  sninfo = SnInfoTable(settings["input_dir"], filename=sninfo_filename)
 
   # control light curves
   settings['apply_to_controls'] = args.controls
@@ -217,26 +293,26 @@ def parse_settings(args, config):
                      params=params)
     cut_list.add_cut(badday_cut, 'badday_cut')
 
-  custom_cuts_settings = find_custom_cuts_settings(config)
-  for i in range(len(custom_cuts_settings)):
-    cut_settings = custom_cuts_settings[i]
-    try:
-      custom_cut = Cut(column=cut_settings['column'], 
-                      flag=hexstring_to_int(cut_settings['flag']), 
-                      min_value = cut_settings['min_value'] if cut_settings['min_value'] != 'None' else None, 
-                      max_value = cut_settings['max_value'] if cut_settings['max_value'] != 'None' else None)
-      cut_list.add_cut(custom_cut, f'custom_cut_{i}')
-    except Exception as e:
-      print(f'WARNING: Could not parse custom cut {cut_settings}: {str(e)}')
+  if args.custom_cuts:
+    custom_cuts_settings = find_custom_cuts_settings(config)
+    for i in range(len(custom_cuts_settings)):
+      cut_settings = custom_cuts_settings[i]
+      try:
+        custom_cut = Cut(column=cut_settings['column'], 
+                        flag=hexstring_to_int(cut_settings['flag']), 
+                        min_value = cut_settings['min_value'] if cut_settings['min_value'] != 'None' else None, 
+                        max_value = cut_settings['max_value'] if cut_settings['max_value'] != 'None' else None)
+        cut_list.add_cut(custom_cut, f'custom_cut_{i}')
+      except Exception as e:
+        print(f'WARNING: Could not parse custom cut {cut_settings}: {str(e)}')
   
-  print(cut_list)
-
-  return settings, sninfo, cut_list
+  print(cut_list,'\n')
+  return settings, cut_list
 
 if __name__ == "__main__":
   args = define_args().parse_args()
   config = load_config(args.config_file)
-  settings, sninfo, cut_list = parse_settings(args, config)
+  settings, cut_list = parse_settings(args, config)
   
-  clean = CleanLoop(settings, sninfo, cut_list)
+  clean = CleanLoop(settings, cut_list)
   clean.loop(args.tnsnames)

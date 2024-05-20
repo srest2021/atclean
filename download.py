@@ -25,6 +25,10 @@ from lightcurve import Coordinates, SnInfoTable, FullLightCurve
 UTILITY
 """
 
+def make_dir_if_not_exists(directory):
+  if not os.path.isdir(directory):
+    os.makedirs(directory)
+
 def load_config(config_file):
     cfg = configparser.ConfigParser()
     try:
@@ -209,15 +213,13 @@ class DownloadLoop:
     self.output_dir = config["dir"]["output"]
     print(f'ATClean input directory: {self.input_dir}')
     print(f'Output directory: {self.output_dir}')
-    if not os.path.isdir(self.input_dir):
-      os.makedirs(self.input_dir)
-    if not os.path.isdir(self.output_dir):
-      os.makedirs(self.output_dir)
+    make_dir_if_not_exists(self.input_dir)
+    make_dir_if_not_exists(self.output_dir)
     
     # SN info table
     print()
     sninfo_filename = args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
-    self.sninfo = SnInfoTable(self.input_dir, filename=sninfo_filename)
+    self.sninfo = SnInfoTable(self.output_dir, filename=sninfo_filename)
     
     # ATLAS and TNS credentials
     self.credentials = config["credentials"]
