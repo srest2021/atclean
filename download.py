@@ -228,7 +228,7 @@ class DownloadLoop:
     print(f'TNS bot name: {self.credentials["tns_bot_name"]}')
 
     # control light curves
-    self.controls = bool(args.controls)
+    self.controls = args.controls
     print(f'\nDownload control light curves: {self.controls}')
     if self.controls:
       if args.ctrl_coords:

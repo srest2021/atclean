@@ -1,9 +1,17 @@
-from typing import Dict, Type, Any
+#!/usr/bin/env python
+
+from typing import List, Dict, Type, Any
 import os, sys, argparse
 import pandas as pd
 import numpy as np
 from lightcurve import SnInfoTable
 from download import load_config
+
+DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'averaging']
+
+def make_dir_if_not_exists(directory):
+  if not os.path.isdir(directory):
+    os.makedirs(directory)
 
 def hexstring_to_int(hexstring):
   return int(hexstring, 16)
@@ -29,17 +37,15 @@ class Cut:
     return True
   
   def __str__(self):
-    output = f'Cut'
+    output = ''
     if self.column:
-      output += f' on column {self.column}'
+      output += f'column={self.column} '
     if self.flag:
-      output += f' (flag {hex(self.flag)})'
-    if self.min_value and self.max_value:
-      output += f': min value {self.min_value}, max value {self.max_value}'
-    elif self.min_value:
-      output += f': min value {self.min_value}'
-    elif self.max_value:
-      output += f': max value {self.max_value}'
+      output += f'flag={hex(self.flag)} '
+    if self.min_value:
+      output += f'min_value={self.min_value} '
+    if self.max_value:
+      output += f'max_value={self.max_value}'
     return output
   
 class CutList:
@@ -57,8 +63,25 @@ class CutList:
   
   def __str__(self):
     output = ''
-    for cut in self.list:
-      output += f'{cut}'
+    for name in self.list:
+      output += f'\n{name}: ' + self.list[name].__str__()
+    return output
+
+class CleanLoop:
+  def __init__(self, settings:Dict, sninfo:SnInfoTable, cut_list:CutList):
+    self.sn = None
+
+    self.settings = settings
+    self.sninfo = sninfo
+    self.cut_list = cut_list
+
+  def clean_lcs(self, tnsname):
+    print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}')
+    # TODO
+
+  def loop(self, tnsnames):
+    for obj_index in range(len(tnsnames)):
+      self.clean_lcs(tnsnames[obj_index]) 
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -86,121 +109,134 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 
   return parser
 
-class CleanLoop:
-  def __init__(self, args):
-    self.sn = None
+def find_custom_cuts_settings(config):
+  print('\nSearching config file for custom cuts...')
+  custom_cuts = []
+  for key in config:
+    if key.endswith('_cut') and not key in DEFAULT_CUT_NAMES:
+      custom_cuts.append(config[key])
+  print(f'Found {len(custom_cuts)}')
+  return custom_cuts
 
-    self.tnsnames = args.tnsnames
-    print(f'List of transients to clean: {self.tnsnames}')
-    if len(self.tnsnames) < 1:
-      raise RuntimeError('ERROR: Please specify at least one TNS name to clean.')
-    
-    self.overwrite = args.overwrite
-    print(f'Overwrite existing files: {self.overwrite}')
+def parse_settings(args, config):
+  settings = {
+    'overwrite': args.overwrite,
+    'input_dir': config["dir"]["atclean_input"],
+    'output_dir': config["dir"]["output"],
+    'tns_api_key': config["credentials"]["tns_api_key"],
+    'tns_id': config["credentials"]["tns_id"],
+    'tns_bot_name': config["credentials"]["tns_bot_name"],
+  }
 
-    config = load_config(args.config_file)
+  if len(args.tnsnames) < 1:
+    raise RuntimeError('ERROR: Please specify at least one TNS name to clean.')
+  settings['tnsnames'] = args.tnsnames
+  print(f'List of transients to clean: {settings["tnsnames"]}')
+  
+  print(f'\nOverwrite existing files: {settings["overwrite"]}')
+  make_dir_if_not_exists(settings["input_dir"])
+  make_dir_if_not_exists(settings["output_dir"])
+  print(f'ATClean input directory: {settings["input_dir"]}')
+  print(f'Output directory: {settings["output_dir"]}')
 
-    # input/output directories
-    self.input_dir = config["dir"]["atclean_input"]
-    self.output_dir = config["dir"]["output"]
-    print(f'ATClean input directory: {self.input_dir}')
-    print(f'Output directory: {self.output_dir}')
-    if not os.path.isdir(self.input_dir):
-      os.makedirs(self.input_dir)
-    if not os.path.isdir(self.output_dir):
-      os.makedirs(self.output_dir)
-    
-    # SN info table
-    print()
-    sninfo_filename = args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
-    self.sninfo = SnInfoTable(self.input_dir, filename=sninfo_filename)
-    
-    # TNS credentials
-    self.credentials = config["credentials"]
-    print(f'TNS ID: {self.credentials["tns_id"]}')
-    print(f'TNS bot name: {self.credentials["tns_bot_name"]}')
+  print(f'\nTNS ID: {settings["tns_id"]}')
+  print(f'TNS bot name: {settings["tns_bot_name"]}')
 
-    # control light curves
-    self.controls = bool(args.controls)
-    print(f'\nClean control light curves: {self.controls}')
-    if self.controls:
-      self.num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-    elif args.num_controls:
-      raise RuntimeError('ERROR: Please specify control light curve cleaning (-c or --controls) before using the --num_controls argument.')
+  # SN info table
+  print()
+  sninfo_filename = args.sninfo_file if args.sninfo_file else config["dir"]["sninfo_filename"]
+  sninfo = SnInfoTable(settings["input_dir"], filename=sninfo_filename)
 
-    # cuts
-    self.cut_list = CutList()
-    self.apply_template_correction = args.template_correction
-    self.apply_uncert_est = args.uncert_est
-    self.apply_uncert_cut = args.uncert_cut
-    self.apply_x2_cut = args.x2_cut
-    self.apply_controls_cut = args.controls_cut
-    self.apply_averaging = args.averaging
+  # control light curves
+  settings['apply_to_controls'] = args.controls
+  print(f'\nClean control light curves: {settings["apply_to_controls"]}')
+  if settings['apply_to_controls']:
+    settings['num_controls'] = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
+    print(f'Number of control light curves: {settings["num_controls"]}')
+  elif args.num_controls:
+    raise RuntimeError('ERROR: Please specify control light curve cleaning (-c or --controls) before using the --num_controls argument.')
 
-    if self.apply_uncert_est:
-      pass
-      # TODO
+  settings['apply_template_correction'] = args.template_correction
+  print(f'Apply template correction: {settings["apply_template_correction"]}')
+  
+  settings['apply_uncert_est'] = args.uncert_est
+  output = f'Apply true uncertainties estimation: {settings["apply_uncert_est"]}'
+  if args.uncert_est: 
+    settings['prelim_x2_max_value'] = config['uncert_est']['prelim_x2_max_value']
+    output += f' (preliminary chi-square cut: {settings["prelim_x2_max_value"]})'
+  print(output)
+  
+  cut_list = CutList()
 
-    if self.apply_uncert_cut:
-      uncert_cut = Cut(column='duJy', 
-                       max_value=float(config['uncert_cut']['max_value']), 
-                       flag=hexstring_to_int(config['uncert_cut']['flag']))
-      self.cut_list.add_cut(uncert_cut, 'uncert_cut')
+  if args.uncert_cut:
+    uncert_cut = Cut(column='duJy', 
+                     max_value=float(config['uncert_cut']['max_value']), 
+                     flag=hexstring_to_int(config['uncert_cut']['flag']))
+    cut_list.add_cut(uncert_cut, 'uncert_cut')
 
-    if self.apply_x2_cut:
-      params = {
-        'stn_cut': float(config['x2_cut']['stn_bound']),
-        'cut_start': int(config['x2_cut']['min_cut']),
-        'cut_stop': int(config['x2_cut']['max_cut']),
-        'cut_step': int(config['x2_cut']['cut_step']),
-        'use_preSN_lc': config['x2_cut']['use_preSN_lc'] == 'True'
-      }
-      x2_cut = Cut(column='chi/N', 
-                   max_value=float(config['x2_cut']['max_value']), 
-                   flag=hexstring_to_int(config['x2_cut']['flag']), 
-                   params=params)
-      self.cut_list.add_cut(x2_cut, 'x2_cut')
-    
-    if self.apply_controls_cut:
-      params = {
-        'questionable_flag': hexstring_to_int(config['controls_cut']['questionable_flag']),
-        'x2_max': float(config['controls_cut']['x2_max']),
-        'x2_flag': hexstring_to_int(config['controls_cut']['x2_flag']),
-        'stn_max': float(config['controls_cut']['stn_max']),
-        'stn_flag': hexstring_to_int(config['controls_cut']['stn_flag']),
-        'Nclip_max': int(config['controls_cut']['Nclip_max']),
-        'Nclip_flag': hexstring_to_int(config['controls_cut']['Nclip_flag']),
-        'Ngood_min': int(config['controls_cut']['Ngood_min']),
-        'Ngood_flag': hexstring_to_int(config['controls_cut']['Ngood_flag'])
-      }
-      controls_cut = Cut(flag=hexstring_to_int(config['controls_cut']['bad_flag']), 
-                         params=params)
-      self.cut_list.add_cut(controls_cut, 'controls_cut')
-    
-    if self.apply_averaging:
-      params = {
-        'mjd_bin_size': float(config['averaging']['mjd_bin_size']),
-        'x2_max': float(config['averaging']['x2_max']),
-        'Nclip_max': int(config['averaging']['Nclip_max']),
-        'Ngood_min': int(config['averaging']['Ngood_min']),
-        'ixclip_flag': hexstring_to_int(config['averaging']['ixclip_flag']),
-        'smallnum_flag': hexstring_to_int(config['averaging']['smallnum_flag'])
-      }
-      badday_cut = Cut(flag=hexstring_to_int(config['averaging']['flag']),
+  if args.x2_cut:
+    params = {
+      'stn_cut': float(config['x2_cut']['stn_bound']),
+      'cut_start': int(config['x2_cut']['min_cut']),
+      'cut_stop': int(config['x2_cut']['max_cut']),
+      'cut_step': int(config['x2_cut']['cut_step']),
+      'use_preSN_lc': config['x2_cut']['use_preSN_lc'] == 'True'
+    }
+    x2_cut = Cut(column='chi/N', 
+                 max_value=float(config['x2_cut']['max_value']), 
+                 flag=hexstring_to_int(config['x2_cut']['flag']), 
+                 params=params)
+    cut_list.add_cut(x2_cut, 'x2_cut')
+  
+  if args.controls_cut:
+    params = {
+      'questionable_flag': hexstring_to_int(config['controls_cut']['questionable_flag']),
+      'x2_max': float(config['controls_cut']['x2_max']),
+      'x2_flag': hexstring_to_int(config['controls_cut']['x2_flag']),
+      'stn_max': float(config['controls_cut']['stn_max']),
+      'stn_flag': hexstring_to_int(config['controls_cut']['stn_flag']),
+      'Nclip_max': int(config['controls_cut']['Nclip_max']),
+      'Nclip_flag': hexstring_to_int(config['controls_cut']['Nclip_flag']),
+      'Ngood_min': int(config['controls_cut']['Ngood_min']),
+      'Ngood_flag': hexstring_to_int(config['controls_cut']['Ngood_flag'])
+    }
+    controls_cut = Cut(flag=hexstring_to_int(config['controls_cut']['bad_flag']), 
                        params=params)
-      self.cut_list.add_cut(badday_cut, 'badday_cut')
+    cut_list.add_cut(controls_cut, 'controls_cut')
+  
+  if args.averaging:
+    params = {
+      'mjd_bin_size': float(config['averaging']['mjd_bin_size']),
+      'x2_max': float(config['averaging']['x2_max']),
+      'Nclip_max': int(config['averaging']['Nclip_max']),
+      'Ngood_min': int(config['averaging']['Ngood_min']),
+      'ixclip_flag': hexstring_to_int(config['averaging']['ixclip_flag']),
+      'smallnum_flag': hexstring_to_int(config['averaging']['smallnum_flag'])
+    }
+    badday_cut = Cut(flag=hexstring_to_int(config['averaging']['flag']),
+                     params=params)
+    cut_list.add_cut(badday_cut, 'badday_cut')
 
-    # TODO
-    
-  def clean_lcs(self, args, tnsname):
-    print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}')
-    # TODO
+  custom_cuts_settings = find_custom_cuts_settings(config)
+  for i in range(len(custom_cuts_settings)):
+    cut_settings = custom_cuts_settings[i]
+    try:
+      custom_cut = Cut(column=cut_settings['column'], 
+                      flag=hexstring_to_int(cut_settings['flag']), 
+                      min_value = cut_settings['min_value'] if cut_settings['min_value'] != 'None' else None, 
+                      max_value = cut_settings['max_value'] if cut_settings['max_value'] != 'None' else None)
+      cut_list.add_cut(custom_cut, f'custom_cut_{i}')
+    except Exception as e:
+      print(f'WARNING: Could not parse custom cut {cut_settings}: {str(e)}')
+  
+  print(cut_list)
 
-  def loop(self, args):
-    for obj_index in range(len(args.tnsnames)):
-      self.clean_lcs(args, args.tnsnames[obj_index]) 
+  return settings, sninfo, cut_list
 
 if __name__ == "__main__":
   args = define_args().parse_args()
-  clean = CleanLoop(args)
-  clean.loop(args)
+  config = load_config(args.config_file)
+  settings, sninfo, cut_list = parse_settings(args, config)
+  
+  clean = CleanLoop(settings, sninfo, cut_list)
+  clean.loop(args.tnsnames)
