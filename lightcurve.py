@@ -80,7 +80,7 @@ class Coordinates:
       raise RuntimeError(f'ERROR: Coordinates are empty and cannot be printed.')
     return f'RA {self.ra.angle.degree:0.14f}, Dec {self.dec.angle.degree:0.14f}'
   
-def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None):
+def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None, cleaned=False):
   filename = f'{output_dir}/{tnsname}'
   
   if control_index != 0:
@@ -95,6 +95,9 @@ def get_filename(output_dir, tnsname, filt='o', control_index=0, mjdbinsize=None
   
   if mjdbinsize:
     filename += f'.{mjdbinsize:0.2f}days'
+
+  if cleaned:
+    filename += f'.clean'
     
   filename += '.lc.txt'
   return filename

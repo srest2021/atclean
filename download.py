@@ -25,6 +25,15 @@ from lightcurve import Coordinates, SnInfoTable, FullLightCurve
 UTILITY
 """
 
+def load_config(config_file):
+    cfg = configparser.ConfigParser()
+    try:
+      print(f'\nLoading config file at {config_file}...')
+      cfg.read(config_file)
+    except Exception as e:
+      raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
+    return cfg
+
 class ControlCoordinatesTable:
   def __init__(self):
     self.num_controls = None
@@ -191,7 +200,7 @@ class DownloadLoop:
     if args.max_mjd:
       print(f'Max MJD: {args.max_mjd} MJD')
 
-    config = self.load_config(args.config_file)
+    config = load_config(args.config_file)
     self.flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
     print(f'Sigma limit when converting flux to magnitude : {self.flux2mag_sigmalimit}')
     
@@ -235,15 +244,6 @@ class DownloadLoop:
           print(f'with radius of {self.ctrl_coords.radius}\" from center')
     elif args.ctrl_coords or args.closebright or args.num_controls or args.radius:
       raise RuntimeError('ERROR: Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius.')
-
-  def load_config(self, config_file):
-    cfg = configparser.ConfigParser()
-    try:
-      print(f'\nLoading config file at {config_file}...')
-      cfg.read(config_file)
-    except Exception as e:
-      raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
-    return cfg
 
   def connect_atlas(self):
     baseurl = 'https://fallingstar-data.com/forcedphot'
