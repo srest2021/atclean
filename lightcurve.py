@@ -287,11 +287,75 @@ class Supernova:
         date_object = Time(date+"T"+time, format='isot', scale='utc')
         self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
 
+  def verify_mjds(self, verbose=False):
+    # sort SN lc by MJD
+    self.lcs[0].t.sort_values(by=['MJD'],ignore_index=True,inplace=True)
+
+    if self.num_controls == 0:
+      return
+    
+    if verbose:
+      print('\nMaking sure SN and control light curve MJDs match up exactly...')
+
+    sn_sorted_mjd = self.lcs[0].t['MJD'].to_numpy()
+
+    for control_index in range(1, self.num_controls+1):
+      # sort by MJD
+      self.lcs[control_index].t.sort_values(by=['MJD'],ignore_index=True,inplace=True)
+      control_sorted_mjd = self.lcs[control_index].t['MJD'].to_numpy()
+      
+      if (len(sn_sorted_mjd) != len(control_sorted_mjd)) or not np.array_equal(sn_sorted_mjd, control_sorted_mjd):
+        if verbose:
+          print(f'MJDs out of agreement for control light curve {control_index}, fixing...')
+
+        only_sn_mjd = AnotB(sn_sorted_mjd, control_sorted_mjd)
+        only_control_mjd = AnotB(control_sorted_mjd, sn_sorted_mjd)
+
+        # for the MJDs only in SN, add row with that MJD to control light curve, 
+        # with all values of other columns NaN
+        if len(only_sn_mjd) > 0:
+          for mjd in only_sn_mjd:
+            self.lcs[control_index].newrow({ 'MJD':mjd, 'Mask':0 })
+        
+        # remove indices of rows in control light curve for which there is no MJD in the SN lc
+        if len(only_control_mjd) > 0:
+          ix_to_skip = []
+          for mjd in only_control_mjd:
+            matching_ix = self.lcs[control_index].ix_equal('MJD',mjd)
+            if len(matching_ix) != 1:
+              raise RuntimeError(f'ERROR: Couldn\'t find MJD={mjd} in column MJD, but should be there!')
+            ix_to_skip.extend(matching_ix)
+          ix = AnotB(self.lcs[control_index].getindices(),ix_to_skip)
+        else:
+          ix = self.lcs[control_index].getindices()
+        
+        # sort again
+        sorted_ix = self.lcs[control_index].ix_sort_by_cols('MJD',indices=ix)
+        self.lcs[control_index].t = self.lcs[control_index].t.loc[sorted_ix]
+    
+      self.lcs[control_index].t.reset_index(drop=True, inplace=True)
+
+  def prep_for_cleaning(self, verbose=False):
+    for control_index in range(self.num_controls+1):
+      # add 'Mask' column
+      print('Adding blank \"Mask\" column...')
+      self.lcs[control_index].t['Mask'] = 0
+
+      # remove rows with duJy=0 or uJy=NaN
+      self.lcs[control_index].remove_invalid_rows(verbose=verbose)
+
+      # calculate flux/dflux column
+      self.lcs[control_index].calculate_fdf_column(verbose=verbose)
+
+    # make sure SN and control lc MJDs match up exactly
+    self.verify_mjds(verbose=verbose)
+
   def load(self, input_dir, control_index=0):
     self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
     self.lcs[control_index].load(input_dir, self.tnsname)
   
   def load_all(self, input_dir, num_controls=0):
+    self.num_controls = num_controls
     self.load(input_dir)
     if num_controls > 0:
       for control_index in range(1, num_controls+1):
@@ -406,9 +470,29 @@ class LightCurve(pdastrostatsclass):
     pdastrostatsclass.__init__(self)
     self.control_index = control_index
     self.filt = filt
+    self.dflux_colname = 'duJy'
 
   def set_df(self, t:pd.DataFrame):
     self.t = copy.deepcopy(t)
+
+  def remove_invalid_rows(self, verbose=False):
+    dflux_zero_ix = self.ix_equal(colnames=['duJy'], val=0)
+    flux_nan_ix = self.ix_is_null(colnames=['uJy'])
+    if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
+      if verbose:
+        print(f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN...')
+      self.t.drop(AorB(dflux_zero_ix,flux_nan_ix), inplace=True)
+
+  def calculate_fdf_column(self, verbose=False):
+    # replace infs with NaNs
+    if verbose:
+      print('Replacing infs with NaNs...')
+    self.t.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+    # calculate flux/dflux
+    if verbose:
+      print('Calculating flux/dflux...')
+    self.t['uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
 
   def check_column_names(self):
     if self.t is None:

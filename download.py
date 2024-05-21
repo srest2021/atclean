@@ -301,7 +301,7 @@ class DownloadLoop:
     self.sninfo.add_row_info(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
   
   def download_lcs(self, args, headers, tnsname):
-    print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}')
+    print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n')
 
     self.lcs = {}
     try:

@@ -7,6 +7,10 @@ import numpy as np
 from lightcurve import SnInfoTable, Supernova
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
+"""
+UTILITY
+"""
+
 DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'averaging']
 
 def hexstring_to_int(hexstring):
@@ -26,9 +30,7 @@ class Cut:
     self.params = params
 
   def can_apply_directly(self):
-    if not self.flag or not self.column:
-      return False
-    if not self.min_value and not self.max_value:
+    if not self.flag or not self.column or (not self.min_value and not self.max_value):
       return False
     return True
   
@@ -49,6 +51,8 @@ class CutList:
     self.list: Dict[str, Type[Cut]] = {}
 
   def add_cut(self, cut:Cut, name:str):
+    if name in self.list:
+      raise RuntimeError(f'ERROR: cut by the name {name} already exists.')
     self.list[name] = cut
 
   def get_cut(self, name:str):
@@ -181,6 +185,7 @@ class CleanLoop:
     self.output_dir:str = output_dir
     self.overwrite:bool = overwrite
 
+    print()
     self.sninfo:SnInfoTable = SnInfoTable(self.output_dir, filename=sninfo_filename)
     self.uncert_est_info:UncertEstTable = UncertEstTable(self.output_dir)
     if cut_list.has_cut('x2_cut'):
@@ -192,13 +197,17 @@ class CleanLoop:
                 num_controls=0, 
                 mjd0=None, 
                 apply_template_correction=False):
-    print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}')
+    print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}, filter {filt}')
+    
     # TODO
 
     # load the SN light curve, SN info, and control light curves
     self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
     self.sn.get_tns_data(self.credentials['tns_api_key'], self.credentials['tns_id'], self.credentials['bot_name'])
     self.sn.load_all(self.input_dir, num_controls=num_controls)
+
+    print()
+    self.sn.prep_for_cleaning(verbose=True)
 
   def loop(self, 
            tnsnames, 
@@ -379,13 +388,13 @@ if __name__ == "__main__":
 
   cut_list = parse_config_cuts(args, config)
 
-  sys.exit()
-
   clean = CleanLoop(input_dir, 
                     output_dir, 
                     config['credentials'], 
                     sninfo_filename=sninfo_filename, 
                     overwrite=args.overwrite)
+  sys.exit()
+
   clean.loop(args.tnsnames, 
              cut_list=cut_list,
              num_controls=num_controls,
