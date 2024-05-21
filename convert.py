@@ -7,5 +7,10 @@ Additional input/output directories needed:
 - raw TESS input (just read, don't touch)
 - ATClean readable (output by convert.py, sninfo.txt)
 - ATClean output (cleaned, binned, efficiencies) 
+
+Worry about:
+- column names
+- possible filters
+- filename formatting
 """
 
