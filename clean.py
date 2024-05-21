@@ -4,7 +4,7 @@ from typing import List, Dict, Type, Any
 import os, sys, argparse
 import pandas as pd
 import numpy as np
-from lightcurve import SnInfoTable, Supernova
+from lightcurve import Cut, SnInfoTable, Supernova
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 """
@@ -15,50 +15,20 @@ DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'aver
 
 def hexstring_to_int(hexstring):
   return int(hexstring, 16)
-
-class Cut:
-  def __init__(self, 
-               column:str=None, 
-               min_value:float=None, 
-               max_value:float=None, 
-               flag:int=None,
-               params:Dict[str, Any]=None):
-    self.column = column
-    self.min_value = min_value
-    self.max_value = max_value
-    self.flag = flag
-    self.params = params
-
-  def can_apply_directly(self):
-    if not self.flag or not self.column or (not self.min_value and not self.max_value):
-      return False
-    return True
-  
-  def __str__(self):
-    output = ''
-    if self.column:
-      output += f'column={self.column} '
-    if self.flag:
-      output += f'flag={hex(self.flag)} '
-    if self.min_value:
-      output += f'min_value={self.min_value} '
-    if self.max_value:
-      output += f'max_value={self.max_value}'
-    return output
   
 class CutList:
   def __init__(self):
     self.list: Dict[str, Type[Cut]] = {}
 
-  def add_cut(self, cut:Cut, name:str):
+  def add(self, cut:Cut, name:str):
     if name in self.list:
       raise RuntimeError(f'ERROR: cut by the name {name} already exists.')
     self.list[name] = cut
 
-  def get_cut(self, name:str):
+  def get(self, name:str):
     return self.list[name]
   
-  def has_cut(self, name:str):
+  def has(self, name:str):
     return name in self.list
 
   def can_apply_directly(self, name:str):
@@ -188,8 +158,18 @@ class CleanLoop:
     print()
     self.sninfo:SnInfoTable = SnInfoTable(self.output_dir, filename=sninfo_filename)
     self.uncert_est_info:UncertEstTable = UncertEstTable(self.output_dir)
-    if cut_list.has_cut('x2_cut'):
+    if cut_list.has('x2_cut'):
       self.x2_cut_info:ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
+
+  def apply_uncert_cut(self, cut:Cut):
+    print(f'\nApplying uncertainty cut: {cut}')
+    sn_percent_cut = self.sn.apply_cut(cut)
+    print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
+
+  def apply_custom_cut(self, cut:Cut):
+    print(f'\nApplying custom cut: {cut}')
+    sn_percent_cut = self.sn.apply_cut(cut)
+    print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
 
   def clean_lcs(self, 
                 tnsname, 
@@ -198,8 +178,6 @@ class CleanLoop:
                 mjd0=None, 
                 apply_template_correction=False):
     print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}, filter {filt}')
-    
-    # TODO
 
     # load the SN light curve, SN info, and control light curves
     self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
@@ -208,6 +186,30 @@ class CleanLoop:
 
     print()
     self.sn.prep_for_cleaning(verbose=True)
+
+    # TODO: template correction
+
+    # TODO
+    for name in self.cut_list:
+      cut = self.cut_list.get(name)
+      if name == 'uncert_est':
+        # true uncertainties estimation
+        pass
+      elif name == 'uncert_cut':
+        # uncertainty cut
+        self.apply_uncert_cut(cut)
+      elif name == 'x2_cut':
+        # chi-square cut
+        pass
+      elif name == 'controls_cut':
+        # control light curve cut
+        pass
+      elif name == 'badday_cut':
+        # bad day cut (averaging)
+        pass
+      else:
+        # custom cut
+        self.apply_custom_cut(cut)
 
   def loop(self, 
            tnsnames, 
@@ -252,13 +254,13 @@ def parse_config_cuts(args, config):
     print(f'- True uncertainties estimation: temporary chi-square cut at {temp_x2_max_value}')
     uncert_est = Cut(column='chi/N',
                      max_value=temp_x2_max_value)
-    cut_list.add_cut(uncert_est, 'uncert_est')
+    cut_list.add(uncert_est, 'uncert_est')
 
   if args.uncert_cut:
     uncert_cut = Cut(column='duJy', 
                      max_value=float(config['uncert_cut']['max_value']), 
                      flag=hexstring_to_int(config['uncert_cut']['flag']))
-    cut_list.add_cut(uncert_cut, 'uncert_cut')
+    cut_list.add(uncert_cut, 'uncert_cut')
     print(f'- Uncertainty cut: {uncert_cut}')
 
   if args.x2_cut:
@@ -273,7 +275,7 @@ def parse_config_cuts(args, config):
                  max_value=float(config['x2_cut']['max_value']), 
                  flag=hexstring_to_int(config['x2_cut']['flag']), 
                  params=params)
-    cut_list.add_cut(x2_cut, 'x2_cut')
+    cut_list.add(x2_cut, 'x2_cut')
     print(f'- Chi-square cut: {x2_cut}')
   
   if args.controls_cut:
@@ -290,7 +292,7 @@ def parse_config_cuts(args, config):
     }
     controls_cut = Cut(flag=hexstring_to_int(config['controls_cut']['bad_flag']), 
                        params=params)
-    cut_list.add_cut(controls_cut, 'controls_cut')
+    cut_list.add(controls_cut, 'controls_cut')
     print(f'- Control light curve cut: {controls_cut}')
   
   if args.averaging:
@@ -304,7 +306,7 @@ def parse_config_cuts(args, config):
     }
     badday_cut = Cut(flag=hexstring_to_int(config['averaging']['flag']),
                      params=params)
-    cut_list.add_cut(badday_cut, 'badday_cut')
+    cut_list.add(badday_cut, 'badday_cut')
     print(f'- Bad day cut (averaging): {controls_cut}')
 
   if args.custom_cuts:
@@ -315,7 +317,7 @@ def parse_config_cuts(args, config):
                         flag=hexstring_to_int(cut_settings['flag']), 
                         min_value = cut_settings['min_value'] if cut_settings['min_value'] != 'None' else None, 
                         max_value = cut_settings['max_value'] if cut_settings['max_value'] != 'None' else None)
-        cut_list.add_cut(custom_cut, f'custom_cut_{i}')
+        cut_list.add(custom_cut, f'custom_cut_{i}')
         print(f'- Custom cut {i}: {custom_cut}')
       except Exception as e:
         print(f'WARNING: Could not parse custom cut {cut_settings}: {str(e)}')
