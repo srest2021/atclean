@@ -4,8 +4,8 @@ from typing import List, Dict, Type, Any
 import os, sys, argparse
 import pandas as pd
 import numpy as np
-from lightcurve import SnInfoTable
-from download import load_config, make_dir_if_not_exists
+from lightcurve import SnInfoTable, Supernova
+from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'averaging']
 
@@ -66,7 +66,7 @@ class CutList:
       output += f'\n{name}: ' + self.list[name].__str__()
     return output
 
-class UncertEstInfoTable():
+class UncertEstTable():
   def __init__(self, directory, filename=None):
     if filename is None:
       self.filename = f'{directory}/uncert_est_info.txt'
@@ -105,7 +105,7 @@ class UncertEstInfoTable():
     print(f'\nSaving true uncertainties estimation table at {self.filename}...')
     self.t.to_string(self.filename)
 
-class ChiSquareCutInfoTable():
+class ChiSquareCutTable():
   def __init__(self, directory, filename=None):
     if filename is None:
       self.filename = f'{directory}/x2_cut_info.txt'
@@ -145,24 +145,60 @@ class ChiSquareCutInfoTable():
     self.t.to_string(self.filename)
 
 class CleanLoop:
-  def __init__(self, settings:Dict, cut_list:CutList):
-    self.sn = None
+  def __init__(self, 
+               input_dir, 
+               output_dir, 
+               credentials,
+               cut_list:CutList, 
+               sninfo_filename=None, 
+               overwrite=False):
+    self.credentials:Dict[str,str] = None
+    self.input_dir:str = input_dir
+    self.output_dir:str = output_dir
+    self.overwrite:bool = overwrite
 
-    self.settings = settings
-    self.cut_list = cut_list
+    self.sn:Supernova = None
 
-    self.sninfo = SnInfoTable(settings["output_dir"], filename=settings['sninfo_filename'])
-    self.uncert_est_info = UncertEstInfoTable(settings["output_dir"])
+    self.cut_list:CutList = cut_list
+
+    self.sninfo:SnInfoTable = SnInfoTable(self.output_dir, filename=sninfo_filename)
+    self.uncert_est_info:UncertEstTable = UncertEstTable(self.output_dir)
     if cut_list.has_cut('x2_cut'):
-      self.x2_cut_info = ChiSquareCutInfoTable(settings["output_dir"])
+      self.x2_cut_info:ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
 
-  def clean_lcs(self, tnsname):
+  def clean_lcs(self, tnsname, filt, num_controls=0, mjd0=None):
     print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}')
     # TODO
 
-  def loop(self, tnsnames):
+    # load the SN light curve, SN info, and control light curves
+    self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
+    self.sn.get_tns_data(self.credentials['tns_api_key'], self.credentials['tns_id'], self.credentials['bot_name'])
+    self.sn.load_all(self.input_dir, num_controls=num_controls)
+
+  def loop(self, tnsnames, num_controls=0, mjd0=None, filters=['o','c']):
     for obj_index in range(len(tnsnames)):
-      self.clean_lcs(tnsnames[obj_index]) 
+      for filt in filters:
+        self.clean_lcs(tnsnames[obj_index], filt, num_controls=num_controls, mjd0=mjd0) 
+
+def parse_config_filters(args, config):
+  if args.filters:
+    return parse_comma_separated_string(args.filters)
+  else:
+    return parse_comma_separated_string(config['convert']['filters'])
+
+def find_config_custom_cuts(config):
+  print('\nSearching config file for custom cuts...')
+  custom_cuts = []
+  for key in config:
+    if key.endswith('_cut') and not key in DEFAULT_CUT_NAMES:
+      custom_cuts.append(config[key])
+  print(f'Found {len(custom_cuts)}')
+  return custom_cuts
+
+def parse_config_cuts(args, config):
+  cut_list = CutList()
+  # TODO
+  return cut_list
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -173,6 +209,42 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
   parser.add_argument('--sninfo_file', default=None, type=str, help='file name of .txt file with SN info table')
   parser.add_argument('--config_file', default='config.ini', type=str, help='file name of .ini file with settings for this class')
   parser.add_argument('-o','--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
+  parser.add_argument('--filters', type=str, default=None, help='comma-separated list of filters to clean')
+
+  # cleaning a single SN and/or controls
+  parser.add_argument('--mjd0', type=str, default=None, help='transient start date in MJD')
+
+  # cleaning control light curves
+  parser.add_argument('-c','--controls', default=False, action='store_true', help='clean control light curves in addition to transient light curve')
+  parser.add_argument('--num_controls', type=int, default=None, help='number of control light curves to load and clean')
+  
+  # possible cuts
+  parser.add_argument('-t', '--template_correction', default=False, action='store_true', help='apply automatic ATLAS template change correction')
+  parser.add_argument('-e', '--uncert_est', default=False, action='store_true', help='apply true uncertainty estimation')
+  parser.add_argument('-u', '--uncert_cut', default=False, action='store_true', help='apply uncertainty cut')
+  parser.add_argument('-x', '--x2_cut', default=False, action='store_true', help='apply chi-square cut')
+  parser.add_argument('-n', '--controls_cut', default=False, action='store_true', help='apply control light curve cut')
+  parser.add_argument('-g', '--averaging', default=False, action='store_true', help='average light curves and cut bad days')
+  parser.add_argument('-m', '--mjd_bin_size', type=float, default=None, help='MJD bin size in days for averaging')
+  parser.add_argument('--custom_cuts', default=False, action='store_true', help='scan config file for custom cuts')
+
+  return parser
+
+# TODO: Rewrite this whole thing
+
+"""
+# define command line arguments
+def define_args(parser=None, usage=None, conflict_handler='resolve'):
+  if parser is None:
+    parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
+    
+  parser.add_argument('tnsnames', nargs='+', help='TNS names of the transients to clean')
+  parser.add_argument('--sninfo_file', default=None, type=str, help='file name of .txt file with SN info table')
+  parser.add_argument('--config_file', default='config.ini', type=str, help='file name of .ini file with settings for this class')
+  parser.add_argument('-o','--overwrite', default=False, action='store_true', help='overwrite existing file with same file name')
+
+  # cleaning a single SN and/or controls
+  parser.add_argument('--mjd0', type=str, default=None, help='transient start date in MJD')
 
   # cleaning control light curves
   parser.add_argument('-c','--controls', default=False, action='store_true', help='clean control light curves in addition to transient light curve')
@@ -189,15 +261,6 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
   parser.add_argument('--custom_cuts', default=False, action='store_true', help='scan config file for custom cuts')
 
   return parser
-
-def find_custom_cuts_settings(config):
-  print('\nSearching config file for custom cuts...')
-  custom_cuts = []
-  for key in config:
-    if key.endswith('_cut') and not key in DEFAULT_CUT_NAMES:
-      custom_cuts.append(config[key])
-  print(f'Found {len(custom_cuts)}')
-  return custom_cuts
 
 def parse_settings(args, config):
   settings = {
@@ -316,3 +379,50 @@ if __name__ == "__main__":
   
   clean = CleanLoop(settings, cut_list)
   clean.loop(args.tnsnames)
+"""
+
+if __name__ == "__main__":
+  args = define_args().parse_args()
+  config = load_config(args.config_file)
+  
+  if len(args.tnsnames) < 1:
+    raise RuntimeError('ERROR: Please specify at least one TNS name to clean.')
+  print(f'\nList of transients to clean: {args.tnsnames}')
+
+  input_dir = config['dir']['atclean_input']
+  output_dir = config['dir']['output']
+  sninfo_filename = config['dir']['sninfo_filename']
+  make_dir_if_not_exists(input_dir)
+  make_dir_if_not_exists(output_dir)
+  print(f'\nATClean input directory: {input_dir}')
+  print(f'Output directory: {output_dir}')
+
+  print(f'TNS ID: {config["credentials"]["tns_id"]}')
+  print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
+
+  filters = parse_config_filters(args, config)
+  print(f'\nOverwrite existing files: {args.overwrite}')
+  print(f'Filters: {filters}')
+
+  # TODO: template correction, uncertainty estimation
+
+  cut_list = parse_config_cuts(args, config)
+
+  print(f'\nClean control light curves: {args.controls}')
+  num_controls = 0
+  if args.controls:
+    num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
+    print(f'Number of control light curves to clean: {num_controls}')
+  elif args.num_controls:
+    raise RuntimeError('ERROR: Please specify control light curve cleaning (-c or --controls) before using the --num_controls argument.')
+
+  clean = CleanLoop(input_dir, 
+                    output_dir, 
+                    config['credentials'],
+                    cut_list, 
+                    sninfo_filename=sninfo_filename, 
+                    overwrite=args.overwrite)
+  clean.loop(args.tnsnames, 
+             num_controls=num_controls,
+             mjd0=args.mjd0,
+             filters=filters)

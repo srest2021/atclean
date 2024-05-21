@@ -16,6 +16,8 @@ DISC_DATE_BUFFER = 20
 # required light curve column names for the script to work
 REQUIRED_COLUMN_NAMES = ['MJD', 'uJy', 'duJy']
 
+ATLAS_FILTERS = ['c', 'o']
+
 """
 UTILITY
 """
@@ -46,9 +48,6 @@ class RA:
       A = Angle(string, u.degree)
     self.angle:Angle = A
   
-  # def __str__(self):
-  #   return f'{self.degrees}'
-  
 class Dec:
   def __init__(self, string=None):
     self.angle = None
@@ -57,9 +56,6 @@ class Dec:
 
   def set_angle(self, string):
     self.angle:Angle = Angle(string, u.degree)
-  
-  # def __str__(self):
-  #   return f'{self.degrees}'
   
 class Coordinates:
   def __init__(self, ra:str|None=None, dec:str|None=None):
@@ -262,11 +258,12 @@ LIGHT CURVES
 """
 
 class Supernova:
-  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None=None):
+  def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float=None, filt='c'):
     self.tnsname = tnsname
     self.num_controls = 0
     self.coords:Coordinates = Coordinates(ra,dec)
     self.mjd0 = mjd0 
+    self.filt = filt
 
     self.lcs: Dict[int, Type[LightCurve]] = {}
   
@@ -289,6 +286,16 @@ class Supernova:
         time = list(disc_date.partition(' '))[2]
         date_object = Time(date+"T"+time, format='isot', scale='utc')
         self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
+
+  def load(self, input_dir, control_index=0):
+    self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
+    self.lcs[control_index].load(input_dir, self.tnsname)
+  
+  def load_all(self, input_dir, num_controls=0):
+    self.load(input_dir)
+    if num_controls > 0:
+      for control_index in range(1, num_controls+1):
+        self.load(input_dir, control_index=control_index)
 
   def __str__(self):
     return f'SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
@@ -367,7 +374,7 @@ class FullLightCurve:
     return total_len, o_len, c_len
 
   # divide the light curve by filter and save into separate files
-  def save(self, output_dir, tnsname, overwrite=False):
+  def save(self, input_dir, tnsname, overwrite=False):
     if self.t is None:
       raise RuntimeError('ERROR: Cannot save light curve that hasn\'t been downloaded yet.')
 
@@ -384,8 +391,8 @@ class FullLightCurve:
       print(f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN...')
       lc.t = lc.t.drop(AorB(dflux_zero_ix,flux_nan_ix))
 
-    for filt in ['o','c']:
-      filename = get_filename(output_dir, tnsname, filt=filt, control_index=self.control_index)
+    for filt in ATLAS_FILTERS:
+      filename = get_filename(input_dir, tnsname, filt=filt, control_index=self.control_index)
       indices = lc.ix_equal(colnames=['F'], val=filt)
       print(f'Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}...')
       lc.save_by_filename(filename, indices=indices, overwrite=overwrite)
@@ -411,8 +418,8 @@ class LightCurve(pdastrostatsclass):
       if not column_name in self.t.columns:
         raise RuntimeError(f'ERROR: Missing required column: {column_name}')
 
-  def load(self, output_dir, tnsname):
-    filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
+  def load(self, input_dir, tnsname):
+    filename = get_filename(input_dir, tnsname, self.filt, self.control_index)
     self.load_by_filename(filename)
 
   def load_by_filename(self, filename):
@@ -431,8 +438,8 @@ class AveragedLightCurve(LightCurve):
     LightCurve.__init__(self, control_index, filt) 
     self.mjdbinsize = mjdbinsize
 
-  def load(self, output_dir, tnsname):
-    filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
+  def load(self, input_dir, tnsname):
+    filename = get_filename(input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
     self.load_by_filename(filename)
   
   def save(self, output_dir, tnsname, indices=None, overwrite=False):

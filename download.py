@@ -25,18 +25,21 @@ from lightcurve import Coordinates, SnInfoTable, FullLightCurve
 UTILITY
 """
 
+def parse_comma_separated_string(string):
+  return [item.strip() for item in string.split(",")]
+
 def make_dir_if_not_exists(directory):
   if not os.path.isdir(directory):
     os.makedirs(directory)
 
 def load_config(config_file):
-    cfg = configparser.ConfigParser()
-    try:
-      print(f'\nLoading config file at {config_file}...')
-      cfg.read(config_file)
-    except Exception as e:
-      raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
-    return cfg
+  cfg = configparser.ConfigParser()
+  try:
+    print(f'\nLoading config file at {config_file}...')
+    cfg.read(config_file)
+  except Exception as e:
+    raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
+  return cfg
 
 class ControlCoordinatesTable:
   def __init__(self):
@@ -258,8 +261,8 @@ class DownloadLoop:
       raise RuntimeError(f'ERROR in connect_atlas(): {resp.status_code}')
     return headers
   
-  def split_arg_coords(self, arg_coords):
-    parsed_coords = [coord.strip() for coord in arg_coords.split(",")]
+  def parse_arg_coords(self, arg_coords):
+    parsed_coords = parse_comma_separated_string(arg_coords)
     if len(parsed_coords) > 2:
       raise RuntimeError('ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy.')
     if len(parsed_coords) < 2:
@@ -276,7 +279,7 @@ class DownloadLoop:
 
     # next try command line args
     if args.coords:
-      ra, dec = self.split_arg_coords(args.coords)
+      ra, dec = self.parse_arg_coords(args.coords)
       print(f'Setting coordinates to --coords argument: RA {ra}, Dec {dec}')
     if args.mjd0:
       mjd0 = args.mjd0
@@ -309,7 +312,7 @@ class DownloadLoop:
 
     # download SN light curves
     self.lcs[0].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
-    self.lcs[0].save(self.output_dir, tnsname, overwrite=args.overwrite)
+    self.lcs[0].save(self.input_dir, tnsname, overwrite=args.overwrite)
 
     # save SN info table
     self.sninfo.save()
@@ -318,7 +321,7 @@ class DownloadLoop:
       # construct control coordinates table
       if args.closebright:
         # TODO: option to parse from SN info table
-        parsed_ra, parsed_dec = self.split_arg_coords(args.closebright)
+        parsed_ra, parsed_dec = self.parse_arg_coords(args.closebright)
         center_coords = Coordinates(parsed_ra, parsed_dec)
         self.ctrl_coords.construct(self.lcs[0], tnsname, center_coords, closebright=True)
       else:
@@ -333,11 +336,11 @@ class DownloadLoop:
                                     self.ctrl_coords.t['dec'], 
                                     self.ctrl_coords.t['mjd0'])
         self.lcs[i].download(headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd)
-        self.lcs[i].save(self.output_dir, tnsname, overwrite=args.overwrite)
+        self.lcs[i].save(self.input_dir, tnsname, overwrite=args.overwrite)
         self.ctrl_coords.update_row(i, self.lcs[i])
 
       # save control coordinates table
-      self.ctrl_coords.save(self.output_dir, tnsname=tnsname)
+      self.ctrl_coords.save(self.input_dir, tnsname=tnsname)
 
   def loop(self, args):
     print('\nConnecting to ATLAS API...')
