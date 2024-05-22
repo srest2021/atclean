@@ -26,6 +26,8 @@ class CutList:
     self.list[name] = cut
 
   def get(self, name:str):
+    if not name in self.list:
+      return None
     return self.list[name]
   
   def has(self, name:str):
@@ -55,6 +57,15 @@ class CutList:
           unique_flags.add(flag)
 
     return len(duplicate_flags) > 0, duplicate_flags
+  
+  def get_custom_cuts(self):
+    custom_cuts = {}
+    
+    for name in self.list:
+      if not name in DEFAULT_CUT_NAMES:
+        custom_cuts[name] = self.list[name]
+    
+    return custom_cuts
   
   def __str__(self):
     output = ''
@@ -155,19 +166,48 @@ class CleanLoop:
     self.output_dir:str = output_dir
     self.overwrite:bool = overwrite
 
-    print()
     self.sninfo:SnInfoTable = SnInfoTable(self.output_dir, filename=sninfo_filename)
     self.uncert_est_info:UncertEstTable = UncertEstTable(self.output_dir)
     if cut_list.has('x2_cut'):
       self.x2_cut_info:ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
+  
+  def apply_template_correction(self):
+    print(f'\nApplying ATLAS template change correction...')
+    # TODO
+
+  def apply_uncert_est(self, cut:Cut):
+    if cut is None:
+      return
+    print(f'\nApplying true uncertainties estimation...')
+    # TODO
 
   def apply_uncert_cut(self, cut:Cut):
-    print(f'\nApplying uncertainty cut: {cut}')
+    if cut is None:
+      return
+    print(f'\nApplying uncertainty cut ({cut})...')
     sn_percent_cut = self.sn.apply_cut(cut)
     print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
 
+  def apply_x2_cut(self, cut:Cut):
+    if cut is None:
+      return
+    print(f'\nApplying chi-square cut ({cut})...')
+    # TODO
+
+  def apply_controls_cut(self, cut:Cut):
+    if cut is None:
+      return
+    print(f'\nApplying control light curve cut ({cut})...')
+    # TODO
+  
+  def apply_badday_cut(self, cut:Cut):
+    if cut is None:
+      return
+    print(f'\nApplying bad day cut (averaging) ({cut})...')
+    # TODO
+
   def apply_custom_cut(self, cut:Cut):
-    print(f'\nApplying custom cut: {cut}')
+    print(f'\nApplying custom cut ({cut})...')
     sn_percent_cut = self.sn.apply_cut(cut)
     print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
 
@@ -187,29 +227,27 @@ class CleanLoop:
     print()
     self.sn.prep_for_cleaning(verbose=True)
 
-    # TODO: template correction
+    # template correction
+    self.apply_template_correction()
+    
+    # uncertainty cut
+    self.apply_uncert_cut(self.cut_list.get('uncert_cut'))
 
-    # TODO
-    for name in self.cut_list:
-      cut = self.cut_list.get(name)
-      if name == 'uncert_est':
-        # true uncertainties estimation
-        pass
-      elif name == 'uncert_cut':
-        # uncertainty cut
-        self.apply_uncert_cut(cut)
-      elif name == 'x2_cut':
-        # chi-square cut
-        pass
-      elif name == 'controls_cut':
-        # control light curve cut
-        pass
-      elif name == 'badday_cut':
-        # bad day cut (averaging)
-        pass
-      else:
-        # custom cut
-        self.apply_custom_cut(cut)
+    # true uncertainties estimation
+    self.apply_uncert_est(self.cut_list.get('uncert_est'))
+
+    # chi-square cut
+    self.apply_x2_cut(self.cut_list.get('x2_cut'))
+
+    # control light curve cut
+    self.apply_controls_cut(self.cut_list.get('controls_cut'))
+
+    # bad day cut (averaging)
+    self.apply_badday_cut(self.cut_list.get('badday_cut'))
+
+    # custom cuts
+    for cut in self.cut_list.get_custom_cuts().values():
+      self.apply_custom_cut(cut)
 
   def loop(self, 
            tnsnames, 
@@ -390,6 +428,7 @@ if __name__ == "__main__":
 
   cut_list = parse_config_cuts(args, config)
 
+  print()
   clean = CleanLoop(input_dir, 
                     output_dir, 
                     config['credentials'], 
