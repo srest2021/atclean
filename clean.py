@@ -175,11 +175,50 @@ class CleanLoop:
     print(f'\nApplying ATLAS template change correction...')
     # TODO
 
-  def apply_uncert_est(self, cut:Cut):
-    if cut is None:
-      return
-    print(f'\nApplying true uncertainties estimation...')
-    # TODO
+  def check_uncert_est(self, cut:Cut, apply_function:function):
+    # def get_final_sigma_extra(stats):
+    #   return np.median(stats['sigma_extra'])
+    
+    # def get_sigma_typical_old(stats):
+    #   return np.median(stats['median_dflux'])
+    
+    # def get_sigma_typical_new(final_sigma_extra, sigma_typical_old):
+    #   return np.sqrt(final_sigma_extra**2 + sigma_typical_old**2)
+
+    print(f'\nChecking true uncertainties estimation...')
+    
+    stats = self.sn.get_uncert_est_stats(cut)
+    final_sigma_extra = np.median(stats['sigma_extra'])
+
+    sigma_typical_old = np.median(stats['median_dflux'])
+    sigma_typical_new = np.sqrt(final_sigma_extra**2 + sigma_typical_old**2)
+    percent_greater = 100 * ((sigma_typical_new - sigma_typical_old)/sigma_typical_old)
+    print(f'We can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature')
+    print(f'New typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty')
+    
+    apply = apply_function()
+    print(f'Apply true uncertainties estimation: {apply}')
+    if percent_greater >= 10:
+      print('True uncertainties estimation recommended')
+      print(f'{"Applying" if apply else "Skipping"} procedure...')
+      if apply:
+        self.sn.add_noise_to_dflux(final_sigma_extra)
+        print('Success')
+        print('The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column')
+    else:
+      print('True uncertainties estimation not needed; skipping procedure...')
+    
+    uncert_est_info_row = {
+      'tnsname': self.sn.tnsname, 
+      'filter': self.sn.filt, 
+      'sigma_extra': final_sigma_extra,
+      'sigma_typical_old':sigma_typical_old,
+      'sigma_typical_new':sigma_typical_new,
+      'sigma_typical_new_pct_greater': percent_greater,
+      'recommended': percent_greater >= 10,
+      'applied': apply
+    }
+    return apply, uncert_est_info_row
 
   def apply_uncert_cut(self, cut:Cut):
     if cut is None:
@@ -214,6 +253,7 @@ class CleanLoop:
   def clean_lcs(self, 
                 tnsname, 
                 filt, 
+                apply_uncert_est_function:function,
                 num_controls=0, 
                 mjd0=None, 
                 apply_template_correction=False):
@@ -228,13 +268,15 @@ class CleanLoop:
     self.sn.prep_for_cleaning(verbose=True)
 
     # template correction
-    self.apply_template_correction()
+    if apply_template_correction:
+      self.apply_template_correction()
     
     # uncertainty cut
     self.apply_uncert_cut(self.cut_list.get('uncert_cut'))
 
     # true uncertainties estimation
-    self.apply_uncert_est(self.cut_list.get('uncert_est'))
+    _, uncert_est_info_row = self.check_uncert_est(self.cut_list.get('uncert_est'), apply_function=apply_uncert_est_function)
+    self.uncert_est_info.add_row(uncert_est_info_row)
 
     # chi-square cut
     self.apply_x2_cut(self.cut_list.get('x2_cut'))
@@ -251,16 +293,19 @@ class CleanLoop:
 
   def loop(self, 
            tnsnames, 
+           apply_uncert_est_function:function,
            num_controls=0, 
            mjd0=None, 
            filters=['o','c'], 
            cut_list=None, 
-           apply_template_correction=False):
-    self.cut_list = cut_list
+           apply_template_correction=False,
+           apply_uncert_est=False):
+    self.cut_list = cut_list  
     for obj_index in range(len(tnsnames)):
       for filt in filters:
         self.clean_lcs(tnsnames[obj_index], 
-                       filt, 
+                       filt,
+                       apply_uncert_est_function, 
                        num_controls=num_controls, 
                        mjd0=mjd0, 
                        apply_template_correction=apply_template_correction) 
@@ -287,12 +332,15 @@ def parse_config_cuts(args, config):
 
   print(f'Procedures to apply:')
 
-  if args.uncert_est:
-    temp_x2_max_value = float(config['uncert_est']['temp_x2_max_value'])
-    print(f'- True uncertainties estimation: temporary chi-square cut at {temp_x2_max_value}')
-    uncert_est = Cut(column='chi/N',
-                     max_value=temp_x2_max_value)
-    cut_list.add(uncert_est, 'uncert_est')
+  # always check true uncertainties estimation, but will only apply if args.true_uncert_est
+  temp_x2_max_value = float(config['uncert_est']['temp_x2_max_value'])
+  print(f'- True uncertainties estimation: temporary chi-square cut at {temp_x2_max_value}')
+  params = {
+    'temp_x2_max_value': temp_x2_max_value,
+    'uncert_cut_flag': hexstring_to_int(config['uncert_cut']['flag'])
+  }
+  uncert_est = Cut(params=params)
+  cut_list.add(uncert_est, 'uncert_est')
 
   if args.uncert_cut:
     uncert_cut = Cut(column='duJy', 
@@ -436,7 +484,11 @@ if __name__ == "__main__":
                     overwrite=args.overwrite)
   sys.exit()
 
+  def apply_uncert_est_function():
+    return args.apply_uncert_est
+
   clean.loop(args.tnsnames, 
+             apply_uncert_est_function,
              cut_list=cut_list,
              num_controls=num_controls,
              mjd0=args.mjd0,

@@ -392,6 +392,40 @@ class Supernova:
 				sn_percent_cut = percent_cut
 		
 		return sn_percent_cut
+	
+	def get_uncert_est_stats(self, cut:Cut):
+		def get_sigma_extra(median_dflux, stdev):
+			return max(0, np.sqrt(stdev**2 - median_dflux**2))
+	
+		stats = pd.DataFrame(columns=['control_index', 'median_dflux', 'stdev', 'sigma_extra'])
+		stats['control_index'] = list(range(1, self.num_controls+1))
+		stats.set_index('control_index', inplace=True)
+
+		for control_index in range(1, self.num_controls+1):
+			dflux_clean_ix = self.lcs[control_index].ix_unmasked('Mask', maskval=cut.params['uncert_cut_flag'])
+			x2_clean_ix = self.lcs[control_index].ix_inrange(colnames=['chi/N'], uplim=cut.params['temp_x2_max_value'], exclude_uplim=True)
+			clean_ix = AandB(dflux_clean_ix, x2_clean_ix)
+
+			median_dflux = self.lcs[control_index].get_median_dflux(indices=clean_ix)
+			
+			stdev_flux = self.lcs[control_index].get_stdev_flux(indices=clean_ix)
+			if stdev_flux is None:
+				print(f'WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.params["temp_x2_max_value"]}...')
+				stdev_flux = self.lcs[control_index].get_stdev_flux(indices=dflux_clean_ix)
+				if stdev_flux is None:
+					print('WARNING: Could not get flux std dev using clean indices; retrying with all indices...')
+					stdev_flux = self.lcs[control_index].get_stdev_flux(control_index=control_index)
+			
+			sigma_extra = get_sigma_extra(median_dflux, stdev_flux)
+
+			stats.loc[control_index, 'median_dflux'] = median_dflux
+			stats.loc[control_index, 'stdev'] = stdev_flux
+			stats.loc[control_index, 'sigma_extra'] = sigma_extra
+
+		return stats
+	
+	def add_noise_to_dflux(self, sigma_extra):
+		pass
 
 	def load(self, input_dir, control_index=0):
 		self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
@@ -536,6 +570,15 @@ class LightCurve(pdastrostatsclass):
 		if verbose:
 			print('Calculating flux/dflux...')
 		self.t['uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
+
+	def get_median_dflux(self, indices=None):
+		if indices is None:
+			indices = self.getindices()
+		return np.nanmedian(self.t.loc[indices, 'duJy'])
+
+	def get_stdev_flux(self, indices=None):
+		self.calcaverage_sigmacutloop('uJy', indices=indices, Nsigma=3.0, median_firstiteration=True)
+		return self.statparams['stdev']
 
 	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
 		all_ix = self.getindices()
