@@ -15,6 +15,80 @@ DEFAULT_CUT_NAMES = ['uncert_cut', 'x2_cut', 'controls_cut', 'badday_cut', 'aver
 
 def hexstring_to_int(hexstring):
 	return int(hexstring, 16)
+
+class OutputReadMe:
+	def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
+		self.f = open(f'{output_dir}/{tnsname}/README.md','w+')
+		self.tnsname:str = tnsname
+		self.cut_list:CutList = cut_list
+		self.begin(num_controls=num_controls)
+	
+	def begin(self, num_controls=0):
+		mjd_bin_size = self.cut_list.get('badday_cut').params['mjd_bin_size']
+
+		self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
+		self.f.write(f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.')
+		
+		self.f.write(f'\n\nThe following details the file names for each of the light curve versions:')
+		self.f.write(f'\n\t- Original SN light curves: {self.tnsname}.o.lc.txt and {self.tnsname}.c.lc.txt')
+		self.f.write(f'\n\t- Cleaned SN light curves: {self.tnsname}.o.clean.lc.txt and {self.tnsname}.c.clean.lc.txt')
+		if self.cut_list.has('badday_cut'):
+			self.f.write(f'\n\t- Averaged light curves: {self.tnsname}.o.{mjd_bin_size:0.2f}days.lc.txt and {self.tnsname}.c.{mjd_bin_size:0.2f}days.lc.txt')
+		if self.cut_list.has('controls_cut'):
+			self.f.write(f'\n\t- Control light curves, where X=001,...,{num_controls:03d}: {self.tnsname}_iX.o.lc.txt and {self.tnsname}_iX.c.lc.txt')
+
+		self.f.write(f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): ')
+		if self.cut_list.has('uncert_cut'):
+			self.f.write(f'\n\t- Uncertainty cut: {hex(self.cut_list.get('uncert_cut').flag)}')
+		if self.cut_list.has('x2_cut'):
+			self.f.write(f'\n\t- Chi-square cut: {hex(self.cut_list.get('x2_cut').flag)}')
+		if self.cut_list.has('controls_cut'):
+			self.f.write(f'\n\t- Control light curve cut: {hex(self.cut_list.get('controls_cut').flag)}')
+		if self.cut_list.has('badday_cut'):
+			self.f.write(f'\n\t- Bad day (for averaged light curves only): {hex(self.cut_list.get('badday_cut').flag)}')
+		
+		custom_cuts = self.cut_list.get_custom_cuts()
+		for name in custom_cuts:
+			self.f.write(f'\n\t- Custom cut {name[-1]} on \"{self.cut_list.get(name).column}\" column: {hex(self.cut_list.get(name).flag)}')
+
+	def add_filter_section(self, filt):
+		self.f.write(f'\n\n## FILTER: {filt}')
+
+	def add_template_correction_section(self):
+		self.f.write(f'\n\n### ATLAS template change correction\n')
+		# TODO
+
+	def add_uncert_est_section(self):
+		self.f.write(f'\n\n### Uncertainty cut\n')
+		# TODO
+
+	def add_uncert_cut_section(self, cut:Cut, percent_cut):
+		self.f.write(f'\n\n### True uncertainties estimation\n')
+		self.f.write(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
+
+	def add_x2_cut_section(self):
+		self.f.write(f'\n\n### Chi-square cut\n')
+		# TODO
+
+	def add_controls_cut_section(self):
+		self.f.write(f'\n\n### Control light curve cut\n')
+		# TODO
+
+	def add_badday_cut_section(self, percent_cut):
+		self.f.write(f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.')
+		self.f.write(f'\nTotal percent of data flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
+
+		self.f.write(f'\n\n### Bad day cut (averaging)\n')
+		# TODO
+
+		self.f.write(f'\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename.')
+
+	def add_custom_cut_section(self, name, cut:Cut, percent_cut):
+		self.f.write(f'\n\n### Custom cut {name[-1]}\n')
+		self.f.write(f'Total percent of data flagged ({hex(cut.flag)}): {percent_cut:0.2f}%')
+
+	def save(self):
+		self.f.close()
 	
 class CutList:
 	def __init__(self):
@@ -62,10 +136,17 @@ class CutList:
 		custom_cuts = {}
 		
 		for name in self.list:
-			if not name in DEFAULT_CUT_NAMES:
+			if not name in DEFAULT_CUT_NAMES and name != 'uncert_est':
 				custom_cuts[name] = self.list[name]
 		
 		return custom_cuts
+
+	def get_all_flags(self):
+		mask = 0
+		for name in self.list:
+			if name != 'uncert_est':
+				mask = mask | self.list[name].flag
+		return mask
 	
 	def __str__(self):
 		output = ''
@@ -160,6 +241,7 @@ class CleanLoop:
 							 overwrite=False):
 		self.sn:Supernova = None
 		self.cut_list:CutList = None
+		self.f:OutputReadMe = None 
 
 		self.credentials:Dict[str,str] = credentials
 		self.input_dir:str = input_dir
@@ -174,6 +256,7 @@ class CleanLoop:
 	def apply_template_correction(self):
 		print(f'\nApplying ATLAS template change correction...')
 		# TODO
+		# TODO: add_template_correction_section
 
 	def check_uncert_est(self, cut:Cut, apply_function:function):
 		print(f'\nChecking true uncertainties estimation...')
@@ -198,6 +281,8 @@ class CleanLoop:
 				print('The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column')
 		else:
 			print('True uncertainties estimation not needed; skipping procedure...')
+
+		# TODO: add_uncert_est_section
 		
 		uncert_est_info_row = {
 			'tnsname': self.sn.tnsname, 
@@ -215,20 +300,24 @@ class CleanLoop:
 		if cut is None:
 			return
 		print(f'\nApplying uncertainty cut ({cut})...')
-		sn_percent_cut = self.sn.apply_cut(cut)
-		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
+		percent_cut = self.sn.apply_cut(cut)
+		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
+		self.f.add_uncert_cut_section(cut, percent_cut)
 
 	def apply_x2_cut(self, cut:Cut):
 		if cut is None:
 			return
 		print(f'\nApplying chi-square cut ({cut})...')
 		# TODO
+		# TODO: add_x2_cut_section
 
-	def apply_controls_cut(self, cut:Cut):
+	def apply_controls_cut(self, cut:Cut, uncert_flag, x2_flag):
 		if cut is None:
 			return
 		print(f'\nApplying control light curve cut ({cut})...')
-		# TODO
+		
+		self.sn.apply_controls_cut(cut, uncert_flag, x2_flag)
+		# TODO: add_controls_cut_section
 	
 	def apply_badday_cut(self, cut:Cut):
 		if cut is None:
@@ -236,10 +325,16 @@ class CleanLoop:
 		print(f'\nApplying bad day cut (averaging) ({cut})...')
 		# TODO
 
-	def apply_custom_cut(self, cut:Cut):
+		percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=self.cut_list.get_all_flags())) / len(self.lcs[0].t)
+		# TODO
+		self.f.add_badday_cut_section(percent_cut)
+
+	def apply_custom_cut(self, name, cut:Cut):
+		cut = self.cut_list.get(name)
 		print(f'\nApplying custom cut ({cut})...')
-		sn_percent_cut = self.sn.apply_cut(cut)
-		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {sn_percent_cut:0.2f}%')
+		percent_cut = self.sn.apply_cut(cut)
+		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
+		self.f.add_custom_cut_section(name, cut, percent_cut)
 
 	def clean_lcs(self, 
 								tnsname, 
@@ -273,14 +368,17 @@ class CleanLoop:
 		self.apply_x2_cut(self.cut_list.get('x2_cut'))
 
 		# control light curve cut
-		self.apply_controls_cut(self.cut_list.get('controls_cut'))
+		self.apply_controls_cut(self.cut_list.get('controls_cut'), 
+														self.cut_list.get('uncert_cut').flag, 
+														self.cut_list.get('x2_cut').flag)
 
 		# bad day cut (averaging)
 		self.apply_badday_cut(self.cut_list.get('badday_cut'))
 
 		# custom cuts
-		for cut in self.cut_list.get_custom_cuts().values():
-			self.apply_custom_cut(cut)
+		custom_cuts = self.cut_list.get_custom_cuts()
+		for name, cut in custom_cuts:
+			self.apply_custom_cut(name, cut)
 
 	def loop(self, 
 					 tnsnames, 
@@ -289,12 +387,16 @@ class CleanLoop:
 					 mjd0=None, 
 					 filters=['o','c'], 
 					 cut_list=None, 
-					 apply_template_correction=False,
-					 apply_uncert_est=False):
+					 apply_template_correction=False):
 		self.cut_list = cut_list  
+		
 		for obj_index in range(len(tnsnames)):
+			tnsname = tnsnames[obj_index]
+			self.f = OutputReadMe(self.output_dir, tnsname, cut_list, num_controls=num_controls)
+			
 			for filt in filters:
-				self.clean_lcs(tnsnames[obj_index], 
+				self.f.add_filter_section(filt)
+				self.clean_lcs(tnsname, 
 											 filt,
 											 apply_uncert_est_function, 
 											 num_controls=num_controls, 

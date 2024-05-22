@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Dict, Type
+from typing import Dict, Type, Any
 import re, json, requests, time, sys, io, copy
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -428,6 +428,59 @@ class Supernova:
 		for control_index in range(self.num_controls+1):
 			self.lcs[control_index].add_noise_to_dflux(sigma_extra)
 
+	def calculate_control_stats(self, uncert_flag, x2_flag):
+		print('Calculating control light curve statistics...')
+
+		len_mjd = len(self.lcs[0].t['MJD'])
+
+		# construct arrays for control lc data
+		uJy = np.full((self.num_controls, len_mjd), np.nan)
+		duJy = np.full((self.num_controls, len_mjd), np.nan)
+		Mask = np.full((self.num_controls, len_mjd), 0, dtype=np.int32)
+		
+		for control_index in range(1, self.num_controls+1):
+			if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(self.lcs[0].t['MJD'], self.lcs[control_index].t['MJD']):
+				raise RuntimeError(f'ERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds().')
+			else:
+				uJy[control_index-1,:] = self.lcs[control_index].t['uJy']
+				duJy[control_index-1,:] = self.lcs[control_index].t[self.lcs[control_index].dflux_colname]
+				Mask[control_index-1,:] = self.lcs[control_index].t['Mask']
+
+		c2_param2columnmapping = self.lcs[0].intializecols4statparams(prefix='c2_',format4outvals='{:.2f}',skipparams=['converged','i'])
+
+		for index in range(uJy.shape[-1]):
+			pda4MJD = pdastrostatsclass()
+			pda4MJD.t['uJy'] = uJy[0:,index]
+			pda4MJD.t[self.lcs[0].dflux_colname] = duJy[0:,index]
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], (x2_flag|uncert_flag))
+			
+			pda4MJD.calcaverage_sigmacutloop('uJy',
+											noisecol=self.lcs[0].dflux_colname,
+											maskcol='Mask',
+											maskval=(x2_flag|uncert_flag),
+											verbose=1, Nsigma=3.0, median_firstiteration=True)
+			self.lcs[0].statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index)
+
+	def apply_controls_cut(self, cut:Cut, uncert_flag, x2_flag):
+		self.calculate_control_stats(uncert_flag, x2_flag)
+		self.lcs[0].t['c2_abs_stn'] = self.lcs[0].t['c2_mean'] / self.lcs[0].t['c2_mean_err']
+
+		# flag SN measurements
+		self.lcs[0].flag_by_control_stats()
+
+		# copy over SN's control cut flags to control light curve 'Mask' columns
+		flags_arr = np.full(self.lcs[0].t['Mask'].shape, 
+											  (cut.flag|cut.params['questionable_flag']|cut.params['x2_flag']|cut.params['stn_flag']|cut.params['Nclip_flag']|cut.params['Ngood_flag']))
+		flags_to_copy = np.bitwise_and(self.lcs[0].t['Mask'], flags_arr)
+		for control_index in range(1,self.num_controls+1):
+			self.lcs[control_index].copy_flags(flags_to_copy)
+			
+		self.drop_extra_columns()
+
+	def drop_extra_columns(self):
+		for control_index in range(self.num_controls+1):
+			self.lcs[control_index].drop_extra_columns()
+
 	def load(self, input_dir, control_index=0):
 		self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
 		self.lcs[control_index].load(input_dir, self.tnsname)
@@ -542,7 +595,7 @@ class FullLightCurve:
 	def __str__(self):
 		return f'Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}'
 
-# contains either o-band or c-band measurements
+# contains either o-band or c-band measurements only
 class LightCurve(pdastrostatsclass):
 	def __init__(self, control_index=0, filt='o'):
 		pdastrostatsclass.__init__(self)
@@ -586,6 +639,32 @@ class LightCurve(pdastrostatsclass):
 		self.dflux_colname = 'duJy_new'
 		self.calculate_fdf_column()
 
+	def flag_by_control_stats(self, cut:Cut):
+		# flag SN measurements according to given bounds
+		flag_x2_ix = self.ix_inrange(colnames=['c2_X2norm'], lowlim=cut.params['x2_max'], exclude_lowlim=True)
+		flag_stn_ix = self.ix_inrange(colnames=['c2_abs_stn'], lowlim=cut.params['stn_max'], exclude_lowlim=True)
+		flag_nclip_ix = self.ix_inrange(colnames=['c2_Nclip'], lowlim=cut.params['Nclip_max'], exclude_lowlim=True)
+		flag_ngood_ix = self.ix_inrange(colnames=['c2_Ngood'], uplim=cut.params['Ngood_min'], exclude_uplim=True)
+		self.update_mask_column(cut.params['x2_flag'], flag_x2_ix)
+		self.update_mask_column(cut.params['stn_flag'], flag_stn_ix)
+		self.update_mask_column(cut.params['Nclip_flag'], flag_nclip_ix)
+		self.update_mask_column(cut.params['Ngood_flag'], flag_ngood_ix)
+
+		# update mask column with control light curve cut on any measurements flagged according to given bounds
+		zero_Nclip_ix = self.ix_equal('c2_Nclip', 0)
+		unmasked_ix = self.ix_unmasked('Mask', maskval=cut.params['x2_flag']|cut.params['stn_flag']|cut.params['Nclip_flag']|cut.params['Ngood_flag'])
+		self.update_mask_column(cut.params['questionable_flag'], AnotB(unmasked_ix, zero_Nclip_ix))
+		self.update_mask_column(cut.flag, AnotB(self.getindices(),unmasked_ix))
+
+	def copy_flags(self, flags_to_copy):
+		self.t['Mask'] = self.t['Mask'].astype(np.int32)
+		if len(self.t) < 1:
+			return
+		elif len(self.t) == 1:
+			self.t.loc[0,'Mask']= int(self.t.loc[0,'Mask']) | flags_to_copy
+		else:
+			self.t['Mask'] = np.bitwise_or(self.t['Mask'], flags_to_copy)
+
 	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
 		all_ix = self.getindices()
 		if min_value:
@@ -611,6 +690,20 @@ class LightCurve(pdastrostatsclass):
 			self.t.loc[indices,'Mask'] = np.bitwise_or(self.t.loc[indices,'Mask'].astype(int), flag_arr)
 		elif len(indices) == 1:
 			self.t.loc[indices,'Mask'] = int(self.t.loc[indices,'Mask']) | flag
+
+	def drop_extra_columns(self, verbose=False):
+		dropcols = []
+		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'c2_mean', 'c2_mean_err', 'c2_stdev', 'c2_stdev_err', 'c2_X2norm', 'c2_Ngood', 'c2_Nclip', 'c2_Nmask', 'c2_Nnan', 'c2_abs_stn']:
+			if col in self.t.columns:
+				dropcols.append(col)
+		for col in self.t.columns:
+			if re.search('^c\d_',col): 
+				dropcols.append(col)
+
+		if len(dropcols) > 0: 
+			if verbose:
+				print(f'Dropping extra columns ({f"control light curve {str(self.control_index)}" if self.control_index > 0 else "SN light curve"}): ',dropcols)
+			self.t.drop(columns=dropcols,inplace=True)
 
 	def check_column_names(self):
 		if self.t is None:
