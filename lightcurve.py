@@ -425,7 +425,8 @@ class Supernova:
 		return stats
 	
 	def add_noise_to_dflux(self, sigma_extra):
-		pass
+		for control_index in range(self.num_controls+1):
+			self.lcs[control_index].add_noise_to_dflux(sigma_extra)
 
 	def load(self, input_dir, control_index=0):
 		self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
@@ -569,7 +570,7 @@ class LightCurve(pdastrostatsclass):
 		# calculate flux/dflux
 		if verbose:
 			print('Calculating flux/dflux...')
-		self.t['uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
+		self.t[f'uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
 
 	def get_median_dflux(self, indices=None):
 		if indices is None:
@@ -579,6 +580,11 @@ class LightCurve(pdastrostatsclass):
 	def get_stdev_flux(self, indices=None):
 		self.calcaverage_sigmacutloop('uJy', indices=indices, Nsigma=3.0, median_firstiteration=True)
 		return self.statparams['stdev']
+	
+	def add_noise_to_dflux(self, sigma_extra):
+		self.t['duJy_new'] = np.sqrt(self.t['duJy']*self.t['duJy'] + sigma_extra**2)
+		self.dflux_colname = 'duJy_new'
+		self.calculate_fdf_column()
 
 	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
 		all_ix = self.getindices()

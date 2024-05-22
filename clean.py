@@ -176,15 +176,6 @@ class CleanLoop:
     # TODO
 
   def check_uncert_est(self, cut:Cut, apply_function:function):
-    # def get_final_sigma_extra(stats):
-    #   return np.median(stats['sigma_extra'])
-    
-    # def get_sigma_typical_old(stats):
-    #   return np.median(stats['median_dflux'])
-    
-    # def get_sigma_typical_new(final_sigma_extra, sigma_typical_old):
-    #   return np.sqrt(final_sigma_extra**2 + sigma_typical_old**2)
-
     print(f'\nChecking true uncertainties estimation...')
     
     stats = self.sn.get_uncert_est_stats(cut)
