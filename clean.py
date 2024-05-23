@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-from typing import List, Dict, Type, Any
+from typing import Dict, Type
 import os, sys, argparse
 import pandas as pd
 import numpy as np
-from lightcurve import Cut, SnInfoTable, Supernova
+from copy import deepcopy
+from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 """
@@ -58,25 +59,39 @@ class OutputReadMe:
 		self.f.write(f'\n\n### ATLAS template change correction\n')
 		# TODO
 
-	def add_uncert_est_section(self):
-		self.f.write(f'\n\n### Uncertainty cut\n')
-		# TODO
+	def add_uncert_est_section(self, sigma_typical_old, sigma_typical_new, final_sigma_extra, percent_greater, apply):
+		self.f.write(f'\n\n### True uncertainties estimation\n')
+		self.f.write(f'\nWe can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature.')
+		self.f.write(f'\nNew typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty.')
+		self.f.write(f'\nApply true uncertainties estimation: {apply}.')
+		if percent_greater >= 10:
+			self.f.write('\nTrue uncertainties estimation recommended.')
+			if apply:
+				self.f.write('\nThe extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column.')
+		else:
+			self.f.write('\nTrue uncertainties estimation not needed; procedure skipped.')
 
 	def add_uncert_cut_section(self, cut:Cut, percent_cut):
-		self.f.write(f'\n\n### True uncertainties estimation\n')
-		self.f.write(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
+		self.f.write(f'\n\n### Uncertainty cut\n')
+		self.f.write(f'\nTotal percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
 
-	def add_x2_cut_section(self):
+	def add_x2_cut_section(self, cut:Cut, percent_contamination, percent_loss, percent_cut):
 		self.f.write(f'\n\n### Chi-square cut\n')
-		# TODO
+		self.f.write(f'\nChi-square cut {cut.max_value:0.2f} selected with {percent_contamination:0.2f}% contamination and {percent_loss:0.2f}% loss\n')
+		self.f.write(f'\nTotal percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
 
-	def add_controls_cut_section(self):
+	def add_controls_cut_section(self, cut:Cut, x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut):
 		self.f.write(f'\n\n### Control light curve cut\n')
-		# TODO
+		self.f.write(f'\nPercent of SN light curve above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%')
+		self.f.write(f'\nPercent of SN light curve above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%')
+		self.f.write(f'\nPercent of SN light curve above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%')
+		self.f.write(f'\nPercent of SN light curve below Ngood_min bound ({hex(cut.params["Ngood_flag"])}): {Ngood_percent_cut:0.2f}%')
+		self.f.write(f'\nTotal percent of SN light curve flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%')
+		self.f.write(f'\nTotal percent of SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%')
 
 	def add_badday_cut_section(self, percent_cut):
 		self.f.write(f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.')
-		self.f.write(f'\nTotal percent of data flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
+		self.f.write(f'\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
 
 		self.f.write(f'\n\n### Bad day cut (averaging)\n')
 		# TODO
@@ -85,7 +100,7 @@ class OutputReadMe:
 
 	def add_custom_cut_section(self, name, cut:Cut, percent_cut):
 		self.f.write(f'\n\n### Custom cut {name[-1]}\n')
-		self.f.write(f'Total percent of data flagged ({hex(cut.flag)}): {percent_cut:0.2f}%')
+		self.f.write(f'\nTotal percent of SN light curve flagged ({hex(cut.flag)}): {percent_cut:0.2f}%')
 
 	def save(self):
 		self.f.close()
@@ -282,7 +297,7 @@ class CleanLoop:
 		else:
 			print('True uncertainties estimation not needed; skipping procedure...')
 
-		# TODO: add_uncert_est_section
+		self.f.add_uncert_est_section(sigma_typical_old, sigma_typical_new, final_sigma_extra, percent_greater, apply)
 		
 		uncert_est_info_row = {
 			'tnsname': self.sn.tnsname, 
@@ -307,17 +322,41 @@ class CleanLoop:
 	def apply_x2_cut(self, cut:Cut):
 		if cut is None:
 			return
+		
 		print(f'\nApplying chi-square cut ({cut})...')
-		# TODO
-		# TODO: add_x2_cut_section
+		if cut.params['use_pre_mjd0_lc']:
+			print('Using pre-MJD0 light curve to determine contamination and loss...')
+			lc_temp = deepcopy(self.lcs[0])
+			ix = lc_temp.ix_inrange('MJD', uplim=self.sn.mjd0)
+		else:
+			print('Using control light curves to determine contamination and loss...')
+			lc_temp = self.sn.get_all_controls()
+			ix = lc_temp.t.index.values
+		
+		limcuts = LimCutsTable(lc_temp, cut.params['stn_bound'], indices=ix)
+		limcuts.calculate_table(cut.params['min_cut'], cut.params['max_cut'], cut.params['cut_step'])
+		print('Success')
+
+		data = limcuts.calculate_row(cut.max_value)
+		print(f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss...')
+		percent_cut = self.sn.apply_cut(cut)
+		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
+
+		self.f.add_x2_cut_section(cut, data['Pcontamination'], data['Ploss'], percent_cut)
 
 	def apply_controls_cut(self, cut:Cut, uncert_flag, x2_flag):
 		if cut is None:
 			return
 		print(f'\nApplying control light curve cut ({cut})...')
 		
-		self.sn.apply_controls_cut(cut, uncert_flag, x2_flag)
-		# TODO: add_controls_cut_section
+		x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut = self.sn.apply_controls_cut(cut, uncert_flag, x2_flag)
+		print(f'Percent of data above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%')
+		print(f'Percent of data above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%')
+		print(f'Percent of data above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%')
+		print(f'Percent of data below Ngood_min bound ({hex(cut.params["Ngood_flag"])}): {Ngood_percent_cut:0.2f}%')
+		print(f'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%')
+		print(f'Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%')
+		self.f.add_controls_cut_section(x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut)
 	
 	def apply_badday_cut(self, cut:Cut):
 		if cut is None:
@@ -448,7 +487,7 @@ def parse_config_cuts(args, config):
 			'cut_start': int(config['x2_cut']['min_cut']),
 			'cut_stop': int(config['x2_cut']['max_cut']),
 			'cut_step': int(config['x2_cut']['cut_step']),
-			'use_preSN_lc': config['x2_cut']['use_preSN_lc'] == 'True'
+			'use_pre_mjd0_lc': config['x2_cut']['use_pre_mjd0_lc'] == 'True'
 		}
 		x2_cut = Cut(column='chi/N', 
 								 max_value=float(config['x2_cut']['max_value']), 

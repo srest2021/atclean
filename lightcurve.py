@@ -9,6 +9,7 @@ from collections import OrderedDict
 from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
+from copy import deepcopy
 
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20 
@@ -283,6 +284,68 @@ class Cut:
 			output += f'max_value={self.max_value}'
 		return output
 	
+# TODO
+class LimCutsTable:
+	def __init__(self, lc:pdastrostatsclass, stn_bound, indices=None):
+		self.t = None 
+
+		self.lc = lc
+		if indices is None:
+			indices = self.lc.getindices()
+		self.indices = indices
+		
+		self.good_ix, self.bad_ix = self.get_goodbad_indices(stn_bound)
+
+	def get_goodbad_indices(self, stn_bound):
+		good_ix = self.lc.ix_inrange(colnames=['uJy/duJy'], lowlim=-stn_bound, uplim=stn_bound, indices=self.indices)
+		bad_ix = AnotB(self.indices, good_ix)
+		return good_ix, bad_ix
+	
+	def get_keptcut_indices(self, x2_max):
+		kept_ix = self.lc.ix_inrange(colnames=['chi/N'], uplim=x2_max, indices=self.indices)
+		cut_ix = AnotB(self.indices, kept_ix)
+		return kept_ix, cut_ix
+	
+	def calculate_row(self, x2_max, kept_ix=None, cut_ix=None):
+		if kept_ix is None or cut_ix is None:
+			kept_ix, cut_ix = self.get_keptcut_indices(x2_max)
+		data = {
+			'PSF Chi-Square Cut': x2_max,
+			'N': len(self.indices),
+			'Ngood': len(self.good_ix),
+			'Nbad': len(self.bad_ix),
+			'Nkept': len(kept_ix),
+			'Ncut': len(cut_ix),
+			'Ngood,kept': len(AandB(self.good_ix,kept_ix)),
+			'Ngood,cut': len(AandB(self.good_ix,cut_ix)),
+			'Nbad,kept': len(AandB(self.bad_ix,kept_ix)),
+			'Nbad,cut': len(AandB(self.bad_ix,cut_ix)),
+			'Pgood,kept': 100 * len(AandB(self.good_ix,kept_ix))/len(self.indices),
+			'Pgood,cut': 100 * len(AandB(self.good_ix,cut_ix))/len(self.indices),
+			'Pbad,kept': 100 * len(AandB(self.bad_ix,kept_ix))/len(self.indices),
+			'Pbad,cut': 100 * len(AandB(self.bad_ix,cut_ix))/len(self.indices),
+			'Ngood,kept/Ngood': 100 * len(AandB(self.good_ix,kept_ix))/len(self.good_ix),
+			'Ploss': 100 * len(AandB(self.good_ix,cut_ix))/len(self.good_ix),
+			'Pcontamination': 100 * len(AandB(self.bad_ix,kept_ix))/len(kept_ix)
+		}
+		return data
+	
+	def calculate_table(self, cut_start, cut_stop, cut_step):
+		print(f"Calculating loss and contamination for chi-square cuts from {cut_start} to {cut_stop}...")
+
+		self.t = pd.DataFrame(columns=['PSF Chi-Square Cut', 'N', 'Ngood', 'Nbad', 'Nkept', 'Ncut', 'Ngood,kept', 'Ngood,cut', 'Nbad,kept', 'Nbad,cut',
+																	 'Pgood,kept', 'Pgood,cut', 'Pbad,kept', 'Pbad,cut', 'Ngood,kept/Ngood', 'Ploss', 'Pcontamination'])
+		
+		# for different x2 cuts decreasing from 50
+		for cut in range(cut_start, cut_stop+1, cut_step):
+			kept_ix, cut_ix = self.get_keptcut_indices(cut)
+			percent_kept = 100 * len(kept_ix)/len(self.indices)
+			if percent_kept < 10:
+				# less than 10% of measurements kept, so no chi-square cuts beyond this point are valid
+				continue
+			data = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
+			self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
+	
 """
 LIGHT CURVES
 """
@@ -428,6 +491,12 @@ class Supernova:
 		for control_index in range(self.num_controls+1):
 			self.lcs[control_index].add_noise_to_dflux(sigma_extra)
 
+	def get_all_controls(self):
+		controls = [deepcopy(self.lcs[control_index].t) for control_index in self.lcs if control_index > 0]
+		all_controls = pdastrostatsclass()
+		all_controls.t = pd.concat(controls, ignore_index=True)
+		return all_controls
+	
 	def calculate_control_stats(self, uncert_flag, x2_flag):
 		print('Calculating control light curve statistics...')
 
@@ -476,6 +545,15 @@ class Supernova:
 			self.lcs[control_index].copy_flags(flags_to_copy)
 			
 		self.drop_extra_columns()
+
+		len_ix = len(self.getindices())
+		x2_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['x2_flag'])) / len_ix
+		stn_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['stn_flag'])) / len_ix
+		Nclip_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['Nclip_flag'])) / len_ix
+		Ngood_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['Ngood_flag'])) / len_ix
+		questionable_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['questionable_flag'])) / len_ix
+		percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.flag)) / len_ix
+		return x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut
 
 	def drop_extra_columns(self):
 		for control_index in range(self.num_controls+1):
@@ -667,10 +745,8 @@ class LightCurve(pdastrostatsclass):
 
 	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
 		all_ix = self.getindices()
-		if min_value:
-			kept_ix = self.ix_inrange(colnames=[column_name], lowlim=min_value)
-		elif max_value:
-			kept_ix = self.ix_inrange(colnames=[column_name], uplim=max_value)
+		if min_value or max_value:
+			kept_ix = self.ix_inrange(colnames=[column_name], lowlim=min_value, uplim=max_value)
 		else:
 			raise RuntimeError(f'ERROR: Cannot apply cut without min value ({min_value}) or max value ({max_value}).')
 		cut_ix = AnotB(all_ix, kept_ix)
