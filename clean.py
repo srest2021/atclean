@@ -5,7 +5,7 @@ import os, sys, argparse
 import pandas as pd
 import numpy as np
 from copy import deepcopy
-from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova, AveragedSupernova
+from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova, AveragedSupernova, get_tns_coords_from_json, query_tns
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 """
@@ -19,10 +19,13 @@ def hexstring_to_int(hexstring):
 
 class OutputReadMe:
 	def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
-		self.f = open(f'{output_dir}/{tnsname}/README.md','w+')
+		filename = f'{output_dir}/{tnsname}/README.md'
+		print(f'\nOpening README.md file for outputting cut information at {filename}...')
+		self.f = open(filename,'w+')
 		self.tnsname:str = tnsname
 		self.cut_list:CutList = cut_list
 		self.begin(num_controls=num_controls)
+		print('Success')
 	
 	def begin(self, num_controls=0):
 		badday_cut = self.cut_list.get('badday_cut')
@@ -224,6 +227,7 @@ class UncertEstTable():
 	def save(self):
 		print(f'\nSaving true uncertainties estimation table at {self.filename}...')
 		self.t.to_string(self.filename)
+		print('Success')
 
 class ChiSquareCutTable():
 	def __init__(self, directory, filename=None):
@@ -263,6 +267,7 @@ class ChiSquareCutTable():
 	def save(self):
 		print(f'\nSaving chi-square cut table at {self.filename}...')
 		self.t.to_string(self.filename)
+		print('Success')
 
 class CleanLoop:
 	def __init__(self, 
@@ -362,6 +367,7 @@ class CleanLoop:
 		data = limcuts.calculate_row(cut.max_value)
 		print(f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss...')
 		percent_cut = self.sn.apply_cut(cut)
+		print('Success')
 		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
 
 		self.f.add_x2_cut_section(cut, data['Pcontamination'], data['Ploss'], percent_cut)
@@ -396,29 +402,31 @@ class CleanLoop:
 			return
 		print(f'\nApplying bad day cut (averaging) ({cut})...')
 		self.avg_sn, percent_cut = self.sn.apply_badday_cut(cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit)
-		print(f'\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
+		print('Success')
+		print(f'Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
 		self.f.add_badday_cut_section(percent_cut)
 
 	def apply_custom_cut(self, name, cut:Cut):
 		cut = self.cut_list.get(name)
 		print(f'\nApplying custom cut ({cut})...')
 		percent_cut = self.sn.apply_cut(cut)
+		print('Success')
 		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
 		self.f.add_custom_cut_section(name, cut, percent_cut)
 
 	def clean_lcs(self, 
-								tnsname, 
 								filt, 
 								apply_uncert_est_function:Callable,
 								num_controls=0, 
-								mjd0=None, 
 								apply_template_correction=False):
-		print(f'\nCLEANING LIGHT CURVES FOR: SN {tnsname}, filter {filt}')
 
-		# load the SN light curve, SN info, and control light curves
-		self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
-		self.sn.get_tns_data(self.credentials['tns_api_key'], self.credentials['tns_id'], self.credentials['tns_bot_name'])
-		self.sn.load_all(self.input_dir, num_controls=num_controls)
+		print(f'\n\tFILTER: {filt}')
+
+		# load the SN and control light curves
+		try:
+			self.sn.load_all(self.input_dir, num_controls=num_controls)
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Could not load light curves: {str(e)}')
 
 		print()
 		self.sn.prep_for_cleaning(verbose=True)
@@ -466,6 +474,8 @@ class CleanLoop:
 			# save chi-square cut table
 			self.x2_cut_info.save()
 
+		self.sninfo.save()
+
 	def loop(self, 
 					 tnsnames, 
 					 apply_uncert_est_function:Callable,
@@ -478,16 +488,42 @@ class CleanLoop:
 		
 		for obj_index in range(len(tnsnames)):
 			tnsname = tnsnames[obj_index]
+			print(f'\n\tCLEANING LIGHT CURVES FOR: SN {tnsname}')
+
 			make_dir_if_not_exists(f'{output_dir}/{tnsname}')
 			self.f = OutputReadMe(self.output_dir, tnsname, cut_list, num_controls=num_controls)
-			
+
+			if mjd0 is None:
+				_, sninfo_row = self.sninfo.get_row(tnsname)
+				print(sninfo_row)
+				if not sninfo_row is None and not np.isnan(sninfo_row['mjd0']):
+					# get MJD0 from SN info table
+					print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
+					mjd0 = sninfo_row['mjd0']
+					if not isinstance(mjd0, (int, float)):
+						raise RuntimeError(f'ERROR: Invalid MJD0: {mjd0}')
+					else:
+						print('Success')
+				else:
+					# get MJD0 from TNS
+					print(f'\nQuerying TNS for SN {tnsname} discovery date...')
+					json_data = query_tns(tnsname, 
+													 			self.credentials['tns_api_key'], 
+																self.credentials['tns_id'], 
+																self.credentials['tns_bot_name'])
+					mjd0 = get_tns_coords_from_json(json_data)
+					print(f'Setting MJD0 to {mjd0}')
+					self.sninfo.update_row(tnsname, mjd0=mjd0)
+					print('Success')
+			else:
+				print(f'\nSetting MJD0 to {mjd0}')
+		
 			for filt in filters:
+				self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
 				self.f.add_filter_section(filt)
-				self.clean_lcs(tnsname, 
-											 filt,
+				self.clean_lcs(filt,
 											 apply_uncert_est_function, 
 											 num_controls=num_controls, 
-											 mjd0=mjd0, 
 											 apply_template_correction=apply_template_correction) 
 
 def parse_config_filters(args, config):
@@ -510,7 +546,7 @@ def parse_config_cuts(args, config):
 	if args.custom_cuts:
 		config_custom_cuts = find_config_custom_cuts(config)
 
-	print(f'Procedures to apply:')
+	print(f'\nProcedures to apply:')
 
 	# always check true uncertainties estimation, but will only apply if args.true_uncert_est
 	temp_x2_max_value = float(config['uncert_est']['temp_x2_max_value'])
@@ -605,7 +641,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('--filters', type=str, default=None, help='comma-separated list of filters to clean')
 
 	# cleaning a single SN and/or controls
-	parser.add_argument('--mjd0', type=str, default=None, help='transient start date in MJD')
+	parser.add_argument('--mjd0', type=float, default=None, help='transient start date in MJD')
 
 	# cleaning control light curves
 	parser.add_argument('-c','--controls', default=False, action='store_true', help='clean control light curves in addition to transient light curve')
@@ -629,6 +665,8 @@ if __name__ == "__main__":
 	
 	if len(args.tnsnames) < 1:
 		raise RuntimeError('ERROR: Please specify at least one TNS name to clean.')
+	if len(args.tnsnames) > 1 and not args.mjd0 is None:
+		raise RuntimeError(f'ERROR: Cannot specify one MJD0 {args.mjd0} for a batch of SNe.')
 	print(f'\nList of transients to clean: {args.tnsnames}')
 
 	input_dir = config['dir']['atclean_input']
@@ -646,8 +684,11 @@ if __name__ == "__main__":
 	filters = parse_config_filters(args, config)
 	print(f'Filters: {filters}')
 	flux2mag_sigmalimit = config['download']['flux2mag_sigmalimit']
+	print(f'Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}')
+	if args.mjd0:
+		print(f'MJD0: {args.mjd0}')
 
-	print(f'\nClean control light curves: {args.controls}')
+	#print(f'\nApplyin control light curve cut: {args.controls}')
 	num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
 	print(f'Number of control light curves to {"clean" if args.controls else "load"}: {num_controls}')
 
@@ -671,5 +712,3 @@ if __name__ == "__main__":
 						 mjd0=args.mjd0,
 						 filters=filters,
 						 apply_template_correction=args.template_correction)
-	
-	sys.exit()

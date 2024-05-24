@@ -298,7 +298,7 @@ class DownloadLoop:
                              self.credentials['tns_bot_name'])
     
     # add final RA, Dec, MJD0 to SN info table
-    self.sninfo.add_row_info(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
+    self.sninfo.update_row(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
   
   def download_lcs(self, args, headers, tnsname):
     print(f'\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n')

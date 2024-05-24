@@ -113,6 +113,24 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
 	except Exception as e:
 		print(json_data['data']['reply'])
 		raise RuntimeError('ERROR in query_tns(): '+str(e))
+	
+def get_tns_mjd0_from_json(json_data):
+	try:
+		coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
+		return coords
+	except Exception as e:
+		raise RuntimeError(f'ERROR: Failed to get coordinates from TNS JSON data: {str(e)}')
+
+def get_tns_coords_from_json(json_data):
+	try:
+		disc_date = json_data['data']['reply']['discoverydate']
+		date = list(disc_date.partition(' '))[0]
+		time = list(disc_date.partition(' '))[2]
+		date_object = Time(date+"T"+time, format='isot', scale='utc')
+		mjd0 = date_object.mjd - DISC_DATE_BUFFER
+		return mjd0
+	except Exception as e:
+		raise RuntimeError(f'ERROR: Failed to get discovery date from TNS JSON data: {str(e)}')
 
 def query_atlas(headers, ra, dec, min_mjd, max_mjd):
 	baseurl = 'https://fallingstar-data.com/forcedphot'
@@ -191,23 +209,9 @@ class SnInfoTable:
 			if not 'tnsname' in self.t.columns:
 				raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
 			print('Success')
-		except Exception as e:
+		except Exception:
 			print(f'No existing SN info table at that path; creating blank table...')
 			self.t = pd.DataFrame(columns=['tnsname', 'ra', 'dec', 'mjd0']) #, 'closebright_ra', 'closebright_dec'])
-
-	def get_index(self, tnsname):
-		if self.t.empty:
-			return -1
-		
-		matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
-		if len(matching_ix) >= 2:
-			print(f'WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows...')
-			self.t.drop(matching_ix[1:], inplace=True)
-			return matching_ix[0]
-		elif len(matching_ix) == 1:
-			return matching_ix[0]
-		else:
-			return -1
 
 	def get_row(self, tnsname):
 		if self.t.empty:
@@ -223,33 +227,54 @@ class SnInfoTable:
 		else:
 			return -1, None
 		
-	def add_row_info(self, tnsname, coords:Coordinates=None, mjd0=None):
+	def update_row_at_index(self, index, coords:Coordinates=None, mjd0:float=None):
+		try:
+			if not mjd0 is None:
+				self.t.loc[index, 'mjd0'] = mjd0
+			if not coords is None and not coords.is_empty():
+				self.t.loc[index, 'ra'] = f'{coords.ra.angle.degree:0.14f}'
+				self.t.loc[index, 'dec'] = f'{coords.dec.angle.degree:0.14f}'
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Could not update SN info table at index {index}: {str(e)}')
+		
+	def add_new_row(self, tnsname, coords:Coordinates=None, mjd0:float=None):
 		if mjd0 is None:
 			mjd0 = np.nan
-		#row = {'tnsname':tnsname, 'ra':coords.ra.string, 'dec':coords.dec.string, 'mjd0':mjd0}
-		row = {'tnsname':tnsname, 'ra':f'{coords.ra.angle.degree:0.14f}', 'dec':f'{coords.dec.angle.degree:0.14f}', 'mjd0':mjd0}
-		self.add_row(row)
-
-	def add_row(self, row):
-		if len(self.t) > 0:
-			matching_ix = np.where(self.t['tnsname'].eq(row['tnsname']))[0]
-			if len(matching_ix) > 1:
-				raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {row["tnsname"]}.')
 		
-			if len(matching_ix) > 0:
-				# update existing row
-				idx = matching_ix[0]
-				self.t.loc[idx,:] = row
-			else:
-				# new row
-				self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+		ra = np.nan
+		dec = np.nan
+		if not coords is None and not coords.is_empty():
+			ra = f'{coords.ra.angle.degree:0.14f}'
+			dec = f'{coords.dec.angle.degree:0.14f}'
+		
+		row = {
+			'tnsname':tnsname, 
+			'ra':ra, 
+			'dec':dec, 
+			'mjd0':mjd0
+		}
+		self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+	def update_row(self, tnsname, coords:Coordinates=None, mjd0:float=None):
+		if self.t.empty:
+			self.add_new_row(tnsname, coords, mjd0)
+			return
+
+		matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
+		if len(matching_ix) > 1:
+			raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}.')
+		elif len(matching_ix) == 1:
+			index = matching_ix[0]
+			self.update_row_at_index(index, coords=coords, mjd0=mjd0)
 		else:
-			# new row
-			self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+			self.add_new_row(tnsname, coords, mjd0)
 
 	def save(self):
 		print(f'Saving SN info table at {self.filename}...')
+		self.t['ra'] = self.t['ra'].astype(str)
+		self.t['dec'] = self.t['dec'].astype(str)
 		self.t.to_string(self.filename, index=False)
+		print('Success')
 
 	def __str__(self):
 		return self.t.to_string()
@@ -367,17 +392,16 @@ class Supernova:
 
 	def get_tns_data(self, api_key, tns_id, bot_name):
 		if self.coords.is_empty() or self.mjd0 is None:
+			print(f'\nQuerying TNS for {self.tnsname} data...')
 			json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
 
 			if self.coords.is_empty():
-				self.coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
+				self.coords = get_tns_coords_from_json(json_data)
 			
 			if self.mjd0 is None:
-				disc_date = json_data['data']['reply']['discoverydate']
-				date = list(disc_date.partition(' '))[0]
-				time = list(disc_date.partition(' '))[2]
-				date_object = Time(date+"T"+time, format='isot', scale='utc')
-				self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
+				self.mjd0 = get_tns_coords_from_json(json_data)
+			
+			print('Success')
 
 	def verify_mjds(self, verbose=False):
 		# sort SN lc by MJD
@@ -426,6 +450,8 @@ class Supernova:
 				self.lcs[control_index].t = self.lcs[control_index].t.loc[sorted_ix]
 		
 			self.lcs[control_index].t.reset_index(drop=True, inplace=True)
+		
+		print('Success')
 
 	def prep_for_cleaning(self, verbose=False):
 		if verbose:
@@ -434,12 +460,11 @@ class Supernova:
 		for control_index in range(self.num_controls+1):
 			# add blank 'Mask' column
 			self.lcs[control_index].t['Mask'] = 0
-
 			# remove rows with duJy=0 or uJy=NaN
 			self.lcs[control_index].remove_invalid_rows()
-
 			# calculate flux/dflux column
 			self.lcs[control_index].calculate_fdf_column()
+		print('Success')
 
 		# make sure SN and control lc MJDs match up exactly
 		self.verify_mjds(verbose=verbose)
