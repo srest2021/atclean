@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Dict, Type
+from typing import Dict, Type, Callable, List
 import os, sys, argparse
 import pandas as pd
 import numpy as np
@@ -25,7 +25,11 @@ class OutputReadMe:
 		self.begin(num_controls=num_controls)
 	
 	def begin(self, num_controls=0):
-		mjd_bin_size = self.cut_list.get('badday_cut').params['mjd_bin_size']
+		badday_cut = self.cut_list.get('badday_cut')
+		if badday_cut:
+			mjdbinsize = badday_cut.params['mjd_bin_size']
+		else:
+			mjdbinsize = 1.0
 
 		self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
 		self.f.write(f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.')
@@ -34,19 +38,19 @@ class OutputReadMe:
 		self.f.write(f'\n\t- Original SN light curves: {self.tnsname}.o.lc.txt and {self.tnsname}.c.lc.txt')
 		self.f.write(f'\n\t- Cleaned SN light curves: {self.tnsname}.o.clean.lc.txt and {self.tnsname}.c.clean.lc.txt')
 		if self.cut_list.has('badday_cut'):
-			self.f.write(f'\n\t- Averaged light curves: {self.tnsname}.o.{mjd_bin_size:0.2f}days.lc.txt and {self.tnsname}.c.{mjd_bin_size:0.2f}days.lc.txt')
+			self.f.write(f'\n\t- Averaged light curves (for MJD bin size {mjdbinsize:0.2f} days): {self.tnsname}.o.{mjdbinsize:0.2f}days.lc.txt and {self.tnsname}.c.{mjdbinsize:0.2f}days.lc.txt')
 		if self.cut_list.has('controls_cut'):
 			self.f.write(f'\n\t- Control light curves, where X=001,...,{num_controls:03d}: {self.tnsname}_iX.o.lc.txt and {self.tnsname}_iX.c.lc.txt')
 
 		self.f.write(f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): ')
 		if self.cut_list.has('uncert_cut'):
-			self.f.write(f'\n\t- Uncertainty cut: {hex(self.cut_list.get('uncert_cut').flag)}')
+			self.f.write(f'\n\t- Uncertainty cut: {hex(self.cut_list.get("uncert_cut").flag)}')
 		if self.cut_list.has('x2_cut'):
-			self.f.write(f'\n\t- Chi-square cut: {hex(self.cut_list.get('x2_cut').flag)}')
+			self.f.write(f'\n\t- Chi-square cut: {hex(self.cut_list.get("x2_cut").flag)}')
 		if self.cut_list.has('controls_cut'):
-			self.f.write(f'\n\t- Control light curve cut: {hex(self.cut_list.get('controls_cut').flag)}')
+			self.f.write(f'\n\t- Control light curve cut: {hex(self.cut_list.get("controls_cut").flag)}')
 		if self.cut_list.has('badday_cut'):
-			self.f.write(f'\n\t- Bad day (for averaged light curves only): {hex(self.cut_list.get('badday_cut').flag)}')
+			self.f.write(f'\n\t- Bad day (for averaged light curves only): {hex(self.cut_list.get("badday_cut").flag)}')
 		
 		custom_cuts = self.cut_list.get_custom_cuts()
 		for name in custom_cuts:
@@ -163,10 +167,16 @@ class CutList:
 				mask = mask | self.list[name].flag
 		return mask
 	
-	def get_previous_flags(self):
+	def get_previous_flags(self, current_cut_name:str):
+		skip_names:List = ['uncert_est', 'badday_cut', 'controls_cut', 'x2_cut', 'uncert_cut']
+		try:
+			current_cut_index = skip_names.index(current_cut_name)
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Cannot get previous flags for a custom cut: {str(e)}')
+		skip_names = skip_names[:current_cut_index+1]
 		mask = 0
 		for name in self.list:
-			if name != 'uncert_est' and name != 'badday_cut':
+			if not name in skip_names:
 				mask = mask | self.list[name].flag
 		return mask
 	
@@ -283,7 +293,7 @@ class CleanLoop:
 		# TODO
 		# TODO: add_template_correction_section
 
-	def check_uncert_est(self, cut:Cut, apply_function:function):
+	def check_uncert_est(self, cut:Cut, apply_function:Callable):
 		print(f'\nChecking true uncertainties estimation...')
 		
 		stats = self.sn.get_uncert_est_stats(cut)
@@ -340,6 +350,8 @@ class CleanLoop:
 			ix = lc_temp.ix_inrange('MJD', uplim=self.sn.mjd0)
 		else:
 			print('Using control light curves to determine contamination and loss...')
+			if self.sn.num_controls < 1:
+				raise RuntimeError('ERROR: No control light curves loaded. Use the --num_controls argument to load control light curves, or change the [x2_cut][use_pre_mjd0_lc] field to True.')
 			lc_temp = self.sn.get_all_controls()
 			ix = lc_temp.t.index.values
 		
@@ -354,12 +366,23 @@ class CleanLoop:
 
 		self.f.add_x2_cut_section(cut, data['Pcontamination'], data['Ploss'], percent_cut)
 
-	def apply_controls_cut(self, cut:Cut, uncert_flag, x2_flag):
+		x2_info_row = {
+			'tnsname': self.sn.tnsname, 
+			'filter': self.sn.filt, 
+			'x2_cut': cut.max_value,
+			'use_pre_mjd0_lc': cut.params['use_pre_mjd0_lc'],
+			'stn_bound': cut.params['stn_bound'], 
+			'pct_contamination': round(data['Pcontamination'],2), 
+			'pct_loss': round(data['Ploss'],2)
+		}
+		return x2_info_row
+
+	def apply_controls_cut(self, cut:Cut, previous_flags):
 		if cut is None:
 			return
 		print(f'\nApplying control light curve cut ({cut})...')
 		
-		x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut = self.sn.apply_controls_cut(cut, uncert_flag, x2_flag)
+		x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut = self.sn.apply_controls_cut(cut, previous_flags)
 		print(f'Percent of data above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%')
 		print(f'Percent of data above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%')
 		print(f'Percent of data above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%')
@@ -368,11 +391,11 @@ class CleanLoop:
 		print(f'Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%')
 		self.f.add_controls_cut_section(x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut)
 	
-	def apply_badday_cut(self, cut:Cut, x2_flag, uncert_flag, controls_flag):
+	def apply_badday_cut(self, cut:Cut, previous_flags):
 		if cut is None:
 			return
 		print(f'\nApplying bad day cut (averaging) ({cut})...')
-		self.avg_sn, percent_cut = self.sn.apply_badday_cut(cut, x2_flag, uncert_flag, controls_flag, flux2mag_sigmalimit=self.flux2mag_sigmalimit)
+		self.avg_sn, percent_cut = self.sn.apply_badday_cut(cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit)
 		print(f'\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
 		self.f.add_badday_cut_section(percent_cut)
 
@@ -386,7 +409,7 @@ class CleanLoop:
 	def clean_lcs(self, 
 								tnsname, 
 								filt, 
-								apply_uncert_est_function:function,
+								apply_uncert_est_function:Callable,
 								num_controls=0, 
 								mjd0=None, 
 								apply_template_correction=False):
@@ -394,7 +417,7 @@ class CleanLoop:
 
 		# load the SN light curve, SN info, and control light curves
 		self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
-		self.sn.get_tns_data(self.credentials['tns_api_key'], self.credentials['tns_id'], self.credentials['bot_name'])
+		self.sn.get_tns_data(self.credentials['tns_api_key'], self.credentials['tns_id'], self.credentials['tns_bot_name'])
 		self.sn.load_all(self.input_dir, num_controls=num_controls)
 
 		print()
@@ -412,12 +435,12 @@ class CleanLoop:
 		self.uncert_est_info.add_row(uncert_est_info_row)
 
 		# chi-square cut
-		self.apply_x2_cut(self.cut_list.get('x2_cut'))
+		x2_info_row = self.apply_x2_cut(self.cut_list.get('x2_cut'))
+		self.x2_cut_info.add_row(x2_info_row)
 
 		# control light curve cut
 		self.apply_controls_cut(self.cut_list.get('controls_cut'), 
-														self.cut_list.get('uncert_cut').flag, 
-														self.cut_list.get('x2_cut').flag)
+														previous_flags=self.cut_list.get_previous_flags('controls_cut'))
 
 		# custom cuts
 		custom_cuts = self.cut_list.get_custom_cuts()
@@ -426,7 +449,7 @@ class CleanLoop:
 
 		# bad day cut (averaging)
 		self.apply_badday_cut(self.cut_list.get('badday_cut'), 
-													previous_flags=self.cut_list.get_previous_flags())
+													previous_flags=self.cut_list.get_previous_flags('badday_cut'))
 
 		# save cleaned SN and control light curves
 		self.sn.save_all(self.output_dir, overwrite=self.overwrite)
@@ -445,16 +468,17 @@ class CleanLoop:
 
 	def loop(self, 
 					 tnsnames, 
-					 apply_uncert_est_function:function,
+					 apply_uncert_est_function:Callable,
 					 num_controls=0, 
 					 mjd0=None, 
 					 filters=['o','c'], 
 					 cut_list=None, 
 					 apply_template_correction=False):
-		self.cut_list = cut_list  
+		self.cut_list = cut_list
 		
 		for obj_index in range(len(tnsnames)):
 			tnsname = tnsnames[obj_index]
+			make_dir_if_not_exists(f'{output_dir}/{tnsname}')
 			self.f = OutputReadMe(self.output_dir, tnsname, cut_list, num_controls=num_controls)
 			
 			for filt in filters:
@@ -507,9 +531,9 @@ def parse_config_cuts(args, config):
 
 	if args.x2_cut:
 		params = {
-			'stn_cut': float(config['x2_cut']['stn_bound']),
-			'cut_start': int(config['x2_cut']['min_cut']),
-			'cut_stop': int(config['x2_cut']['max_cut']),
+			'stn_bound': float(config['x2_cut']['stn_bound']),
+			'min_cut': int(config['x2_cut']['min_cut']),
+			'max_cut': int(config['x2_cut']['max_cut']),
 			'cut_step': int(config['x2_cut']['cut_step']),
 			'use_pre_mjd0_lc': config['x2_cut']['use_pre_mjd0_lc'] == 'True'
 		}
@@ -624,12 +648,8 @@ if __name__ == "__main__":
 	flux2mag_sigmalimit = config['download']['flux2mag_sigmalimit']
 
 	print(f'\nClean control light curves: {args.controls}')
-	num_controls = 0
-	if args.controls:
-		num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-		print(f'Number of control light curves to clean: {num_controls}')
-	elif args.num_controls:
-		raise RuntimeError('ERROR: Please specify control light curve cleaning (-c or --controls) before using the --num_controls argument.')
+	num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
+	print(f'Number of control light curves to {"clean" if args.controls else "load"}: {num_controls}')
 
 	cut_list = parse_config_cuts(args, config)
 
@@ -638,12 +658,11 @@ if __name__ == "__main__":
 										output_dir, 
 										config['credentials'], 
 										sninfo_filename=sninfo_filename, 
-										flux2mag_sigmalimit=flux2mag_sigmalimit
+										flux2mag_sigmalimit=flux2mag_sigmalimit,
 										overwrite=args.overwrite)
-	sys.exit()
 
 	def apply_uncert_est_function():
-		return args.apply_uncert_est
+		return args.uncert_est
 
 	clean.loop(args.tnsnames, 
 						 apply_uncert_est_function,
@@ -652,3 +671,5 @@ if __name__ == "__main__":
 						 mjd0=args.mjd0,
 						 filters=filters,
 						 apply_template_correction=args.template_correction)
+	
+	sys.exit()

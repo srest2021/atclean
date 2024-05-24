@@ -428,17 +428,18 @@ class Supernova:
 			self.lcs[control_index].t.reset_index(drop=True, inplace=True)
 
 	def prep_for_cleaning(self, verbose=False):
+		if verbose:
+			print('Adding blank \"Mask\" columns, replacing infs with NaNs, and calculating flux/dflux...')
+		
 		for control_index in range(self.num_controls+1):
 			# add blank 'Mask' column
-			if verbose:
-				print('Adding blank \"Mask\" column...')
 			self.lcs[control_index].t['Mask'] = 0
 
 			# remove rows with duJy=0 or uJy=NaN
-			self.lcs[control_index].remove_invalid_rows(verbose=verbose)
+			self.lcs[control_index].remove_invalid_rows()
 
 			# calculate flux/dflux column
-			self.lcs[control_index].calculate_fdf_column(verbose=verbose)
+			self.lcs[control_index].calculate_fdf_column()
 
 		# make sure SN and control lc MJDs match up exactly
 		self.verify_mjds(verbose=verbose)
@@ -496,7 +497,7 @@ class Supernova:
 		all_controls.t = pd.concat(controls, ignore_index=True)
 		return all_controls
 	
-	def calculate_control_stats(self, uncert_flag, x2_flag):
+	def calculate_control_stats(self, previous_flags):
 		print('Calculating control light curve statistics...')
 
 		len_mjd = len(self.lcs[0].t['MJD'])
@@ -520,17 +521,17 @@ class Supernova:
 			pda4MJD = pdastrostatsclass()
 			pda4MJD.t['uJy'] = uJy[0:,index]
 			pda4MJD.t[self.lcs[0].dflux_colname] = duJy[0:,index]
-			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], (x2_flag|uncert_flag))
+			pda4MJD.t['Mask'] = np.bitwise_and(Mask[0:,index], previous_flags)
 			
 			pda4MJD.calcaverage_sigmacutloop('uJy',
 											noisecol=self.lcs[0].dflux_colname,
 											maskcol='Mask',
-											maskval=(x2_flag|uncert_flag),
+											maskval=previous_flags,
 											verbose=1, Nsigma=3.0, median_firstiteration=True)
 			self.lcs[0].statresults2table(pda4MJD.statparams, c2_param2columnmapping, destindex=index)
 
-	def apply_controls_cut(self, cut:Cut, uncert_flag, x2_flag):
-		self.calculate_control_stats(uncert_flag, x2_flag)
+	def apply_controls_cut(self, cut:Cut, previous_flags):
+		self.calculate_control_stats(previous_flags)
 		self.lcs[0].t['c2_abs_stn'] = self.lcs[0].t['c2_mean'] / self.lcs[0].t['c2_mean_err']
 
 		# flag SN measurements
@@ -571,7 +572,7 @@ class Supernova:
 
 	def load(self, input_dir, control_index=0):
 		self.lcs[control_index] = LightCurve(control_index=control_index, filt=self.filt)
-		self.lcs[control_index].load(input_dir, self.tnsname)
+		self.lcs[control_index].load_lc(input_dir, self.tnsname)
 	
 	def load_all(self, input_dir, num_controls=0):
 		self.num_controls = num_controls
@@ -583,7 +584,7 @@ class Supernova:
 	def save_all(self, output_dir, overwrite=False):
 		for control_index in range(self.num_controls+1):
 			self.lcs[control_index].drop_extra_columns()
-			self.lcs[control_index].save(output_dir, self.tnsname, overwrite=overwrite)
+			self.lcs[control_index].save_lc(output_dir, self.tnsname, overwrite=overwrite)
 
 	def __str__(self):
 		return f'SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
@@ -801,13 +802,13 @@ class LightCurve(pdastrostatsclass):
 
 	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
 		all_ix = self.getindices()
-		if min_value or max_value:
+		if not min_value is None or not max_value is None:
 			kept_ix = self.ix_inrange(colnames=[column_name], lowlim=min_value, uplim=max_value)
 		else:
 			raise RuntimeError(f'ERROR: Cannot apply cut without min value ({min_value}) or max value ({max_value}).')
 		cut_ix = AnotB(all_ix, kept_ix)
 		
-		self.update_mask_column(self, flag, cut_ix)
+		self.update_mask_column(flag, cut_ix)
 
 		percent_cut = 100 * len(cut_ix)/len(all_ix)
 		return percent_cut
@@ -845,19 +846,19 @@ class LightCurve(pdastrostatsclass):
 			if not column_name in self.t.columns:
 				raise RuntimeError(f'ERROR: Missing required column: {column_name}')
 
-	def load(self, input_dir, tnsname):
-		filename = get_filename(input_dir, tnsname, self.filt, self.control_index)
-		self.load_by_filename(filename)
+	def load_lc(self, input_dir, tnsname, cleaned=False):
+		filename = get_filename(input_dir, tnsname, self.filt, self.control_index, cleaned=cleaned)
+		self.load_lc_by_filename(filename)
 
-	def load_by_filename(self, filename):
+	def load_lc_by_filename(self, filename):
 		self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
 		self.check_column_names()
 
-	def save(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
-		filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
-		self.save_by_filename(filename, indices=indices, overwrite=overwrite, cleaned=cleaned)
+	def save_lc(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
+		filename = get_filename(output_dir, tnsname, self.filt, self.control_index, cleaned=cleaned)
+		self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
-	def save_by_filename(self, filename, indices=None, overwrite=False, cleaned=True):
+	def save_lc_by_filename(self, filename, indices=None, overwrite=False):
 		self.write(filename=filename, indices=indices, overwrite=overwrite, hexcols=['Mask'])
 
 class AveragedLightCurve(LightCurve):
@@ -865,13 +866,13 @@ class AveragedLightCurve(LightCurve):
 		LightCurve.__init__(self, control_index, filt) 
 		self.mjdbinsize = mjdbinsize
 
-	def load(self, input_dir, tnsname):
+	def load_lc(self, input_dir, tnsname):
 		filename = get_filename(input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
-		self.load_by_filename(filename)
+		self.load_lc_by_filename(filename)
 	
-	def save(self, output_dir, tnsname, indices=None, overwrite=False):
+	def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
 		filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
-		self.save_by_filename(filename, indices=indices, overwrite=overwrite)
+		self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
 # will contain measurements from both filters (o-band and c-band)
 class FullLightCurve:
