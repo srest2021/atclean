@@ -5,7 +5,7 @@ import os, sys, argparse
 import pandas as pd
 import numpy as np
 from copy import deepcopy
-from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova
+from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova, AveragedSupernova
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 """
@@ -163,6 +163,13 @@ class CutList:
 				mask = mask | self.list[name].flag
 		return mask
 	
+	def get_previous_flags(self):
+		mask = 0
+		for name in self.list:
+			if name != 'uncert_est' and name != 'badday_cut':
+				mask = mask | self.list[name].flag
+		return mask
+	
 	def __str__(self):
 		output = ''
 		for name in self.list:
@@ -252,15 +259,18 @@ class CleanLoop:
 							 input_dir, 
 							 output_dir, 
 							 credentials,
-							 sninfo_filename=None, 
+							 sninfo_filename=None,
+							 flux2mag_sigmalimit=3.0, 
 							 overwrite=False):
 		self.sn:Supernova = None
+		self.avg_sn:AveragedSupernova = None
 		self.cut_list:CutList = None
 		self.f:OutputReadMe = None 
 
 		self.credentials:Dict[str,str] = credentials
 		self.input_dir:str = input_dir
 		self.output_dir:str = output_dir
+		self.flux2mag_sigmalimit:float = flux2mag_sigmalimit
 		self.overwrite:bool = overwrite
 
 		self.sninfo:SnInfoTable = SnInfoTable(self.output_dir, filename=sninfo_filename)
@@ -322,8 +332,8 @@ class CleanLoop:
 	def apply_x2_cut(self, cut:Cut):
 		if cut is None:
 			return
-		
 		print(f'\nApplying chi-square cut ({cut})...')
+
 		if cut.params['use_pre_mjd0_lc']:
 			print('Using pre-MJD0 light curve to determine contamination and loss...')
 			lc_temp = deepcopy(self.lcs[0])
@@ -358,14 +368,12 @@ class CleanLoop:
 		print(f'Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%')
 		self.f.add_controls_cut_section(x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut)
 	
-	def apply_badday_cut(self, cut:Cut):
+	def apply_badday_cut(self, cut:Cut, x2_flag, uncert_flag, controls_flag):
 		if cut is None:
 			return
 		print(f'\nApplying bad day cut (averaging) ({cut})...')
-		# TODO
-
-		percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=self.cut_list.get_all_flags())) / len(self.lcs[0].t)
-		# TODO
+		self.avg_sn, percent_cut = self.sn.apply_badday_cut(cut, x2_flag, uncert_flag, controls_flag, flux2mag_sigmalimit=self.flux2mag_sigmalimit)
+		print(f'\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
 		self.f.add_badday_cut_section(percent_cut)
 
 	def apply_custom_cut(self, name, cut:Cut):
@@ -411,13 +419,29 @@ class CleanLoop:
 														self.cut_list.get('uncert_cut').flag, 
 														self.cut_list.get('x2_cut').flag)
 
-		# bad day cut (averaging)
-		self.apply_badday_cut(self.cut_list.get('badday_cut'))
-
 		# custom cuts
 		custom_cuts = self.cut_list.get_custom_cuts()
 		for name, cut in custom_cuts:
 			self.apply_custom_cut(name, cut)
+
+		# bad day cut (averaging)
+		self.apply_badday_cut(self.cut_list.get('badday_cut'), 
+													previous_flags=self.cut_list.get_previous_flags())
+
+		# save cleaned SN and control light curves
+		self.sn.save_all(self.output_dir, overwrite=self.overwrite)
+		
+		if self.cut_list.has('badday_cut'):
+			# save averaged SN and control light curves
+			self.avg_sn.save_all(self.output_dir, overwrite=self.overwrite)
+		
+		if self.cut_list.has('uncert_est'):
+			# save uncertainty estimation table
+			self.uncert_est_info.save()
+		
+		if self.cut_list.has('x2_cut'):
+			# save chi-square cut table
+			self.x2_cut_info.save()
 
 	def loop(self, 
 					 tnsnames, 
@@ -594,9 +618,10 @@ if __name__ == "__main__":
 	print(f'TNS ID: {config["credentials"]["tns_id"]}')
 	print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
-	filters = parse_config_filters(args, config)
 	print(f'Overwrite existing files: {args.overwrite}')
+	filters = parse_config_filters(args, config)
 	print(f'Filters: {filters}')
+	flux2mag_sigmalimit = config['download']['flux2mag_sigmalimit']
 
 	print(f'\nClean control light curves: {args.controls}')
 	num_controls = 0
@@ -613,6 +638,7 @@ if __name__ == "__main__":
 										output_dir, 
 										config['credentials'], 
 										sninfo_filename=sninfo_filename, 
+										flux2mag_sigmalimit=flux2mag_sigmalimit
 										overwrite=args.overwrite)
 	sys.exit()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from typing import Dict, Type, Any
-import re, json, requests, time, sys, io, copy
+import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
@@ -178,7 +178,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
 
 # input/output table containing TNS names, RA, Dec, and MJD0
 # (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
-class SnInfoTable():
+class SnInfoTable:
 	def __init__(self, directory, filename=None):
 		if filename is None:
 			self.filename = f'{directory}/sninfo.txt'
@@ -284,7 +284,6 @@ class Cut:
 			output += f'max_value={self.max_value}'
 		return output
 	
-# TODO
 class LimCutsTable:
 	def __init__(self, lc:pdastrostatsclass, stn_bound, indices=None):
 		self.t = None 
@@ -351,14 +350,14 @@ LIGHT CURVES
 """
 
 class Supernova:
-	def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float=None, filt='c'):
+	def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float=None, filt='o'):
 		self.tnsname = tnsname
 		self.num_controls = 0
 		self.coords:Coordinates = Coordinates(ra,dec)
 		self.mjd0 = mjd0 
 		self.filt = filt
 
-		self.lcs: Dict[int, Type[LightCurve]] = {}
+		self.lcs: Dict[int, LightCurve] = {}
 	
 	def get(self, control_index=0):
 		try:
@@ -555,6 +554,17 @@ class Supernova:
 		percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.flag)) / len_ix
 		return x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut
 
+	def apply_badday_cut(self, cut:Cut, previous_flags, flux2mag_sigmalimit=3.0):
+		mjdbinsize = cut.params['mjd_bin_size']
+		avg_sn = AveragedSupernova(tnsname=self.tnsname, mjd0=self.mjd0, filt=self.filt, mjdbinsize=mjdbinsize)
+		for control_index in range(self.num_controls+1):
+			avg_sn.set_avg_lc(self.lcs[control_index].average(cut, previous_flags, mjdbinsize=mjdbinsize, flux2mag_sigmalimit=flux2mag_sigmalimit), 
+										 		control_index=control_index)
+		
+		all_flags = previous_flags|cut.flag|cut.params['ixclip_flag']|cut.params['smallnum_flag']
+		percent_cut = 100 * len(avg_sn.lcs[0].ix_masked('Mask',maskval=all_flags)) / len(avg_sn.lcs[0].t)
+		return avg_sn, percent_cut
+
 	def drop_extra_columns(self):
 		for control_index in range(self.num_controls+1):
 			self.lcs[control_index].drop_extra_columns()
@@ -570,15 +580,26 @@ class Supernova:
 			for control_index in range(1, num_controls+1):
 				self.load(input_dir, control_index=control_index)
 
+	def save_all(self, output_dir, overwrite=False):
+		for control_index in range(self.num_controls+1):
+			self.lcs[control_index].drop_extra_columns()
+			self.lcs[control_index].save(output_dir, self.tnsname, overwrite=overwrite)
+
 	def __str__(self):
 		return f'SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
 
 class AveragedSupernova(Supernova):
-	def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None = None, mjdbinsize:float=1.0):
-		Supernova.__init__(self, tnsname, ra, dec, mjd0)
+	def __init__(self, tnsname:str=None, ra:str=None, dec:str=None, mjd0:float|None = None, mjdbinsize:float=1.0, filt:str='o'):
+		Supernova.__init__(self, tnsname, ra, dec, mjd0, filt)
 		self.mjdbinsize = mjdbinsize
 
-		self.avg_lcs: Dict[int, Type[AveragedLightCurve]] = {}
+		self.avg_lcs: Dict[int, AveragedLightCurve] = {}
+
+	def set_avg_lc(self, lc, control_index=0):
+		self.avg_lcs[control_index] = deepcopy(lc)
+
+	def set_avg_lcs(self, lcs):
+		self.avg_lcs = deepcopy(lcs)
 
 	def get_avg(self, control_index:int=0):
 		try:
@@ -588,6 +609,269 @@ class AveragedSupernova(Supernova):
 
 	def __str__(self):
 		return f'Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
+	
+# contains either o-band or c-band measurements only
+class LightCurve(pdastrostatsclass):
+	def __init__(self, control_index=0, filt='o'):
+		pdastrostatsclass.__init__(self)
+		self.control_index = control_index
+		self.filt = filt
+		self.dflux_colname = 'duJy'
+
+	def set_df(self, t:pd.DataFrame):
+		self.t = deepcopy(t)
+
+	def remove_invalid_rows(self, verbose=False):
+		dflux_zero_ix = self.ix_equal(colnames=['duJy'], val=0)
+		flux_nan_ix = self.ix_is_null(colnames=['uJy'])
+		if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
+			if verbose:
+				print(f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN...')
+			self.t.drop(AorB(dflux_zero_ix,flux_nan_ix), inplace=True)
+
+	def calculate_fdf_column(self, verbose=False):
+		# replace infs with NaNs
+		if verbose:
+			print('Replacing infs with NaNs...')
+		self.t.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+		# calculate flux/dflux
+		if verbose:
+			print('Calculating flux/dflux...')
+		self.t[f'uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
+
+	def get_median_dflux(self, indices=None):
+		if indices is None:
+			indices = self.getindices()
+		return np.nanmedian(self.t.loc[indices, 'duJy'])
+
+	def get_stdev_flux(self, indices=None):
+		self.calcaverage_sigmacutloop('uJy', indices=indices, Nsigma=3.0, median_firstiteration=True)
+		return self.statparams['stdev']
+	
+	def add_noise_to_dflux(self, sigma_extra):
+		self.t['duJy_new'] = np.sqrt(self.t['duJy']*self.t['duJy'] + sigma_extra**2)
+		self.dflux_colname = 'duJy_new'
+		self.calculate_fdf_column()
+
+	def flag_by_control_stats(self, cut:Cut):
+		# flag SN measurements according to given bounds
+		flag_x2_ix = self.ix_inrange(colnames=['c2_X2norm'], lowlim=cut.params['x2_max'], exclude_lowlim=True)
+		flag_stn_ix = self.ix_inrange(colnames=['c2_abs_stn'], lowlim=cut.params['stn_max'], exclude_lowlim=True)
+		flag_nclip_ix = self.ix_inrange(colnames=['c2_Nclip'], lowlim=cut.params['Nclip_max'], exclude_lowlim=True)
+		flag_ngood_ix = self.ix_inrange(colnames=['c2_Ngood'], uplim=cut.params['Ngood_min'], exclude_uplim=True)
+		self.update_mask_column(cut.params['x2_flag'], flag_x2_ix)
+		self.update_mask_column(cut.params['stn_flag'], flag_stn_ix)
+		self.update_mask_column(cut.params['Nclip_flag'], flag_nclip_ix)
+		self.update_mask_column(cut.params['Ngood_flag'], flag_ngood_ix)
+
+		# update mask column with control light curve cut on any measurements flagged according to given bounds
+		zero_Nclip_ix = self.ix_equal('c2_Nclip', 0)
+		unmasked_ix = self.ix_unmasked('Mask', maskval=cut.params['x2_flag']|cut.params['stn_flag']|cut.params['Nclip_flag']|cut.params['Ngood_flag'])
+		self.update_mask_column(cut.params['questionable_flag'], AnotB(unmasked_ix, zero_Nclip_ix))
+		self.update_mask_column(cut.flag, AnotB(self.getindices(),unmasked_ix))
+
+	def copy_flags(self, flags_to_copy):
+		self.t['Mask'] = self.t['Mask'].astype(np.int32)
+		if len(self.t) < 1:
+			return
+		elif len(self.t) == 1:
+			self.t.loc[0,'Mask']= int(self.t.loc[0,'Mask']) | flags_to_copy
+		else:
+			self.t['Mask'] = np.bitwise_or(self.t['Mask'], flags_to_copy)
+
+	def average(self, cut:Cut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0):
+		avg_lc = AveragedLightCurve(self.control_index, filt=self.filt, mjdbinsize=mjdbinsize)
+		if self.control_index == 0:
+			print(f'Now averaging SN light curve...')
+		else:
+			print(f'Now averaging control light curve {self.control_index:03d}...')
+
+		self.t = pd.DataFrame(columns=['MJD','MJDbin','uJy','duJy','stdev','x2','Nclip','Ngood','Nexcluded','Mask'],hexcols=['Mask'])
+
+		mjd = int(np.amin(self.t['MJD']))
+		mjd_max = int(np.amax(self.t['MJD']))+1
+
+		while mjd <= mjd_max:
+			range_ix = self.ix_inrange(colnames=['MJD'], lowlim=mjd, uplim=mjd+mjdbinsize, exclude_uplim=True)
+			range_good_ix = self.ix_unmasked('Mask', maskval=previous_flags, indices=range_ix)
+			
+			# add new row to averaged light curve
+			new_row = {
+				'MJDbin':mjd+0.5*mjdbinsize, 
+				'Nclip':0, 
+				'Ngood':0, 
+				'Nexcluded':len(range_ix)-len(range_good_ix), 
+				'Mask':0
+			}
+			avglc_index = avg_lc.newrow(new_row)
+
+			# if no measurements present, flag or skip over day
+			if len(range_ix) < 1:
+				avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+				mjd += mjdbinsize
+				continue
+
+			# if no good measurements, average values anyway and flag
+			if len(range_good_ix) < 1:
+				# average flux
+				self.calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colname, indices=range_ix, Nsigma=3.0, median_firstiteration=True)
+				fluxstatparams = deepcopy(self.statparams)
+
+				# get average mjd
+				self.calcaverage_sigmacutloop('MJD', indices=range_ix, Nsigma=0, median_firstiteration=False)
+				avg_mjd = self.statparams['mean']
+
+				# add row and flag
+				row = {
+					'MJD':avg_mjd, 
+					'uJy':fluxstatparams['mean'] if not fluxstatparams['mean'] is None else np.nan, 
+					'duJy':fluxstatparams['mean_err'] if not fluxstatparams['mean_err'] is None else np.nan, 
+					'stdev':fluxstatparams['stdev'] if not fluxstatparams['stdev'] is None else np.nan,
+					'x2':fluxstatparams['X2norm'] if not fluxstatparams['X2norm'] is None else np.nan,
+					'Nclip':fluxstatparams['Nclip'] if not fluxstatparams['Nclip'] is None else np.nan,
+					'Ngood':fluxstatparams['Ngood'] if not fluxstatparams['Ngood'] is None else np.nan,
+					'Mask':0
+				}
+				avg_lc.add2row(avglc_index, row)
+				self.update_mask_column(cut.flag, range_ix, remove_old=False)
+				avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+
+				mjd += mjdbinsize
+				continue
+
+			# average good measurements
+			self.calcaverage_sigmacutloop('uJy', noisecol=self.dflux_colname, indices=range_good_ix, Nsigma=3.0, median_firstiteration=True)
+			fluxstatparams = deepcopy(self.statparams)
+
+			if fluxstatparams['mean'] is None or len(fluxstatparams['ix_good']) < 1:
+				self.update_mask_column(cut.flag, range_ix, remove_old=False)
+				avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+				mjd += mjdbinsize
+				continue
+
+			# get average mjd
+			# TODO: SHOULD NOISECOL HERE BE DUJY OR NONE?
+			self.calcaverage_sigmacutloop('MJD', noisecol=self.dflux_colname, indices=fluxstatparams['ix_good'], Nsigma=0, median_firstiteration=False)
+			avg_mjd = self.statparams['mean']
+
+			# add row to averaged light curve
+			row = {
+				'MJD':avg_mjd, 
+				'uJy':fluxstatparams['mean'], 
+				'duJy':fluxstatparams['mean_err'], 
+				'stdev':fluxstatparams['stdev'],
+				'x2':fluxstatparams['X2norm'],
+				'Nclip':fluxstatparams['Nclip'],
+				'Ngood':fluxstatparams['Ngood'],
+				'Mask':0
+			}
+			avg_lc.add2row(avglc_index, row)
+
+			# flag clipped measurements in lc
+			if len(fluxstatparams['ix_clip']) > 0:
+				self.update_mask_column(cut.params['ixclip_flag'], fluxstatparams['ix_clip'], remove_old=False)
+			
+			# if small number within this bin, flag measurements
+			if len(range_good_ix) < 3:
+				self.update_mask_column(cut.params['smallnum_flag'], range_ix, remove_old=False)
+				avg_lc.update_mask_column(cut.params['smallnum_flag'], [avglc_index], remove_old=False)
+			# else check sigmacut bounds and flag
+			else:
+				is_bad = False
+				if fluxstatparams['Ngood'] < cut.params['Ngood_min']:
+					is_bad = True
+				if fluxstatparams['Nclip'] > cut.params['Nclip_max']:
+					is_bad = True
+				if not(fluxstatparams['X2norm'] is None) and fluxstatparams['X2norm'] > cut.params['x2_max']:
+					is_bad = True
+				if is_bad:
+					self.update_mask_column(cut.flag, range_ix, remove_old=False)
+					avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+
+			mjd += mjdbinsize
+		
+		self.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit)
+		
+		# TODO: not sure if needed
+		for col in ['Nclip','Ngood','Nexcluded','Mask']: 
+			avg_lc.t[col] = avg_lc.t[col].astype(np.int32)
+
+		return avg_lc
+
+	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
+		all_ix = self.getindices()
+		if min_value or max_value:
+			kept_ix = self.ix_inrange(colnames=[column_name], lowlim=min_value, uplim=max_value)
+		else:
+			raise RuntimeError(f'ERROR: Cannot apply cut without min value ({min_value}) or max value ({max_value}).')
+		cut_ix = AnotB(all_ix, kept_ix)
+		
+		self.update_mask_column(self, flag, cut_ix)
+
+		percent_cut = 100 * len(cut_ix)/len(all_ix)
+		return percent_cut
+
+	def update_mask_column(self, flag, indices, remove_old=True):
+		if remove_old:
+			# remove any old flags of the same value
+			self.t['Mask'] = np.bitwise_and(self.t['Mask'].astype(int), ~flag)
+
+		if len(indices) > 1:
+			flag_arr = np.full(self.t.loc[indices,'Mask'].shape, flag)
+			self.t.loc[indices,'Mask'] = np.bitwise_or(self.t.loc[indices,'Mask'].astype(int), flag_arr)
+		elif len(indices) == 1:
+			self.t.loc[indices,'Mask'] = int(self.t.loc[indices,'Mask']) | flag
+
+	def drop_extra_columns(self, verbose=False):
+		dropcols = []
+		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'c2_mean', 'c2_mean_err', 'c2_stdev', 'c2_stdev_err', 'c2_X2norm', 'c2_Ngood', 'c2_Nclip', 'c2_Nmask', 'c2_Nnan', 'c2_abs_stn']:
+			if col in self.t.columns:
+				dropcols.append(col)
+		for col in self.t.columns:
+			if re.search('^c\d_',col): 
+				dropcols.append(col)
+
+		if len(dropcols) > 0: 
+			if verbose:
+				print(f'Dropping extra columns ({f"control light curve {str(self.control_index)}" if self.control_index > 0 else "SN light curve"}): ',dropcols)
+			self.t.drop(columns=dropcols,inplace=True)
+
+	def check_column_names(self):
+		if self.t is None:
+			return
+		
+		for column_name in REQUIRED_COLUMN_NAMES:
+			if not column_name in self.t.columns:
+				raise RuntimeError(f'ERROR: Missing required column: {column_name}')
+
+	def load(self, input_dir, tnsname):
+		filename = get_filename(input_dir, tnsname, self.filt, self.control_index)
+		self.load_by_filename(filename)
+
+	def load_by_filename(self, filename):
+		self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
+		self.check_column_names()
+
+	def save(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
+		filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
+		self.save_by_filename(filename, indices=indices, overwrite=overwrite, cleaned=cleaned)
+
+	def save_by_filename(self, filename, indices=None, overwrite=False, cleaned=True):
+		self.write(filename=filename, indices=indices, overwrite=overwrite, hexcols=['Mask'])
+
+class AveragedLightCurve(LightCurve):
+	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0): 
+		LightCurve.__init__(self, control_index, filt) 
+		self.mjdbinsize = mjdbinsize
+
+	def load(self, input_dir, tnsname):
+		filename = get_filename(input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
+		self.load_by_filename(filename)
+	
+	def save(self, output_dir, tnsname, indices=None, overwrite=False):
+		filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
+		self.save_by_filename(filename, indices=indices, overwrite=overwrite)
 
 # will contain measurements from both filters (o-band and c-band)
 class FullLightCurve:
@@ -672,147 +956,3 @@ class FullLightCurve:
 
 	def __str__(self):
 		return f'Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}'
-
-# contains either o-band or c-band measurements only
-class LightCurve(pdastrostatsclass):
-	def __init__(self, control_index=0, filt='o'):
-		pdastrostatsclass.__init__(self)
-		self.control_index = control_index
-		self.filt = filt
-		self.dflux_colname = 'duJy'
-
-	def set_df(self, t:pd.DataFrame):
-		self.t = copy.deepcopy(t)
-
-	def remove_invalid_rows(self, verbose=False):
-		dflux_zero_ix = self.ix_equal(colnames=['duJy'], val=0)
-		flux_nan_ix = self.ix_is_null(colnames=['uJy'])
-		if len(AorB(dflux_zero_ix,flux_nan_ix)) > 0:
-			if verbose:
-				print(f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN...')
-			self.t.drop(AorB(dflux_zero_ix,flux_nan_ix), inplace=True)
-
-	def calculate_fdf_column(self, verbose=False):
-		# replace infs with NaNs
-		if verbose:
-			print('Replacing infs with NaNs...')
-		self.t.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-		# calculate flux/dflux
-		if verbose:
-			print('Calculating flux/dflux...')
-		self.t[f'uJy/duJy'] = self.t['uJy']/self.t[self.dflux_colname]
-
-	def get_median_dflux(self, indices=None):
-		if indices is None:
-			indices = self.getindices()
-		return np.nanmedian(self.t.loc[indices, 'duJy'])
-
-	def get_stdev_flux(self, indices=None):
-		self.calcaverage_sigmacutloop('uJy', indices=indices, Nsigma=3.0, median_firstiteration=True)
-		return self.statparams['stdev']
-	
-	def add_noise_to_dflux(self, sigma_extra):
-		self.t['duJy_new'] = np.sqrt(self.t['duJy']*self.t['duJy'] + sigma_extra**2)
-		self.dflux_colname = 'duJy_new'
-		self.calculate_fdf_column()
-
-	def flag_by_control_stats(self, cut:Cut):
-		# flag SN measurements according to given bounds
-		flag_x2_ix = self.ix_inrange(colnames=['c2_X2norm'], lowlim=cut.params['x2_max'], exclude_lowlim=True)
-		flag_stn_ix = self.ix_inrange(colnames=['c2_abs_stn'], lowlim=cut.params['stn_max'], exclude_lowlim=True)
-		flag_nclip_ix = self.ix_inrange(colnames=['c2_Nclip'], lowlim=cut.params['Nclip_max'], exclude_lowlim=True)
-		flag_ngood_ix = self.ix_inrange(colnames=['c2_Ngood'], uplim=cut.params['Ngood_min'], exclude_uplim=True)
-		self.update_mask_column(cut.params['x2_flag'], flag_x2_ix)
-		self.update_mask_column(cut.params['stn_flag'], flag_stn_ix)
-		self.update_mask_column(cut.params['Nclip_flag'], flag_nclip_ix)
-		self.update_mask_column(cut.params['Ngood_flag'], flag_ngood_ix)
-
-		# update mask column with control light curve cut on any measurements flagged according to given bounds
-		zero_Nclip_ix = self.ix_equal('c2_Nclip', 0)
-		unmasked_ix = self.ix_unmasked('Mask', maskval=cut.params['x2_flag']|cut.params['stn_flag']|cut.params['Nclip_flag']|cut.params['Ngood_flag'])
-		self.update_mask_column(cut.params['questionable_flag'], AnotB(unmasked_ix, zero_Nclip_ix))
-		self.update_mask_column(cut.flag, AnotB(self.getindices(),unmasked_ix))
-
-	def copy_flags(self, flags_to_copy):
-		self.t['Mask'] = self.t['Mask'].astype(np.int32)
-		if len(self.t) < 1:
-			return
-		elif len(self.t) == 1:
-			self.t.loc[0,'Mask']= int(self.t.loc[0,'Mask']) | flags_to_copy
-		else:
-			self.t['Mask'] = np.bitwise_or(self.t['Mask'], flags_to_copy)
-
-	def apply_cut(self, column_name, flag, min_value=None, max_value=None):
-		all_ix = self.getindices()
-		if min_value or max_value:
-			kept_ix = self.ix_inrange(colnames=[column_name], lowlim=min_value, uplim=max_value)
-		else:
-			raise RuntimeError(f'ERROR: Cannot apply cut without min value ({min_value}) or max value ({max_value}).')
-		cut_ix = AnotB(all_ix, kept_ix)
-		
-		self.update_mask_column(self, flag, cut_ix)
-
-		percent_cut = 100 * len(cut_ix)/len(all_ix)
-		return percent_cut
-
-	def update_mask_column(self, flag, indices, remove_old=True):
-		if remove_old:
-			# remove any old flags of the same value
-			self.t['Mask'] = np.bitwise_and(self.t['Mask'].astype(int), ~flag)
-
-		if len(indices) > 1:
-			flag_arr = np.full(self.t.loc[indices,'Mask'].shape, flag)
-			self.t.loc[indices,'Mask'] = np.bitwise_or(self.t.loc[indices,'Mask'].astype(int), flag_arr)
-		elif len(indices) == 1:
-			self.t.loc[indices,'Mask'] = int(self.t.loc[indices,'Mask']) | flag
-
-	def drop_extra_columns(self, verbose=False):
-		dropcols = []
-		for col in ['Noffsetlc', 'uJy/duJy', '__tmp_SN', 'SNR', 'SNRsum', 'SNRsumnorm', 'SNRsim', 'SNRsimsum', 'c2_mean', 'c2_mean_err', 'c2_stdev', 'c2_stdev_err', 'c2_X2norm', 'c2_Ngood', 'c2_Nclip', 'c2_Nmask', 'c2_Nnan', 'c2_abs_stn']:
-			if col in self.t.columns:
-				dropcols.append(col)
-		for col in self.t.columns:
-			if re.search('^c\d_',col): 
-				dropcols.append(col)
-
-		if len(dropcols) > 0: 
-			if verbose:
-				print(f'Dropping extra columns ({f"control light curve {str(self.control_index)}" if self.control_index > 0 else "SN light curve"}): ',dropcols)
-			self.t.drop(columns=dropcols,inplace=True)
-
-	def check_column_names(self):
-		if self.t is None:
-			return
-		
-		for column_name in REQUIRED_COLUMN_NAMES:
-			if not column_name in self.t.columns:
-				raise RuntimeError(f'ERROR: Missing required column: {column_name}')
-
-	def load(self, input_dir, tnsname):
-		filename = get_filename(input_dir, tnsname, self.filt, self.control_index)
-		self.load_by_filename(filename)
-
-	def load_by_filename(self, filename):
-		self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
-		self.check_column_names()
-
-	def save(self, output_dir, tnsname, indices=None, overwrite=False):
-		filename = get_filename(output_dir, tnsname, self.filt, self.control_index)
-		self.save_by_filename(filename, indices=indices, overwrite=overwrite)
-
-	def save_by_filename(self, filename, indices=None, overwrite=False):
-		self.write(filename=filename, indices=indices, overwrite=overwrite, hexcols=['Mask'])
-
-class AveragedLightCurve(LightCurve):
-	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0): 
-		LightCurve.__init__(self, control_index, filt) 
-		self.mjdbinsize = mjdbinsize
-
-	def load(self, input_dir, tnsname):
-		filename = get_filename(input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
-		self.load_by_filename(filename)
-	
-	def save(self, output_dir, tnsname, indices=None, overwrite=False):
-		filename = get_filename(output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
-		self.save_by_filename(filename, indices=indices, overwrite=overwrite)
