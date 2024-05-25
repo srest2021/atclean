@@ -694,7 +694,7 @@ if __name__ == "__main__":
 	print(f'Overwrite existing files: {args.overwrite}')
 	filters = parse_config_filters(args, config)
 	print(f'Filters: {filters}')
-	flux2mag_sigmalimit = config['download']['flux2mag_sigmalimit']
+	flux2mag_sigmalimit = float(config['download']['flux2mag_sigmalimit'])
 	print(f'Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}')
 	if args.mjd0:
 		print(f'MJD0: {args.mjd0}')

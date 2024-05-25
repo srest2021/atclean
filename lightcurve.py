@@ -616,7 +616,7 @@ class Supernova:
 										 		control_index=control_index)
 		
 		all_flags = previous_flags|cut.flag|cut.params['ixclip_flag']|cut.params['smallnum_flag']
-		percent_cut = 100 * len(avg_sn.lcs[0].ix_masked('Mask',maskval=all_flags)) / len(avg_sn.lcs[0].t)
+		percent_cut = 100 * len(avg_sn.avg_lcs[0].ix_masked('Mask',maskval=all_flags)) / len(avg_sn.avg_lcs[0].t)
 		return avg_sn, percent_cut
 
 	def drop_extra_columns(self):
@@ -665,13 +665,33 @@ class AveragedSupernova(Supernova):
 		except:
 			raise RuntimeError(f'Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.avg_lcs)} lcs in dictionary.')
 
+	def load(self, input_dir, control_index=0):
+		self.avg_lcs[control_index] = AveragedLightCurve(control_index=control_index, filt=self.filt, mjdbinsize=self.mjdbinsize)
+		self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
+
+	def load_all(self, input_dir, num_controls=0):
+		self.num_controls = num_controls
+		print(f'\nLoading averaged SN light curve and {self.num_controls} averaged control light curves...')
+		self.load(input_dir)
+		if num_controls > 0:
+			for control_index in range(1, num_controls+1):
+				self.load(input_dir, control_index=control_index)
+		print('Success')
+
+	def save_all(self, output_dir, overwrite=False):
+		print(f'\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves...')
+		for control_index in range(self.num_controls+1):
+			self.avg_lcs[control_index].drop_extra_columns()
+			self.avg_lcs[control_index].save_lc(output_dir, self.tnsname, overwrite=overwrite)
+		print('Success')
+
 	def __str__(self):
 		return f'Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
 	
 # contains either o-band or c-band measurements only
 class LightCurve(pdastrostatsclass):
-	def __init__(self, control_index=0, filt='o'):
-		pdastrostatsclass.__init__(self)
+	def __init__(self, control_index=0, filt='o', **kwargs):
+		pdastrostatsclass.__init__(self, **kwargs)
 		self.control_index = control_index
 		self.filt = filt
 		self.dflux_colname = 'duJy'
@@ -739,13 +759,17 @@ class LightCurve(pdastrostatsclass):
 			self.t['Mask'] = np.bitwise_or(self.t['Mask'], flags_to_copy)
 
 	def average(self, cut:Cut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0):
-		avg_lc = AveragedLightCurve(self.control_index, filt=self.filt, mjdbinsize=mjdbinsize)
+		avg_lc = AveragedLightCurve(self.control_index, 
+															  filt=self.filt, 
+																mjdbinsize=mjdbinsize, 
+																columns=['MJD','MJDbin','uJy','duJy','stdev','x2','Nclip','Ngood','Nexcluded','Mask'],
+																hexcols=['Mask'])
 		if self.control_index == 0:
 			print(f'Now averaging SN light curve...')
 		else:
 			print(f'Now averaging control light curve {self.control_index:03d}...')
 
-		self.t = pd.DataFrame(columns=['MJD','MJDbin','uJy','duJy','stdev','x2','Nclip','Ngood','Nexcluded','Mask'],hexcols=['Mask'])
+		#avg_lc.t = pd.DataFrame(columns=['MJD','MJDbin','uJy','duJy','stdev','x2','Nclip','Ngood','Nexcluded','Mask'],hexcols=['Mask'])
 
 		mjd = int(np.amin(self.t['MJD']))
 		mjd_max = int(np.amax(self.t['MJD']))+1
@@ -879,7 +903,7 @@ class LightCurve(pdastrostatsclass):
 			flag_arr = np.full(self.t.loc[indices,'Mask'].shape, flag)
 			self.t.loc[indices,'Mask'] = np.bitwise_or(self.t.loc[indices,'Mask'].astype(int), flag_arr)
 		elif len(indices) == 1:
-			self.t.loc[indices,'Mask'] = int(self.t.iloc[indices[0]]) | flag
+			self.t.loc[indices,'Mask'] = int(self.t.loc[indices[0],'Mask']) | flag
 
 	def drop_extra_columns(self, verbose=False):
 		dropcols = []
@@ -918,9 +942,12 @@ class LightCurve(pdastrostatsclass):
 	def save_lc_by_filename(self, filename, indices=None, overwrite=False):
 		self.write(filename=filename, indices=indices, overwrite=overwrite, hexcols=['Mask'])
 
+	def __str__(self):
+		return self.t.to_string()
+
 class AveragedLightCurve(LightCurve):
-	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0): 
-		LightCurve.__init__(self, control_index, filt) 
+	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs): 
+		LightCurve.__init__(self, control_index, filt, **kwargs) 
 		self.mjdbinsize = mjdbinsize
 
 	def load_lc(self, input_dir, tnsname):
