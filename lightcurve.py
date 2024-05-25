@@ -114,14 +114,14 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
 		print(json_data['data']['reply'])
 		raise RuntimeError('ERROR in query_tns(): '+str(e))
 	
-def get_tns_mjd0_from_json(json_data):
+def get_tns_coords_from_json(json_data):
 	try:
 		coords = Coordinates(json_data['data']['reply']['ra'], json_data['data']['reply']['dec'])
 		return coords
 	except Exception as e:
 		raise RuntimeError(f'ERROR: Failed to get coordinates from TNS JSON data: {str(e)}')
 
-def get_tns_coords_from_json(json_data):
+def get_tns_mjd0_from_json(json_data):
 	try:
 		disc_date = json_data['data']['reply']['discoverydate']
 		date = list(disc_date.partition(' '))[0]
@@ -208,6 +208,8 @@ class SnInfoTable:
 			self.t = pd.read_table(self.filename, delim_whitespace=True)
 			if not 'tnsname' in self.t.columns:
 				raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
+			self.t['ra'] = self.t['ra'].astype(str)
+			self.t['dec'] = self.t['dec'].astype(str)
 			print('Success')
 		except Exception:
 			print(f'No existing SN info table at that path; creating blank table...')
@@ -215,6 +217,7 @@ class SnInfoTable:
 
 	def get_row(self, tnsname):
 		if self.t.empty:
+			#raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--table is empty.')
 			return -1, None
 		
 		matching_ix = np.where(self.t['tnsname'].eq(tnsname))[0]
@@ -225,14 +228,39 @@ class SnInfoTable:
 		elif len(matching_ix) == 1:
 			return matching_ix[0], self.t.loc[matching_ix[0],:]
 		else:
+			#raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--row doesn\'t exist.')
 			return -1, None
 		
-	def update_row_at_index(self, index, coords:Coordinates=None, mjd0:float=None):
+	def is_nan(self, string:str):
+		return string.lower() == 'nan'
+		
+	def get_info(self, tnsname):
+		_, row = self.get_row(tnsname)
+		if row is None:
+			return None, None, None
+		
+		#coords = Coordinates(row['ra'], row['dec'])
+		ra = None if self.is_nan(row['ra']) else row['ra']
+		dec = None if self.is_nan(row['dec']) else row['dec']
+
+		if np.isnan(row['mjd0']):
+			mjd0 = None
+		else:
+			if not isinstance(row['mjd0'], (int, float)):
+				raise RuntimeError(f'ERROR: Invalid MJD0: {row["mjd0"]}')
+			mjd0 = float(row['mjd0'])
+
+		return ra, dec, mjd0
+		
+	def update_row_at_index(self, index, coords:Coordinates=None, mjd0:float=None, overwrite=False):
 		try:
-			if not mjd0 is None:
+			if overwrite or np.isnan(self.t.loc[index, 'mjd0']):
 				self.t.loc[index, 'mjd0'] = mjd0
-			if not coords is None and not coords.is_empty():
+
+			if (overwrite or self.is_nan(self.t.loc[index, 'ra'])) and not coords is None and not coords.is_empty():	
 				self.t.loc[index, 'ra'] = f'{coords.ra.angle.degree:0.14f}'
+			
+			if (overwrite or self.is_nan(self.t.loc[index, 'dec'])) and not coords is None and not coords.is_empty():	
 				self.t.loc[index, 'dec'] = f'{coords.dec.angle.degree:0.14f}'
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not update SN info table at index {index}: {str(e)}')
@@ -255,7 +283,7 @@ class SnInfoTable:
 		}
 		self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
-	def update_row(self, tnsname, coords:Coordinates=None, mjd0:float=None):
+	def update_row(self, tnsname, coords:Coordinates=None, mjd0:float=None, overwrite=False):
 		if self.t.empty:
 			self.add_new_row(tnsname, coords, mjd0)
 			return
@@ -265,7 +293,7 @@ class SnInfoTable:
 			raise RuntimeError(f'ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}.')
 		elif len(matching_ix) == 1:
 			index = matching_ix[0]
-			self.update_row_at_index(index, coords=coords, mjd0=mjd0)
+			self.update_row_at_index(index, coords=coords, mjd0=mjd0, overwrite=overwrite)
 		else:
 			self.add_new_row(tnsname, coords, mjd0)
 
@@ -399,7 +427,7 @@ class Supernova:
 				self.coords = get_tns_coords_from_json(json_data)
 			
 			if self.mjd0 is None:
-				self.mjd0 = get_tns_coords_from_json(json_data)
+				self.mjd0 = get_tns_mjd0_from_json(json_data)
 			
 			print('Success')
 

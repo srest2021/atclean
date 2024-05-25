@@ -5,7 +5,7 @@ import os, sys, argparse
 import pandas as pd
 import numpy as np
 from copy import deepcopy
-from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova, AveragedSupernova, get_tns_coords_from_json, query_tns
+from lightcurve import Cut, LimCutsTable, SnInfoTable, Supernova, AveragedSupernova, get_tns_coords_from_json, get_tns_mjd0_from_json, query_tns
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
 
 """
@@ -415,14 +415,16 @@ class CleanLoop:
 		self.f.add_custom_cut_section(name, cut, percent_cut)
 
 	def clean_lcs(self, 
+							 	tnsname,
+								mjd0,
 								filt, 
 								apply_uncert_est_function:Callable,
 								num_controls=0, 
 								apply_template_correction=False):
-
 		print(f'\n\tFILTER: {filt}')
 
 		# load the SN and control light curves
+		self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
 		try:
 			self.sn.load_all(self.input_dir, num_controls=num_controls)
 		except Exception as e:
@@ -495,11 +497,10 @@ class CleanLoop:
 
 			if mjd0 is None:
 				_, sninfo_row = self.sninfo.get_row(tnsname)
-				print(sninfo_row)
 				if not sninfo_row is None and not np.isnan(sninfo_row['mjd0']):
 					# get MJD0 from SN info table
 					print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
-					mjd0 = sninfo_row['mjd0']
+					mjd0 = float(sninfo_row['mjd0'])
 					if not isinstance(mjd0, (int, float)):
 						raise RuntimeError(f'ERROR: Invalid MJD0: {mjd0}')
 					else:
@@ -511,17 +512,19 @@ class CleanLoop:
 													 			self.credentials['tns_api_key'], 
 																self.credentials['tns_id'], 
 																self.credentials['tns_bot_name'])
-					mjd0 = get_tns_coords_from_json(json_data)
+					mjd0 = get_tns_mjd0_from_json(json_data)
+					coords = get_tns_coords_from_json(json_data)
 					print(f'Setting MJD0 to {mjd0}')
-					self.sninfo.update_row(tnsname, mjd0=mjd0)
+					self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
 					print('Success')
 			else:
 				print(f'\nSetting MJD0 to {mjd0}')
 		
 			for filt in filters:
-				self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
 				self.f.add_filter_section(filt)
-				self.clean_lcs(filt,
+				self.clean_lcs(tnsname,
+									 		 mjd0,
+											 filt,
 											 apply_uncert_est_function, 
 											 num_controls=num_controls, 
 											 apply_template_correction=apply_template_correction) 

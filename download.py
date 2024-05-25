@@ -270,13 +270,11 @@ class DownloadLoop:
     return parsed_coords[0], parsed_coords[1]
   
   def construct_full_lc(self, args, tnsname):
-    ra, dec, mjd0 = None, None, None
+    #ra, dec, mjd0 = None, None, None
     
     # first try SN info table
-    _, sninfo_row = self.sninfo.get_row(tnsname)
-    if not sninfo_row is None:
-      ra, dec, mjd0 = sninfo_row['ra'], sninfo_row['dec'], sninfo_row['mjd0']
-
+    ra, dec, mjd0 = self.sninfo.get_info(tnsname)
+    
     # next try command line args
     if args.coords:
       ra, dec = self.parse_arg_coords(args.coords)
