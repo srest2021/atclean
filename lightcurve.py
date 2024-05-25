@@ -439,7 +439,7 @@ class Supernova:
 			return
 		
 		if verbose:
-			print('\nMaking sure SN and control light curve MJDs match up exactly...')
+			print('\nMaking sure SN and control light curve MJDs match up exactly:')
 
 		sn_sorted_mjd = self.lcs[0].t['MJD'].to_numpy()
 
@@ -873,7 +873,7 @@ class LightCurve(pdastrostatsclass):
 
 			mjd += mjdbinsize
 		
-		self.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit)
+		avg_lc.flux2mag('uJy','duJy','m','dm', zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit)
 		
 		# TODO: not sure if needed
 		for col in ['Nclip','Ngood','Nexcluded','Mask']: 

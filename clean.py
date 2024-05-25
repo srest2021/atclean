@@ -620,7 +620,7 @@ def parse_config_cuts(args, config):
 		badday_cut = Cut(flag=hexstring_to_int(config['averaging']['flag']),
 										 params=params)
 		cut_list.add(badday_cut, 'badday_cut')
-		print(f'- Bad day cut (averaging): {controls_cut}')
+		print(f'- Bad day cut (averaging): {badday_cut}')
 
 	if args.custom_cuts:
 		for i in range(len(config_custom_cuts)):
