@@ -298,7 +298,7 @@ class SnInfoTable:
 			self.add_new_row(tnsname, coords, mjd0)
 
 	def save(self):
-		print(f'Saving SN info table at {self.filename}...')
+		print(f'\nSaving SN info table at {self.filename}...')
 		self.t['ra'] = self.t['ra'].astype(str)
 		self.t['dec'] = self.t['dec'].astype(str)
 		self.t.to_string(self.filename, index=False)
@@ -395,8 +395,8 @@ class LimCutsTable:
 			if percent_kept < 10:
 				# less than 10% of measurements kept, so no chi-square cuts beyond this point are valid
 				continue
-			data = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
-			self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
+			row = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
+			self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 	
 """
 LIGHT CURVES
@@ -588,7 +588,7 @@ class Supernova:
 		self.lcs[0].t['c2_abs_stn'] = self.lcs[0].t['c2_mean'] / self.lcs[0].t['c2_mean_err']
 
 		# flag SN measurements
-		self.lcs[0].flag_by_control_stats()
+		self.lcs[0].flag_by_control_stats(cut)
 
 		# copy over SN's control cut flags to control light curve 'Mask' columns
 		flags_arr = np.full(self.lcs[0].t['Mask'].shape, 
@@ -597,9 +597,9 @@ class Supernova:
 		for control_index in range(1,self.num_controls+1):
 			self.lcs[control_index].copy_flags(flags_to_copy)
 			
-		self.drop_extra_columns()
+		#self.drop_extra_columns()
 
-		len_ix = len(self.getindices())
+		len_ix = len(self.lcs[0].getindices())
 		x2_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['x2_flag'])) / len_ix
 		stn_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['stn_flag'])) / len_ix
 		Nclip_percent_cut = 100 * len(self.lcs[0].ix_masked('Mask',maskval=cut.params['Nclip_flag'])) / len_ix
@@ -629,15 +629,19 @@ class Supernova:
 	
 	def load_all(self, input_dir, num_controls=0):
 		self.num_controls = num_controls
+		print(f'\nLoading SN light curve and {self.num_controls} control light curves...')
 		self.load(input_dir)
 		if num_controls > 0:
 			for control_index in range(1, num_controls+1):
 				self.load(input_dir, control_index=control_index)
+		print('Success')
 
-	def save_all(self, output_dir, overwrite=False):
+	def save_all(self, output_dir, overwrite=False, cleaned=True):
+		print(f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...')
 		for control_index in range(self.num_controls+1):
 			self.lcs[control_index].drop_extra_columns()
-			self.lcs[control_index].save_lc(output_dir, self.tnsname, overwrite=overwrite)
+			self.lcs[control_index].save_lc(output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned)
+		print('Success')
 
 	def __str__(self):
 		return f'SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves'
@@ -875,7 +879,7 @@ class LightCurve(pdastrostatsclass):
 			flag_arr = np.full(self.t.loc[indices,'Mask'].shape, flag)
 			self.t.loc[indices,'Mask'] = np.bitwise_or(self.t.loc[indices,'Mask'].astype(int), flag_arr)
 		elif len(indices) == 1:
-			self.t.loc[indices,'Mask'] = int(self.t.loc[indices,'Mask']) | flag
+			self.t.loc[indices,'Mask'] = int(self.t.iloc[indices[0]]) | flag
 
 	def drop_extra_columns(self, verbose=False):
 		dropcols = []

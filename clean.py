@@ -139,7 +139,10 @@ class CutList:
 		unique_flags = set()
 		duplicate_flags = []
 
-		for cut in self.list.values():
+		for name, cut in self.list.items():
+			if name == 'uncert_est':
+				continue 
+
 			flags = [cut.flag]
 			if cut.params:
 				for key in cut.params:
@@ -148,8 +151,9 @@ class CutList:
 			
 			for flag in flags:
 				if flag in unique_flags:
-					duplicate_flags.append(hex(flag))
-				else:
+					if not flag is None:
+						duplicate_flags.append(flag)
+				elif not flag is None:
 					unique_flags.add(flag)
 
 		return len(duplicate_flags) > 0, duplicate_flags
@@ -294,12 +298,12 @@ class CleanLoop:
 			self.x2_cut_info:ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
 	
 	def apply_template_correction(self):
-		print(f'\nApplying ATLAS template change correction...')
+		print(f'\nApplying ATLAS template change correction:')
 		# TODO
 		# TODO: add_template_correction_section
 
 	def check_uncert_est(self, cut:Cut, apply_function:Callable):
-		print(f'\nChecking true uncertainties estimation...')
+		print(f'\nChecking true uncertainties estimation:')
 		
 		stats = self.sn.get_uncert_est_stats(cut)
 		final_sigma_extra = np.median(stats['sigma_extra'])
@@ -339,22 +343,23 @@ class CleanLoop:
 	def apply_uncert_cut(self, cut:Cut):
 		if cut is None:
 			return
-		print(f'\nApplying uncertainty cut ({cut})...')
+		print(f'\nApplying uncertainty cut ({cut}):')
 		percent_cut = self.sn.apply_cut(cut)
+		print('Success')
 		print(f'Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%')
 		self.f.add_uncert_cut_section(cut, percent_cut)
 
 	def apply_x2_cut(self, cut:Cut):
 		if cut is None:
 			return
-		print(f'\nApplying chi-square cut ({cut})...')
+		print(f'\nApplying chi-square cut ({cut}):')
 
 		if cut.params['use_pre_mjd0_lc']:
-			print('Using pre-MJD0 light curve to determine contamination and loss...')
+			print('Using pre-MJD0 light curve to determine contamination and loss')
 			lc_temp = deepcopy(self.lcs[0])
 			ix = lc_temp.ix_inrange('MJD', uplim=self.sn.mjd0)
 		else:
-			print('Using control light curves to determine contamination and loss...')
+			print('Using control light curves to determine contamination and loss')
 			if self.sn.num_controls < 1:
 				raise RuntimeError('ERROR: No control light curves loaded. Use the --num_controls argument to load control light curves, or change the [x2_cut][use_pre_mjd0_lc] field to True.')
 			lc_temp = self.sn.get_all_controls()
@@ -386,21 +391,23 @@ class CleanLoop:
 	def apply_controls_cut(self, cut:Cut, previous_flags):
 		if cut is None:
 			return
-		print(f'\nApplying control light curve cut ({cut})...')
-		
+		print(f'\nApplying control light curve cut ({cut}):')
+
 		x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut = self.sn.apply_controls_cut(cut, previous_flags)
+		print('Success')
+
 		print(f'Percent of data above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%')
 		print(f'Percent of data above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%')
 		print(f'Percent of data above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%')
 		print(f'Percent of data below Ngood_min bound ({hex(cut.params["Ngood_flag"])}): {Ngood_percent_cut:0.2f}%')
 		print(f'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%')
 		print(f'Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%')
-		self.f.add_controls_cut_section(x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut)
+		self.f.add_controls_cut_section(cut, x2_percent_cut, stn_percent_cut, Nclip_percent_cut, Ngood_percent_cut, questionable_percent_cut, percent_cut)
 	
 	def apply_badday_cut(self, cut:Cut, previous_flags):
 		if cut is None:
 			return
-		print(f'\nApplying bad day cut (averaging) ({cut})...')
+		print(f'\nApplying bad day cut (averaging) ({cut}):')
 		self.avg_sn, percent_cut = self.sn.apply_badday_cut(cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit)
 		print('Success')
 		print(f'Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}')
@@ -446,7 +453,8 @@ class CleanLoop:
 
 		# chi-square cut
 		x2_info_row = self.apply_x2_cut(self.cut_list.get('x2_cut'))
-		self.x2_cut_info.add_row(x2_info_row)
+		if self.cut_list.has('x2_cut'):
+			self.x2_cut_info.add_row(x2_info_row)
 
 		# control light curve cut
 		self.apply_controls_cut(self.cut_list.get('controls_cut'), 
@@ -553,7 +561,7 @@ def parse_config_cuts(args, config):
 
 	# always check true uncertainties estimation, but will only apply if args.true_uncert_est
 	temp_x2_max_value = float(config['uncert_est']['temp_x2_max_value'])
-	print(f'- True uncertainties estimation: temporary chi-square cut at {temp_x2_max_value}')
+	print(f'- True uncertainties estimation check: temporary chi-square cut at {temp_x2_max_value}')
 	params = {
 		'temp_x2_max_value': temp_x2_max_value,
 		'uncert_cut_flag': hexstring_to_int(config['uncert_cut']['flag'])
@@ -647,7 +655,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('--mjd0', type=float, default=None, help='transient start date in MJD')
 
 	# cleaning control light curves
-	parser.add_argument('-c','--controls', default=False, action='store_true', help='clean control light curves in addition to transient light curve')
+	#parser.add_argument('-c','--controls', default=False, action='store_true', help='clean control light curves in addition to transient light curve')
 	parser.add_argument('--num_controls', type=int, default=None, help='number of control light curves to load and clean')
 	
 	# possible cuts
@@ -655,7 +663,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('-e', '--uncert_est', default=False, action='store_true', help='apply true uncertainty estimation')
 	parser.add_argument('-u', '--uncert_cut', default=False, action='store_true', help='apply uncertainty cut')
 	parser.add_argument('-x', '--x2_cut', default=False, action='store_true', help='apply chi-square cut')
-	parser.add_argument('-n', '--controls_cut', default=False, action='store_true', help='apply control light curve cut')
+	parser.add_argument('-c', '--controls_cut', default=False, action='store_true', help='apply control light curve cut')
 	parser.add_argument('-g', '--averaging', default=False, action='store_true', help='average light curves and cut bad days')
 	parser.add_argument('-m', '--mjd_bin_size', type=float, default=None, help='MJD bin size in days for averaging')
 	parser.add_argument('--custom_cuts', default=False, action='store_true', help='scan config file for custom cuts')
@@ -693,7 +701,7 @@ if __name__ == "__main__":
 
 	#print(f'\nApplyin control light curve cut: {args.controls}')
 	num_controls = args.num_controls if args.num_controls else int(config["download"]["num_controls"])
-	print(f'Number of control light curves to {"clean" if args.controls else "load"}: {num_controls}')
+	print(f'Number of control light curves to clean: {num_controls}')
 
 	cut_list = parse_config_cuts(args, config)
 
