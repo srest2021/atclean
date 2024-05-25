@@ -769,8 +769,6 @@ class LightCurve(pdastrostatsclass):
 		else:
 			print(f'Now averaging control light curve {self.control_index:03d}...')
 
-		#avg_lc.t = pd.DataFrame(columns=['MJD','MJDbin','uJy','duJy','stdev','x2','Nclip','Ngood','Nexcluded','Mask'],hexcols=['Mask'])
-
 		mjd = int(np.amin(self.t['MJD']))
 		mjd_max = int(np.amax(self.t['MJD']))+1
 

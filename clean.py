@@ -462,7 +462,7 @@ class CleanLoop:
 
 		# custom cuts
 		custom_cuts = self.cut_list.get_custom_cuts()
-		for name, cut in custom_cuts:
+		for name, cut in custom_cuts.items():
 			self.apply_custom_cut(name, cut)
 
 		# bad day cut (averaging)
@@ -627,9 +627,9 @@ def parse_config_cuts(args, config):
 			cut_settings = config_custom_cuts[i]
 			try:
 				custom_cut = Cut(column=cut_settings['column'], 
-												flag=hexstring_to_int(cut_settings['flag']), 
-												min_value = cut_settings['min_value'] if cut_settings['min_value'] != 'None' else None, 
-												max_value = cut_settings['max_value'] if cut_settings['max_value'] != 'None' else None)
+												 flag=hexstring_to_int(cut_settings['flag']), 
+												 min_value = float(cut_settings['min_value']) if cut_settings['min_value'] != 'None' else None, 
+												 max_value = float(cut_settings['max_value']) if cut_settings['max_value'] != 'None' else None)
 				cut_list.add(custom_cut, f'custom_cut_{i}')
 				print(f'- Custom cut {i}: {custom_cut}')
 			except Exception as e:
