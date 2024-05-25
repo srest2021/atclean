@@ -30,8 +30,8 @@ sn_flagged_flux = 'red'
 ctrl_flux = 'steelblue'
 
 class PlotPdf:
-	def __init__(self, output_dir, tnsname):
-		filename = f'{output_dir}/{tnsname}_plots.pdf'
+	def __init__(self, output_dir, tnsname, filt='o'):
+		filename = f'{output_dir}/{tnsname}_plots.{filt}.pdf'
 		self.pdf = PdfPages(filename)
 
 	def save_pdf(self):
