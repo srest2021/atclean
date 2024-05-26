@@ -12,11 +12,11 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 	- To automatically calculate efficiencies using the FOM limits in the config file:
 		- add detection limits to "sim_settings" for each sigma_kern object
 		- ./simulate.py -e
-- To load a config file with a different file name: ./simulate.py --cfg_filename simulation_settings_copy.json
+- To load a config file with a different file name: ./simulate.py -f simulation_settings_2.json
 - After script finishes running, open simulation_analysis.ipynb and load in light curves and saved tables to get a walkthrough analysis.
 """
 
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
 import numpy as np
 import sys, random, re, os, argparse, json
@@ -84,7 +84,6 @@ class Gaussian:
 		g = deepcopy(self.g)
 		g[0,:] += peak_mjd
 		
-		# interpolate gaussian
 		fn = interp1d(g[0],g[1],bounds_error=False,fill_value=0)
 		fn = fn(mjds)
 		return fn 
@@ -408,3 +407,115 @@ class EfficiencyTable(pdastrostatsclass):
 	
 	def __str__(self):
 		return self.t.to_string()
+	
+"""
+GENERATE AND SAVE SIMULATED DETECTION AND EFFICIENCY TABLES
+"""
+
+# define command line arguments
+def define_args(parser=None, usage=None, conflict_handler='resolve'):
+	if parser is None:
+		parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
+		
+	parser.add_argument('-f', '--config_file', default='simulation_settings.json', type=str, help='file name of JSON file with settings for this class')
+	parser.add_argument('-e', '--efficiencies', default=False, action='store_true', help='calculate efficiencies using FOM limits')
+	parser.add_argument('-m', '--obs_seasons', default=False, action='store_true', help='only simulate events with peak MJDs within the observation season MJD ranges')
+
+	return parser
+
+def load_json_config(config_file):
+		with open(config_file) as cfg:
+			return json.load(cfg)
+		
+class SimDetecLoop:
+	def __init__(self, output_dir:str, tables_dir:str, sigma_kerns:List, sigma_sims:Dict, 
+							 peak_mag_min:float=23.0, peak_mag_max:float=16.0, n_peaks:int=20, fom_limits:Dict=None, num_iterations:int=50000, calc_efficiencies:bool=False):
+		self.output_dir = output_dir
+		self.tables_dir = tables_dir
+		self.num_iterations = num_iterations
+		self.calc_efficiencies = calc_efficiencies
+
+		self.sn:SimDetecSupernova = None
+		self.sd:SimDetecTables = None
+
+		self.sigma_kerns = sigma_kerns
+		self.sigma_sims = sigma_sims
+		self.fom_limits = fom_limits
+
+		self.generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
+
+		self.e = EfficiencyTable(sigma_kerns, self.peak_appmags, self.peak_fluxes, sigma_sims, fom_limits=fom_limits)
+
+	def generate_peaks(self, peak_mag_min, peak_mag_max, n_peaks):
+		peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
+		peak_fluxes = list(map(mag2flux, peak_mags))
+		self.peak_appmags = [round(item, 2) for item in peak_mags]
+		self.peak_fluxes = [round(item, 2) for item in peak_fluxes]
+
+	def loop(self, tnsname, num_controls, skip_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None):
+		# load SN and control light curves
+		self.sn = SimDetecSupernova(tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
+		self.sn.load_all(output_dir, num_controls=num_controls)
+
+		valid_control_ix = [i for i in range(1, self.sn.num_controls+1) if not i in skip_control_ix]
+		print(f'\nSimulating events only within the following control light curves: \n', valid_control_ix)
+
+if __name__ == "__main__":
+	args = define_args().parse_args()
+	config = load_json_config(args.config_file)
+
+	output_dir = config["data_dir"]
+	tables_dir = config["tables_dir"]
+	make_dir_if_not_exists(tables_dir)
+	print(f'Data directory containing SN and control light curves: {output_dir}')
+	print(f'Directory to store tables in: {tables_dir}')
+	print(f'Efficiency calculation: {args.efficiencies}')
+	num_iterations = int(config["num_iterations"])
+	print(f'Number of simulated events per peak magnitude: {num_iterations}')
+
+	if args.obs_seasons:
+		if len(config["observation_seasons"]) < 1:
+			raise RuntimeError("ERROR: Please fill out observation seasons in the config file before using the -m argument.")
+		valid_seasons = config["observation_seasons"]
+		print(f'Simulating events only within the following observation seasons: \n{valid_seasons}')
+	else:
+		valid_seasons = None
+
+	sigma_kerns = []
+	sigma_sims = {}
+	fom_limits = None
+	if args.efficiencies:
+		fom_limits = {}
+	for obj in config['sim_settings']:
+		sigma_kerns.append(obj['sigma_kern'])
+		sigma_sims[obj['sigma_kern']] = obj['sigma_sims']
+		if args.efficiencies:
+			if  len(obj['fom_limits']) < 1:
+				raise RuntimeError(f'ERROR: Efficiency calculation set to {args.efficiencies}, but no FOM limits provided for sigma_kern={obj["sigma_kern"]}.')
+			fom_limits[obj['sigma_kern']] = obj['fom_limits']
+	print(f'\nRolling sum kernel sizes (sigma_kerns): \n{sigma_kerns}')
+	print(f'\nSimulated event kernel sizes (sigma_sims) for each sigma_kern: \n{sigma_sims}')
+	if args.efficiencies:
+		print(f'\nFOM limits for each sigma_kern: \n{fom_limits}')
+
+	simdetec = SimDetecLoop(output_dir, 
+												 	tables_dir,
+													sigma_kerns, 
+													sigma_sims,
+													peak_mag_min=config["peak_mag_settings"]["peak_mag_min"],
+													peak_mag_max=config["peak_mag_settings"]["peak_mag_max"],
+													n_peaks=int(config["peak_mag_settings"]["n_peaks"]),
+													fom_limits=fom_limits,
+													num_iterations=num_iterations, 
+													calc_efficiencies=args.efficiencies)
+	
+	print(f'\nSimulation peak magnitudes: \n{simdetec.peak_appmags}')
+	print(f'Simulation peak fluxes (uJy): \n{simdetec.peak_fluxes}')
+
+	simdetec.loop(config["sn_settings"]["tnsname"],
+							 	int(config["sn_settings"]["num_controls"]),
+								config["skip_control_ix"],
+								filt=config["sn_settings"]["filt"],
+								mjdbinsize=config["sn_settings"]["mjd_bin_size"],
+								valid_seasons=valid_seasons)
+	
