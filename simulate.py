@@ -9,7 +9,7 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 	- To only simulate events within observation seasons:
 		- add MJD ranges of observation seasons as lists [STARTMJD, ENDMJD] to "observation_seasons"
 		- ./simulate.py -m
-	- To automatically calculate efficiencies:
+	- To automatically calculate efficiencies using the FOM limits in the config file:
 		- add detection limits to "sim_settings" for each sigma_kern object
 		- ./simulate.py -e
 - To load a config file with a different file name: ./simulate.py --cfg_filename simulation_settings_copy.json
@@ -153,6 +153,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 """
 SIMULATION DETECTION AND EFFICIENCY TABLES
 """
+
 # get simulation detection dictionary (sd) key for a sigma_kern peak_appmag pair
 def get_key(sigma_kern, peak_appmag=None, peak_flux=None):
 	if peak_appmag is None and peak_flux is None:
@@ -249,6 +250,10 @@ class SimDetecTables:
 				self.d[key] = SimDetecTable(sigma_kern, 
 																		peak_appmag=peak_appmag, 
 																		num_iterations=num_iterations)
+				
+	def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, valid_seasons=None, sigma_sim=None):
+		key = get_key(sigma_kern, peak_appmag=peak_appmag)
+		return self.d[key].get_efficiency(fom_limit, valid_seasons=valid_seasons, sigma_sim=sigma_sim)
 	
 	def load_all(self, tables_dir):
 		self.d = {}
@@ -263,5 +268,143 @@ class SimDetecTables:
 			table.save(tables_dir)
 
 class EfficiencyTable(pdastrostatsclass):
-	def __init__(self, sigma_kerns, peak_appmags, peak_fluxes, sigma_sims, fom_limits=None, **kwargs):
+	def __init__(self, sigma_kerns, sigma_sims, peak_appmags=None, peak_fluxes=None, fom_limits=None, **kwargs):
 		pdastrostatsclass.__init__(self, **kwargs)
+
+		self.sigma_kerns = sigma_kerns
+		self.set_sigma_sims(sigma_sims)
+		self.set_fom_limits(fom_limits)
+
+		if peak_appmags is None and peak_fluxes is None:
+			raise RuntimeError('ERROR: either peak app mags or peak fluxes required to construct an EfficiencyTable.')
+		elif peak_appmags is None:
+			peak_appmags = list(map(flux2mag, peak_fluxes))
+		elif peak_fluxes is None:
+			peak_fluxes = list(map(mag2flux, peak_appmags))
+		self.peak_appmags = peak_appmags
+		self.peak_fluxes = peak_fluxes
+
+		self.setup()
+
+	def setup(self):
+		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim'])
+
+		for sigma_kern in self.sigma_kerns: 
+			n = len(self.peak_appmags) * len(self.sigma_sims[sigma_kern])
+			
+			df = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim'])
+			df['sigma_kern'] = np.full(n, sigma_kern)
+			df['peak_appmag'] = np.repeat(self.peak_appmags, len(self.sigma_sims[sigma_kern]))
+			df['peak_flux'] = np.repeat(self.peak_fluxes, len(self.sigma_sims[sigma_kern]))
+			
+			j = 0
+			while(j < n):
+				for sigma_sim in self.sigma_sims[sigma_kern]:
+					df.loc[j, 'sigma_sim'] = sigma_sim
+					j += 1
+			self.t = pd.concat([self.t, df], ignore_index=True)
+
+	def set_sigma_sims(self, sigma_sims):		
+		if isinstance(sigma_sims, list):
+			self.sigma_sims = {}
+			for i in range(len(self.sigma_kerns)):
+				self.sigma_sims[self.sigma_kerns[i]] = sigma_sims[i]
+		else:
+			if len(sigma_sims) != len(self.sigma_kerns):
+				raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in sigma_sims')
+			self.sigma_sims = sigma_sims
+
+	def set_fom_limits(self, fom_limits):
+		if fom_limits is None:
+			return
+				
+		if isinstance(fom_limits, list):
+			self.fom_limits = {}
+			for i in range(len(self.sigma_kerns)):
+				self.fom_limits[self.sigma_kerns[i]] = fom_limits[i]
+		else:
+			if len(fom_limits) != len(self.sigma_kerns):
+				raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in fom_limits')
+			self.fom_limits = fom_limits
+
+	def reset(self):
+		for col in self.t.columns:
+			if re.search('^pct_detec_',col):
+				self.t.drop(col, axis=1, inplace=True)
+
+		for i in range(len(self.sigma_kerns)):
+			fom_limits = self.fom_limits[self.sigma_kerns[i]]
+			for fom_limit in fom_limits:
+				self.t[f'pct_detec_{fom_limit:0.2f}'] = np.full(len(self.t), np.nan)
+	
+	def get_efficiencies(self, sd:SimDetecTables, valid_seasons=None, verbose=False):
+		if self.fom_limits is None:
+			raise RuntimeError('ERROR: fom_limits is None')
+		
+		for i in range(len(self.t)):
+			sigma_kern = self.t.loc[i,'sigma_kern']
+			peak_appmag = self.t.loc[i,'peak_appmag']
+			sigma_sim = self.t.loc[i,'sigma_sim']
+
+			if verbose:
+				print(f'Getting efficiencies for sigma_kern {sigma_kern}, sigma_sim {sigma_sim}, peak_mag {peak_appmag}...')
+
+			for fom_limit in self.fom_limits[sigma_kern]:
+				self.t.loc[i,f'pct_detec_{fom_limit:0.2f}'] = \
+					sd.get_efficiency(sigma_kern, 
+											 			peak_appmag,
+														fom_limit, 
+														valid_seasons=valid_seasons, 
+														sigma_sim=sigma_sim)
+				
+	def get_subset(self, sigma_kern=None, fom_limit=None, sigma_sim=None):
+		colnames = ['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim']
+		
+		if sigma_kern is None:
+			ix = self.getindices()
+		else:
+			ix = self.ix_equal('sigma_kern', sigma_kern) 
+
+		if not sigma_sim is None: 
+			ix = self.ix_equal('sigma_sim', sigma_sim, indices=ix)
+
+		if not fom_limit is None:
+			try: 
+				colnames.append(f'pct_detec_{fom_limit:0.2f}')
+			except Exception as e:
+				raise RuntimeError(f'ERROR: no matching FOM limit {fom_limit}: {str(e)}')
+		else:
+			for col in self.t.columns:
+				if re.search('^pct_detec_',col):
+					colnames.append(col)
+		
+		return self.t.loc[ix,colnames]
+	
+	def merge(self, other):
+		if not isinstance(other, EfficiencyTable):
+			raise RuntimeError(f'ERROR: Cannot merge EfficiencyTable with object type: {type(other)}')
+		
+		self.sigma_kerns += other.sigma_kerns
+		self.sigma_sims += other.sigma_sims
+		if not self.fom_limits is None:
+			self.fom_limits.update(other.fom_limits)
+
+		self.t = pd.concat([self.t, other.t], ignore_index=True)
+
+	def load(self, tables_dir, filename='efficiencies.txt'):
+		print(f'Loading efficiency table {filename}...')
+		filename = f'{tables_dir}/{filename}'
+		try:
+			#self.t = pd.read_table(filename, delim_whitespace=True)
+			self.load_spacesep(filename, delim_whitespace=True)
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Could not load efficiency table at {filename}: {str(e)}')
+	
+	def save(self, tables_dir, filename='efficiencies.txt'):
+		print(f'Saving efficiency table {filename}...')
+		filename = f'{tables_dir}/{filename}'
+		#self.t.to_string(filename, index=False)
+		self.write(filename=filename, overwrite=True, index=False)
+	
+	def __str__(self):
+		return self.t.to_string()
