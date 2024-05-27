@@ -23,6 +23,7 @@ import sys, random, re, os, argparse, json
 from copy import deepcopy
 from scipy.interpolate import interp1d
 from astropy.modeling.functional_models import Gaussian1D
+from clean import hexstring_to_int
 from download import make_dir_if_not_exists
 from lightcurve import AveragedSupernova, AveragedLightCurve, AandB, AnotB, AorB
 from pdastro import pdastrostatsclass
@@ -163,22 +164,37 @@ class SimDetecSupernova(AveragedSupernova):
 		for control_index in range(self.num_controls+1):
 			self.avg_lcs[control_index].remove_simulations()
 
-	def add_simulations(self, control_index=0):
+	def add_simulation(self, control_index=0):
 		self.avg_lcs[control_index].remove_simulations()
 		# TODO
+
+	def set_valid_seasons_ix(self, valid_seasons=None, column='MJDbin'):
+		for control_index in range(self.num_controls+1):
+			self.avg_lcs[control_index].set_valid_seasons_ix(valid_seasons=valid_seasons, column=column)
 
 class SimDetecLightCurve(AveragedLightCurve):
 	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs):
 		AveragedLightCurve.__init__(self, control_index, filt, mjdbinsize, **kwargs)
 		self.cur_sigma_kern = None
+		self.valid_seasons_ix = None
 
-	def get_valid_seasons_ix(self, valid_seasons, column='MJDbin'):
-		return get_valid_ix(self.t, column, valid_seasons)
+	def set_valid_seasons_ix(self, valid_seasons=None, column='MJDbin'):
+		if valid_seasons is None:
+			self.valid_seasons_ix = self.getindices()
+		else:
+			self.valid_seasons_ix = get_valid_ix(self.t, column, valid_seasons)
 	
+	def get_rand_valid_mjd(self):
+		if self.valid_seasons_ix is None:
+			self.valid_seasons_ix = get_valid_ix(self.t, 'MJDbin', valid_seasons)
+		
+		rand_mjd_idx = random.choice(self.valid_seasons_ix)
+		rand_mjd = self.t.loc[rand_mjd_idx, 'MJDbin']
+		return rand_mjd
+
 	# drop rolling sum columns
 	def remove_rolling_sum(self):
 		self.cur_sigma_kern = None
-
 		dropcols = []
 		for col in ['__tmp_SN','SNR','SNRsum','SNRsumnorm']:
 			if col in self.t.columns:
@@ -186,6 +202,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 		if len(dropcols) > 0:
 			self.t.drop(columns=dropcols,inplace=True)
 	
+	# drop simulation columns
 	def remove_simulations(self):
 		dropcols = []
 		for col in ['__tmp_SN','uJysim','SNRsim','simLC','SNRsimsum']:
@@ -258,7 +275,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
 	def add_model(self, model:Model, peak_mjd, peak_appmag, cur_sigma_kern=None, flag=0x800000, verbose=False):
 		if verbose:
-			print(f'Adding simulated eruption: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {peak_appmag:0.2f}; sigma = {model.sigma:0.2f} days')
+			print(f'Adding simulated model: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {peak_appmag:0.2f}; sigma = {model.sigma:0.2f} days')
 
 		lc = deepcopy(self)
 		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
@@ -276,6 +293,15 @@ class SimDetecLightCurve(AveragedLightCurve):
 			
 		return self.add_simulation(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
 		
+	# get max FOM (for simulated FOM, column='SNRsimsum'; else column='SNRsumnorm') from measurements within 1 sigma of the peak MJD
+	def get_max_fom(self, peak_mjd, sigma_sim, column='SNRsimsum'):
+		mjd_ix = self.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
+		max_fom_idx = self.t.loc[mjd_ix, column].idxmax()
+
+		max_fom_mjd = self.t.loc[max_fom_idx, 'MJDbin']
+		max_fom = self.t.loc[max_fom_idx, column]
+		return max_fom_mjd, max_fom
+
 """
 SIMULATION DETECTION AND EFFICIENCY TABLES
 """
@@ -307,10 +333,13 @@ class SimDetecTable(pdastrostatsclass):
 			self.setup(num_iterations)
 
 	def setup(self, num_iterations):
-		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'peak_mjd', 'sigma_sim', 'max_fom', 'max_fom_mjd'])
+		self.t = pd.DataFrame(columns=['sigma_kern', 'peak_appmag', 'peak_flux', 'peak_mjd', 'sigma_sim', 'control_index', 'max_fom', 'max_fom_mjd'])
 		self.t['sigma_kern'] = np.full(num_iterations, self.sigma_kern)
 		self.t['peak_appmag'] = np.full(num_iterations, self.peak_appmag)
 		self.t['peak_flux'] = np.full(num_iterations, self.peak_flux)
+
+	def update_row_at_index(self, index, data:Dict):
+		self.t.loc[index, data.keys()] = np.array(data.values())
 
 	def get_filename(self, tables_dir):
 		key = get_key(self.sigma_kern, peak_appmag=self.peak_appmag)
@@ -373,6 +402,10 @@ class SimDetecTables:
 				self.d[key] = SimDetecTable(sigma_kern, 
 																		peak_appmag=peak_appmag, 
 																		num_iterations=num_iterations)
+	
+	def update_row_at_index(self, sigma_kern, peak_appmag, index, data):
+		key = get_key(sigma_kern, peak_appmag=peak_appmag)
+		self.d[key].update_row_at_index(index, data)
 				
 	def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, valid_seasons=None, sigma_sim=None):
 		key = get_key(sigma_kern, peak_appmag=peak_appmag)
@@ -576,15 +609,54 @@ class SimDetecLoop:
 		self.peak_appmags = [round(item, 2) for item in peak_mags]
 		self.peak_fluxes = [round(item, 2) for item in peak_fluxes]
 
-	def loop(self, tnsname, num_controls, valid_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None):
+	def loop(self, tnsname, num_controls, valid_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None, flag=0x800000):
 		# load SN and control light curves
 		self.sn = SimDetecSupernova(tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
 		self.sn.load_all(output_dir, num_controls=num_controls)
+		self.sn.set_valid_seasons_ix(valid_seasons=valid_seasons)
 
+		# loop through each rolling sum kernel
 		for sigma_kern in self.sigma_kerns:
 			print(f'\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...')
 
 			self.sn.apply_rolling_sums(sigma_kern)
+
+			# loop through each possible peak apparent magnitude
+			for peak_index in range(len(self.e.peak_appmags)):
+				peak_appmag = self.peak_appmags[peak_index]
+				peak_flux = self.peak_fluxes[peak_index]
+				sigma_sims = self.sigma_sims[sigma_kern]
+
+				# construct list of Gaussian objects for each sigma_sim
+				gaussians = {}
+				for sigma_sim in sigma_sims:
+					gaussians[sigma_sim] = Gaussian(sigma_sim, peak_appmag)
+
+				print(f'Commencing {self.num_iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
+				for j in range(self.num_iterations):
+					# pick random control light curve
+					rand_control_index = random.choice(valid_control_ix)
+
+					# pick random sigma_sim		
+					sigma_sim = random.choice(sigma_sims)
+
+					# pick random peak MJD
+					peak_mjd = self.sn.avg_lcs[rand_control_index].get_rand_valid_mjd()
+					
+					# add simulated Gaussian to the control light curve
+					sim_lc = self.sn.avg_lcs[rand_control_index].add_gaussian(gaussians[sigma_sim], peak_mjd, flag=flag)
+
+					# get max simulated FOM within 1 sigma of the peak MJD
+					max_fom_mjd, max_fom = sim_lc.get_max_fom(peak_mjd, sigma_sim)
+
+					data = {
+						'peak_mjd': peak_mjd,
+						'sigma_sim': sigma_sim, 
+						'control_index': rand_control_index,
+						'max_fom': max_fom,
+						'max_fom_mjd': max_fom_mjd
+					}
+					self.sn.sd.update_row_at_index(sigma_kern, peak_appmag, j, data)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
@@ -598,6 +670,8 @@ if __name__ == "__main__":
 	print(f'\nEfficiency calculation: {args.efficiencies}')
 	num_iterations = int(config["num_iterations"])
 	print(f'\nNumber of simulated events per peak magnitude: {num_iterations}')
+	badday_flag = hexstring_to_int(config['averaging']['flag'])
+	print(f'\nBad day cut (averaging) flag: {hex(badday_flag)}')
 
 	if args.obs_seasons:
 		if len(config["observation_seasons"]) < 1:
@@ -647,5 +721,6 @@ if __name__ == "__main__":
 								valid_control_ix,
 								filt=config["sn_settings"]["filt"],
 								mjdbinsize=config["sn_settings"]["mjd_bin_size"],
-								valid_seasons=valid_seasons)
+								valid_seasons=valid_seasons,
+								flag=badday_flag)
 	
