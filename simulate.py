@@ -39,6 +39,13 @@ def flux2mag(flux):
 def mag2flux(mag):
 	return 10 ** ((mag - 23.9) / -2.5)
 
+def get_valid_ix(table, colname, mjd_ranges):
+  valid_ix = []
+  for i in range(len(table)):
+    if in_valid_season(table.loc[i,colname], mjd_ranges):
+      valid_ix.append(i)
+  return valid_ix
+
 # check if MJD is within valid MJD season
 def in_valid_season(mjd, valid_seasons):
 	in_season = False
@@ -92,10 +99,10 @@ class Gaussian:
 		return f'Gaussian with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
 	
 """
-SIMULATED ERUPTION FROM LIGHT CURVE
+SIMULATED MODEL FROM LIGHT CURVE
 """
 
-class Eruption:
+class Model:
 	def __init__(self, filename, sigma=2.8):
 		self.peak_appmag = None
 		self.sigma = sigma
@@ -104,19 +111,19 @@ class Eruption:
 		self.load(filename)
 
 	def load(self, filename):
-		print(f'Loading eruption lc at {filename}...')
+		print(f'Loading model light curve at {filename}...')
 
 		try:
 			self.t = pd.read_table(filename,delim_whitespace=True,header=None)
 			self.t = self.t.rename(columns={0: "MJD", 1: "m"})
 		except Exception as e:
-			raise RuntimeError(f'ERROR: Could not load eruption at {filename}: {str(e)}')
+			raise RuntimeError(f'ERROR: Could not load model at {filename}: {str(e)}')
 	
 		# app mag -> flux
 		self.t['uJy'] = self.t['m'].apply(lambda mag: mag2flux(mag))
 
 	# get interpolated function of eruption light curve
-	def erup2fn(self, mjds, peak_mjd, peak_appmag):
+	def model2fn(self, mjds, peak_mjd, peak_appmag):
 		self.peak_appmag = peak_appmag
 
 		peak_idx = self.t['m'].idxmin() # get peak appmag
@@ -134,7 +141,6 @@ class Eruption:
 		fn = interp1d(self.t['MJD'], self.t['uJy'], bounds_error=False, fill_value=0)
 		fn = fn(mjds)
 		return fn
-	
 
 """
 ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE 
@@ -143,11 +149,90 @@ ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE
 class SimDetecSupernova(AveragedSupernova):
 	def __init__(self, tnsname:str=None, mjdbinsize:float=1.0, filt:str='o'):
 		AveragedSupernova.__init__(self, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
+		self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
+		self.cur_sigma_kern = None
+
+	def apply_rolling_sums(self, sigma_kern:float, flag=0x800000):
+		self.cur_sigma_kern = sigma_kern
+		for control_index in range(self.num_controls+1):
+			self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
+
+	def remove_rolling_sums(self):
+		for control_index in range(self.num_controls+1):
+			self.avg_lcs[control_index].remove_rolling_sum()
+		self.cur_sigma_kern = None
+
+	def remove_simulations(self):
+		for control_index in range(self.num_controls+1):
+			self.avg_lcs[control_index].remove_simulations()
+
+	def add_simulations(self, control_index=0):
+		self.avg_lcs[control_index].remove_simulations()
+		# TODO
 
 class SimDetecLightCurve(AveragedLightCurve):
 	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs):
 		AveragedLightCurve.__init__(self, control_index, filt, mjdbinsize, **kwargs)
-		#self.sigma_kern = None
+		#self.cur_sigma_kern = None
+
+	def get_valid_seasons_ix(self, valid_seasons, column='MJDbin'):
+		return get_valid_ix(self.t, column, valid_seasons)
+	
+	# drop rolling sum columns
+	def remove_rolling_sum(self):
+		dropcols = []
+		for col in ['__tmp_SN','SNR','SNRsum','SNRsumnorm']:
+			if col in self.t.columns:
+				dropcols.append(col)
+		if len(dropcols) > 0:
+			self.t.drop(columns=dropcols,inplace=True)
+	
+	def remove_simulations(self):
+		dropcols = []
+		for col in ['__tmp_SN','uJysim','SNRsim','simLC','SNRsimsum']:
+			if col in self.t.columns:
+				dropcols.append(col)
+		if len(dropcols) > 0:
+			self.t.drop(columns=dropcols,inplace=True)
+
+	def apply_rolling_sum(self, sigma_kern, indices=None, flag=0x800000, verbose=False):
+		if indices is None:
+			indices = self.getindices()
+		if len(indices) < 1:
+			raise RuntimeError('ERROR: not enough measurements to apply simulated gaussian')
+		good_ix = AandB(indices, self.ix_unmasked('Mask', flag))
+
+		self.remove_rolling_sum()
+		self.t.loc[indices, 'SNR'] = 0.0
+		self.t.loc[good_ix,'SNR'] = self.t.loc[good_ix,'uJy']/self.t.loc[good_ix,'duJy']
+
+		new_gaussian_sigma = round(sigma_kern/self.mjd_bin_size)
+		windowsize = int(6 * new_gaussian_sigma)
+		halfwindowsize = int(windowsize * 0.5) + 1
+		if verbose:
+			print(f'Sigma: {sigma_kern:0.2f} days; MJD bin size: {self.mjd_bin_size:0.2f} days; sigma: {new_gaussian_sigma:0.2f} bins; window size: {windowsize} bins')
+
+		# calculate the rolling SNR sum
+		l = len(self.t.loc[indices])
+		dataindices = np.array(range(l) + np.full(l, halfwindowsize))
+		temp = pd.Series(np.zeros(l + 2*halfwindowsize), name='SNR', dtype=np.float64)
+		temp[dataindices] = self.t.loc[indices,'SNR']
+		SNRsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
+		self.t.loc[indices,'SNRsum'] = list(SNRsum[dataindices])
+		
+		# normalize it
+		norm_temp = pd.Series(np.zeros(l + 2*halfwindowsize), name='norm', dtype=np.float64)
+		norm_temp[np.array(range(l) + np.full(l, halfwindowsize))] = np.ones(l)
+		norm_temp_sum = norm_temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
+		self.t.loc[indices,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
+
+	def add_model(self, gaussian:Gaussian, peak_mjd):
+		# TODO
+		return
+
+	def add_gaussian(self, model:Model, peak_mjd, peak_appmag):
+		# TODO
+		return
 
 """
 SIMULATION DETECTION AND EFFICIENCY TABLES
@@ -213,10 +298,7 @@ class SimDetecTable(pdastrostatsclass):
 		
 		if not valid_seasons is None:
 			# get efficiency for simulations only occurring within mjd_ranges
-			mjd_ix = []
-			for i in range(len(self.t)):
-				if in_valid_season(self.t.loc[i,'peak_mjd'], valid_seasons):
-					mjd_ix.append(i)
+			mjd_ix = get_valid_ix(self.t, 'peak_mjd', valid_seasons)
 			sigma_sim_ix = AandB(sigma_sim_ix, mjd_ix)
 		
 		detected_ix = self.ix_inrange('max_fom', lowlim=fom_limit, indices=sigma_sim_ix)
@@ -456,6 +538,11 @@ class SimDetecLoop:
 		# load SN and control light curves
 		self.sn = SimDetecSupernova(tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
 		self.sn.load_all(output_dir, num_controls=num_controls)
+
+		for sigma_kern in self.sigma_kerns:
+			print(f'\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...')
+
+			self.sn.apply_rolling_sums(sigma_kern)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()

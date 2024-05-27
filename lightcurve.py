@@ -17,6 +17,9 @@ DISC_DATE_BUFFER = 20
 # required light curve column names for the script to work
 REQUIRED_COLUMN_NAMES = ['MJD', 'uJy', 'duJy']
 
+# required averaged light curve column names for the script to work
+REQUIRED_AVG_COLUMN_NAMES = ['MJDbin', 'uJy', 'duJy', 'Mask']
+
 ATLAS_FILTERS = ['c', 'o']
 
 """
@@ -628,6 +631,7 @@ class Supernova:
 		self.lcs[control_index].load_lc(input_dir, self.tnsname)
 	
 	def load_all(self, input_dir, num_controls=0):
+		self.lcs = {}
 		self.num_controls = num_controls
 		print(f'\nLoading SN light curve and {self.num_controls} control light curves...')
 		self.load(input_dir)
@@ -670,6 +674,7 @@ class AveragedSupernova(Supernova):
 		self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
 
 	def load_all(self, input_dir, num_controls=0):
+		self.avg_lcs = {}
 		self.num_controls = num_controls
 		print(f'\nLoading averaged SN light curve and {self.num_controls} averaged control light curves...')
 		self.load(input_dir)
@@ -917,11 +922,11 @@ class LightCurve(pdastrostatsclass):
 				print(f'Dropping extra columns ({f"control light curve {str(self.control_index)}" if self.control_index > 0 else "SN light curve"}): ',dropcols)
 			self.t.drop(columns=dropcols,inplace=True)
 
-	def check_column_names(self):
+	def check_column_names(self, required_column_names):
 		if self.t is None:
 			return
 		
-		for column_name in REQUIRED_COLUMN_NAMES:
+		for column_name in required_column_names:
 			if not column_name in self.t.columns:
 				raise RuntimeError(f'ERROR: Missing required column: {column_name}')
 
@@ -931,7 +936,7 @@ class LightCurve(pdastrostatsclass):
 
 	def load_lc_by_filename(self, filename):
 		self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
-		self.check_column_names()
+		self.check_column_names(required_column_names=REQUIRED_COLUMN_NAMES)
 
 	def save_lc(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
 		filename = get_filename(output_dir, tnsname, self.filt, self.control_index, cleaned=cleaned)
@@ -947,6 +952,10 @@ class AveragedLightCurve(LightCurve):
 	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs): 
 		LightCurve.__init__(self, control_index, filt, **kwargs) 
 		self.mjdbinsize = mjdbinsize
+
+	def load_lc_by_filename(self, filename):
+		self.load_spacesep(filename, delim_whitespace=True, hexcols=['Mask'])
+		self.check_column_names(required_column_names=REQUIRED_AVG_COLUMN_NAMES)
 
 	def load_lc(self, input_dir, tnsname):
 		filename = get_filename(input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize)
