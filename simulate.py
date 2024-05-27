@@ -150,17 +150,14 @@ class SimDetecSupernova(AveragedSupernova):
 	def __init__(self, tnsname:str=None, mjdbinsize:float=1.0, filt:str='o'):
 		AveragedSupernova.__init__(self, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
 		self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
-		self.cur_sigma_kern = None
 
 	def apply_rolling_sums(self, sigma_kern:float, flag=0x800000):
-		self.cur_sigma_kern = sigma_kern
 		for control_index in range(self.num_controls+1):
 			self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
 
 	def remove_rolling_sums(self):
 		for control_index in range(self.num_controls+1):
 			self.avg_lcs[control_index].remove_rolling_sum()
-		self.cur_sigma_kern = None
 
 	def remove_simulations(self):
 		for control_index in range(self.num_controls+1):
@@ -173,13 +170,15 @@ class SimDetecSupernova(AveragedSupernova):
 class SimDetecLightCurve(AveragedLightCurve):
 	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs):
 		AveragedLightCurve.__init__(self, control_index, filt, mjdbinsize, **kwargs)
-		#self.cur_sigma_kern = None
+		self.cur_sigma_kern = None
 
 	def get_valid_seasons_ix(self, valid_seasons, column='MJDbin'):
 		return get_valid_ix(self.t, column, valid_seasons)
 	
 	# drop rolling sum columns
 	def remove_rolling_sum(self):
+		self.cur_sigma_kern = None
+
 		dropcols = []
 		for col in ['__tmp_SN','SNR','SNRsum','SNRsumnorm']:
 			if col in self.t.columns:
@@ -201,6 +200,8 @@ class SimDetecLightCurve(AveragedLightCurve):
 		if len(indices) < 1:
 			raise RuntimeError('ERROR: not enough measurements to apply simulated gaussian')
 		good_ix = AandB(indices, self.ix_unmasked('Mask', flag))
+
+		self.cur_sigma_kern = sigma_kern
 
 		self.remove_rolling_sum()
 		self.t.loc[indices, 'SNR'] = 0.0
@@ -226,13 +227,47 @@ class SimDetecLightCurve(AveragedLightCurve):
 		norm_temp_sum = norm_temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
 		self.t.loc[indices,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
 
-	def add_model(self, gaussian:Gaussian, peak_mjd):
+	def add_model(self, model:Model, peak_mjd, peak_appmag, flag=0x800000, verbose=False):
 		# TODO
 		return
 
-	def add_gaussian(self, model:Model, peak_mjd, peak_appmag):
-		# TODO
-		return
+	def add_gaussian(self, gaussian:Gaussian, peak_mjd, cur_sigma_kern=None, flag=0x800000, verbose=False):
+		if cur_sigma_kern:
+			cur_sigma_kern = self.self.cur_sigma_kern
+		if cur_sigma_kern is None:
+			raise RuntimeError('ERROR: No current sigma kern passed as argument or stored during previously applied rolling sum.')
+		
+		lc = deepcopy(self)
+		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
+
+		if verbose:
+			print(f'Adding simulated gaussian: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {gaussian.peak_appmag:0.2f}; sigma = {gaussian.sigma:0.2f} days')
+		
+		# add simulated flux to light curve
+		lc.t.loc[good_ix,'uJysim'] = lc.t.loc[good_ix,'uJy']
+		sim_flux = gaussian.gauss2fn(lc.t.loc[good_ix,'MJD'], peak_mjd)
+		lc.t.loc[good_ix,'uJysim'] += sim_flux 
+
+		# make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
+		lc.t['SNRsim'] = 0.0
+		# include only simulated flux in the SNR
+		lc.t.loc[good_ix,'SNRsim'] = lc.t.loc[good_ix,'uJysim']/lc.t.loc[good_ix,'duJy']
+
+		new_gaussian_sigma = round(cur_sigma_kern/self.mjdbinsize)
+		windowsize = int(6 * new_gaussian_sigma)
+		halfwindowsize = int(windowsize * 0.5) + 1
+		if verbose:
+			print(f'Sigma: {cur_sigma_kern:0.2f} days; MJD bin size: {self.mjdbinsize:0.2f} days; new sigma: {new_gaussian_sigma:0.2f} bins; window size: {windowsize} bins')
+
+		# calculate the rolling SNR sum for SNR with simulated flux
+		l = len(self.t)
+		dataindices = np.array(range(l) + np.full(l, halfwindowsize))
+		temp = pd.Series(np.zeros(l + 2*halfwindowsize), name='SNRsim', dtype=np.float64)
+		temp[dataindices] = lc.t['SNRsim']
+		SNRsimsum = temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
+		lc.t['SNRsimsum'] = list(SNRsimsum.loc[dataindices])
+
+		return lc
 
 """
 SIMULATION DETECTION AND EFFICIENCY TABLES
