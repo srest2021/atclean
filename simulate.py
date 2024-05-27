@@ -419,6 +419,10 @@ class SimDetecTables:
 				self.d[key] = SimDetecTable(sigma_kern, peak_appmag=peak_appmag)
 				self.d[key].load(tables_dir)
 
+	def save(self, tables_dir, sigma_kern, peak_appmag):
+		key = get_key(sigma_kern, peak_appmag=peak_appmag)
+		self.d[key].save(tables_dir)
+
 	def save_all(self, tables_dir):
 		for table in self.d.values():
 			table.save(tables_dir)
@@ -591,15 +595,14 @@ class SimDetecLoop:
 		self.tables_dir = tables_dir
 		self.num_iterations = num_iterations
 		self.calc_efficiencies = calc_efficiencies
-
-		self.sn:SimDetecSupernova = None
 		
 		self.sigma_kerns = sigma_kerns
 		self.sigma_sims = sigma_sims
 		self.fom_limits = fom_limits
 
 		self.generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
-
+		
+		self.sn:SimDetecSupernova = None
 		self.e:EfficiencyTable = EfficiencyTable(sigma_kerns, sigma_sims, peak_appmags=self.peak_appmags, peak_fluxes=self.peak_fluxes, fom_limits=fom_limits)
 		self.sd:SimDetecTables = SimDetecTables(sigma_kerns, num_iterations=num_iterations, peak_appmags=self.peak_appmags, peak_fluxes=self.peak_fluxes)
 
@@ -656,7 +659,16 @@ class SimDetecLoop:
 						'max_fom': max_fom,
 						'max_fom_mjd': max_fom_mjd
 					}
-					self.sn.sd.update_row_at_index(sigma_kern, peak_appmag, j, data)
+					self.sd.update_row_at_index(sigma_kern, peak_appmag, j, data)
+
+				self.sd.save(tables_dir, sigma_kern, peak_appmag)
+		
+		print('\nSuccess')
+		if self.calc_efficiencies:
+			print(f'\nCalculating efficiencies...')
+			self.e.get_efficiencies(self.sd, valid_seasons=valid_seasons)
+			print(self.e.t.to_string())
+		self.e.save(self.tables_dir)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
