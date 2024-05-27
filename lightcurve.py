@@ -614,6 +614,7 @@ class Supernova:
 	def apply_badday_cut(self, cut:Cut, previous_flags, flux2mag_sigmalimit=3.0):
 		mjdbinsize = cut.params['mjd_bin_size']
 		avg_sn = AveragedSupernova(tnsname=self.tnsname, mjd0=self.mjd0, filt=self.filt, mjdbinsize=mjdbinsize)
+		avg_sn.num_controls = self.num_controls
 		for control_index in range(self.num_controls+1):
 			avg_sn.set_avg_lc(self.lcs[control_index].average(cut, previous_flags, mjdbinsize=mjdbinsize, flux2mag_sigmalimit=flux2mag_sigmalimit), 
 										 		control_index=control_index)
