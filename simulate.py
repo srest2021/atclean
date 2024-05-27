@@ -227,25 +227,12 @@ class SimDetecLightCurve(AveragedLightCurve):
 		norm_temp_sum = norm_temp.rolling(windowsize, center=True, win_type='gaussian').sum(std=new_gaussian_sigma)
 		self.t.loc[indices,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
 
-	def add_model(self, model:Model, peak_mjd, peak_appmag, flag=0x800000, verbose=False):
-		# TODO
-		return
-
-	def add_gaussian(self, gaussian:Gaussian, peak_mjd, cur_sigma_kern=None, flag=0x800000, verbose=False):
-		if cur_sigma_kern:
-			cur_sigma_kern = self.self.cur_sigma_kern
+	def add_simulation(self, lc, good_ix, sim_flux, cur_sigma_kern=None, verbose=False):
+		if cur_sigma_kern is None:
+			cur_sigma_kern = self.cur_sigma_kern
 		if cur_sigma_kern is None:
 			raise RuntimeError('ERROR: No current sigma kern passed as argument or stored during previously applied rolling sum.')
 		
-		lc = deepcopy(self)
-		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
-
-		if verbose:
-			print(f'Adding simulated gaussian: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {gaussian.peak_appmag:0.2f}; sigma = {gaussian.sigma:0.2f} days')
-		
-		# add simulated flux to light curve
-		lc.t.loc[good_ix,'uJysim'] = lc.t.loc[good_ix,'uJy']
-		sim_flux = gaussian.gauss2fn(lc.t.loc[good_ix,'MJD'], peak_mjd)
 		lc.t.loc[good_ix,'uJysim'] += sim_flux 
 
 		# make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
@@ -269,6 +256,26 @@ class SimDetecLightCurve(AveragedLightCurve):
 
 		return lc
 
+	def add_model(self, model:Model, peak_mjd, peak_appmag, cur_sigma_kern=None, flag=0x800000, verbose=False):
+		if verbose:
+			print(f'Adding simulated eruption: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {peak_appmag:0.2f}; sigma = {model.sigma:0.2f} days')
+
+		lc = deepcopy(self)
+		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
+		sim_flux = model.model2fn(lc.t.loc[good_ix,'MJD'], peak_mjd, peak_appmag)
+
+		return self.add_simulation(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+
+	def add_gaussian(self, gaussian:Gaussian, peak_mjd, cur_sigma_kern=None, flag=0x800000, verbose=False):
+		if verbose:
+			print(f'Adding simulated gaussian: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {gaussian.peak_appmag:0.2f}; sigma = {gaussian.sigma:0.2f} days')
+
+		lc = deepcopy(self)
+		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
+		sim_flux = gaussian.gauss2fn(lc.t.loc[good_ix,'MJD'], peak_mjd)
+			
+		return self.add_simulation(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+		
 """
 SIMULATION DETECTION AND EFFICIENCY TABLES
 """
