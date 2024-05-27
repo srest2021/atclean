@@ -303,8 +303,8 @@ class EfficiencyTable(pdastrostatsclass):
 					j += 1
 			self.t = pd.concat([self.t, df], ignore_index=True)
 
-	def set_sigma_sims(self, sigma_sims):		
-		if isinstance(sigma_sims, list):
+	def set_sigma_sims(self, sigma_sims):	
+		if isinstance(sigma_sims, List):
 			self.sigma_sims = {}
 			for i in range(len(self.sigma_kerns)):
 				self.sigma_sims[self.sigma_kerns[i]] = sigma_sims[i]
@@ -326,7 +326,7 @@ class EfficiencyTable(pdastrostatsclass):
 				raise RuntimeError('ERROR: Each entry in sigma_kerns must have a matching list in fom_limits')
 			self.fom_limits = fom_limits
 
-	def reset(self):
+	def reset_table(self):
 		for col in self.t.columns:
 			if re.search('^pct_detec_',col):
 				self.t.drop(col, axis=1, inplace=True)
@@ -379,7 +379,7 @@ class EfficiencyTable(pdastrostatsclass):
 		
 		return self.t.loc[ix,colnames]
 	
-	def merge(self, other):
+	def merge_tables(self, other):
 		if not isinstance(other, EfficiencyTable):
 			raise RuntimeError(f'ERROR: Cannot merge EfficiencyTable with object type: {type(other)}')
 		
@@ -428,7 +428,7 @@ def load_json_config(config_file):
 			return json.load(cfg)
 		
 class SimDetecLoop:
-	def __init__(self, output_dir:str, tables_dir:str, sigma_kerns:List, sigma_sims:Dict, 
+	def __init__(self, output_dir:str, tables_dir:str, sigma_kerns:List, sigma_sims, 
 							 peak_mag_min:float=23.0, peak_mag_max:float=16.0, n_peaks:int=20, fom_limits:Dict=None, num_iterations:int=50000, calc_efficiencies:bool=False):
 		self.output_dir = output_dir
 		self.tables_dir = tables_dir
@@ -436,15 +436,15 @@ class SimDetecLoop:
 		self.calc_efficiencies = calc_efficiencies
 
 		self.sn:SimDetecSupernova = None
-		self.sd:SimDetecTables = None
-
+		
 		self.sigma_kerns = sigma_kerns
 		self.sigma_sims = sigma_sims
 		self.fom_limits = fom_limits
 
 		self.generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
 
-		self.e = EfficiencyTable(sigma_kerns, self.peak_appmags, self.peak_fluxes, sigma_sims, fom_limits=fom_limits)
+		self.e:EfficiencyTable = EfficiencyTable(sigma_kerns, sigma_sims, peak_appmags=self.peak_appmags, peak_fluxes=self.peak_fluxes, fom_limits=fom_limits)
+		self.sd:SimDetecTables = SimDetecTables(sigma_kerns, num_iterations=num_iterations, peak_appmags=self.peak_appmags, peak_fluxes=self.peak_fluxes)
 
 	def generate_peaks(self, peak_mag_min, peak_mag_max, n_peaks):
 		peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
@@ -452,13 +452,10 @@ class SimDetecLoop:
 		self.peak_appmags = [round(item, 2) for item in peak_mags]
 		self.peak_fluxes = [round(item, 2) for item in peak_fluxes]
 
-	def loop(self, tnsname, num_controls, skip_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None):
+	def loop(self, tnsname, num_controls, valid_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None):
 		# load SN and control light curves
 		self.sn = SimDetecSupernova(tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
 		self.sn.load_all(output_dir, num_controls=num_controls)
-
-		valid_control_ix = [i for i in range(1, self.sn.num_controls+1) if not i in skip_control_ix]
-		print(f'\nSimulating events only within the following control light curves: \n', valid_control_ix)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
@@ -469,17 +466,21 @@ if __name__ == "__main__":
 	make_dir_if_not_exists(tables_dir)
 	print(f'Data directory containing SN and control light curves: {output_dir}')
 	print(f'Directory to store tables in: {tables_dir}')
-	print(f'Efficiency calculation: {args.efficiencies}')
+	print(f'\nEfficiency calculation: {args.efficiencies}')
 	num_iterations = int(config["num_iterations"])
-	print(f'Number of simulated events per peak magnitude: {num_iterations}')
+	print(f'\nNumber of simulated events per peak magnitude: {num_iterations}')
 
 	if args.obs_seasons:
 		if len(config["observation_seasons"]) < 1:
 			raise RuntimeError("ERROR: Please fill out observation seasons in the config file before using the -m argument.")
 		valid_seasons = config["observation_seasons"]
-		print(f'Simulating events only within the following observation seasons: \n{valid_seasons}')
+		print(f'\nSimulating events only within the following observation seasons: \n{valid_seasons}')
 	else:
 		valid_seasons = None
+	
+	num_controls = int(config["sn_settings"]["num_controls"])
+	valid_control_ix = [i for i in range(1, num_controls+1) if not i in config["skip_control_ix"]]
+	print(f'\nSimulating events only within the following control light curves: \n', valid_control_ix)
 
 	sigma_kerns = []
 	sigma_sims = {}
@@ -513,8 +514,8 @@ if __name__ == "__main__":
 	print(f'Simulation peak fluxes (uJy): \n{simdetec.peak_fluxes}')
 
 	simdetec.loop(config["sn_settings"]["tnsname"],
-							 	int(config["sn_settings"]["num_controls"]),
-								config["skip_control_ix"],
+							 	num_controls,
+								valid_control_ix,
 								filt=config["sn_settings"]["filt"],
 								mjdbinsize=config["sn_settings"]["mjd_bin_size"],
 								valid_seasons=valid_seasons)
