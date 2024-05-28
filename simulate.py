@@ -51,12 +51,14 @@ def flux2mag(flux):
 def mag2flux(mag):
 	return 10 ** ((mag - 23.9) / -2.5)
 
-def get_valid_ix(table, colname, mjd_ranges):
-  valid_ix = []
-  for i in range(len(table)):
-    if in_valid_season(table.loc[i,colname], mjd_ranges):
-      valid_ix.append(i)
-  return valid_ix
+def get_valid_ix(table, colname, mjd_ranges, indices=None):
+	if indices is None:
+		indices = table.index.values
+	valid_ix = []
+	for i in indices:
+		if in_valid_season(table.loc[i,colname], mjd_ranges):
+			valid_ix.append(i)
+	return valid_ix
 
 # check if MJD is within valid MJD season
 def in_valid_season(mjd, valid_seasons):
@@ -175,9 +177,9 @@ class SimDetecSupernova(AveragedSupernova):
 		for control_index in range(self.num_controls+1):
 			self.avg_lcs[control_index].remove_simulations()
 
-	def set_valid_seasons_ix(self, valid_seasons=None, column='MJDbin'):
+	def set_valid_seasons_ix(self, valid_seasons=None, mjd0=None, column='MJDbin'):
 		for control_index in range(self.num_controls+1):
-			self.avg_lcs[control_index].set_valid_seasons_ix(valid_seasons=valid_seasons, column=column)
+			self.avg_lcs[control_index].set_valid_seasons_ix(valid_seasons=valid_seasons, mjd0=mjd0, column=column)
 
 	def load(self, input_dir, control_index=0):
 		self.avg_lcs[control_index] = SimDetecLightCurve(control_index=control_index, filt=self.filt, mjdbinsize=self.mjdbinsize)
@@ -188,25 +190,23 @@ class SimDetecSupernova(AveragedSupernova):
 		self.avg_lcs[control_index].load_lc_by_filename(filename)
 
 class SimDetecLightCurve(AveragedLightCurve):
-	def __init__(self, control_index=0, filt='o', mjdbinsize=1.0, **kwargs):
+	def __init__(self, control_index=0, filt='o', mjd0=None, mjdbinsize=1.0, **kwargs):
 		AveragedLightCurve.__init__(self, control_index, filt, mjdbinsize, **kwargs)
 		self.cur_sigma_kern = None
+		self.pre_mjd0_ix = self.ix_inrange('MJD', uplim=mjd0)
 		self.valid_seasons_ix = None
 
 	# get all light curve indices with MJDs within the given observation seasons
 	def set_valid_seasons_ix(self, valid_seasons=None, column='MJDbin'):
 		if valid_seasons is None:
-			self.valid_seasons_ix = self.getindices()
+			self.valid_seasons_ix = self.pre_mjd0_ix
 		else:
-			self.valid_seasons_ix = get_valid_ix(self.t, column, valid_seasons)
+			self.valid_seasons_ix = get_valid_ix(self.t, column, valid_seasons, indices=self.pre_mjd0_ix)
 	
 	# get a random MJD and its index that lies within the given observation seasons
-	def get_rand_valid_mjd(self, valid_seasons=None):
-		if self.valid_seasons_ix is None:
-			if valid_seasons is None:
-				raise RuntimeError('ERROR: No valid seasons indices have been previously calculated; valid seasons must be passed in order to calculate indices.')
-			self.valid_seasons_ix = get_valid_ix(self.t, 'MJDbin', valid_seasons)
-		
+	def get_rand_valid_mjd(self, valid_seasons=None, column='MJDbin'):
+		if not valid_seasons is None:
+			self.set_valid_seasons_ix(self, valid_seasons=valid_seasons, column=column)
 		rand_mjd_idx = random.choice(self.valid_seasons_ix)
 		rand_mjd = self.t.loc[rand_mjd_idx, 'MJDbin']
 		return rand_mjd
@@ -621,6 +621,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	parser.add_argument('-f', '--config_file', default='simulation_settings.json', type=str, help='file name of JSON file with settings for this class')
 	parser.add_argument('-e', '--efficiencies', default=False, action='store_true', help='calculate efficiencies using FOM limits')
 	parser.add_argument('-m', '--obs_seasons', default=False, action='store_true', help='only simulate events with peak MJDs within the observation season MJD ranges')
+	parser.add_argument('--mjd0', type=float, default=None, help='transient start date in MJD')
 
 	return parser
 
@@ -654,7 +655,7 @@ class SimDetecLoop:
 																						 peak_fluxes=self.peak_fluxes, 
 																						 fom_limits=fom_limits)
 		self.sd:SimDetecTables = SimDetecTables(sigma_kerns, 
-																					  num_iterations=num_iterations, 
+																						num_iterations=num_iterations, 
 																						peak_appmags=self.peak_appmags, 
 																						peak_fluxes=self.peak_fluxes)
 
@@ -665,9 +666,16 @@ class SimDetecLoop:
 		self.peak_appmags = [round(item, 2) for item in peak_mags]
 		self.peak_fluxes = [round(item, 2) for item in peak_fluxes]
 
-	def loop(self, tnsname, num_controls, valid_control_ix, filt='o', mjdbinsize=1.0, valid_seasons=None, flag=0x800000):
+	def loop(self, tnsname, num_controls, valid_control_ix, mjd0=None, filt='o', mjdbinsize=1.0, valid_seasons=None, flag=0x800000):
+		if mjd0 is None:
+			if filt == 'tess':
+				# require MJD0 for TESS light curves
+				raise RuntimeError('ERROR: Filter set to \"tess\" but no MJD0 provided. Please set MJD0 via the --mjd0 argument.')
+			else:
+				print('WARNING: No MJD0 provided. Using entire MJD range for simulations.')
+
 		# load SN and control light curves
-		self.sn = SimDetecSupernova(tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt)
+		self.sn = SimDetecSupernova(tnsname=tnsname, mjd0=mjd0, mjdbinsize=mjdbinsize, filt=filt)
 		self.sn.load_all(output_dir, num_controls=num_controls)
 		self.sn.remove_rolling_sums()
 		self.sn.remove_simulations()
@@ -751,6 +759,8 @@ if __name__ == "__main__":
 		print(f'\nSimulating events only within the following observation seasons: \n{valid_seasons}')
 	else:
 		valid_seasons = None
+	if not args.mjd0 is None:
+		print(f'Simulating events only before MJD0: {args.mjd0} MJDO')
 	
 	num_controls = int(config["sn_settings"]["num_controls"])
 	valid_control_ix = [i for i in range(1, num_controls+1) if not i in config["skip_control_ix"]]
@@ -790,6 +800,7 @@ if __name__ == "__main__":
 	simdetec.loop(config["sn_settings"]["tnsname"],
 							 	num_controls,
 								valid_control_ix,
+								mjd=args.mjd0,
 								filt=config["sn_settings"]["filt"],
 								mjdbinsize=config["sn_settings"]["mjd_bin_size"],
 								valid_seasons=valid_seasons,

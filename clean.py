@@ -356,7 +356,9 @@ class CleanLoop:
 
 		if cut.params['use_pre_mjd0_lc']:
 			print('Using pre-MJD0 light curve to determine contamination and loss')
-			lc_temp = deepcopy(self.lcs[0])
+			if self.sn.mjd0 is None:
+				raise RuntimeError("ERROR: MJD0 cannot be None. Please provide MJD0 throught the SN info table or --mjd0 argument, or set the use_pre_MJD0_lc field in the config file to False.")
+			lc_temp = deepcopy(self.sn.lcs[0])
 			ix = lc_temp.ix_inrange('MJD', uplim=self.sn.mjd0)
 		else:
 			print('Using control light curves to determine contamination and loss')
@@ -492,7 +494,7 @@ class CleanLoop:
 					 num_controls=0, 
 					 mjd0=None, 
 					 filters=['o','c'], 
-					 cut_list=None, 
+					 cut_list:CutList=None, 
 					 apply_template_correction=False):
 		self.cut_list = cut_list
 		
@@ -503,7 +505,7 @@ class CleanLoop:
 			make_dir_if_not_exists(f'{output_dir}/{tnsname}')
 			self.f = OutputReadMe(self.output_dir, tnsname, cut_list, num_controls=num_controls)
 
-			if mjd0 is None:
+			if mjd0 is None and cut_list.get('x2_cut').params['use_pre_MJD0_lc']:
 				_, sninfo_row = self.sninfo.get_row(tnsname)
 				if not sninfo_row is None and not np.isnan(sninfo_row['mjd0']):
 					# get MJD0 from SN info table

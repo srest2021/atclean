@@ -3,11 +3,14 @@
       "tnsname": "2023vbg",
       "filt": "o", 
       "num_controls": 8,
-      "mjd_bin_size": 1.0
+      "mjd0": 60212.497002,
+      "mjd_bin_size": 1.0,
+      "badday_flag": 8388608
   },
 
   "data_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg",
   "tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/tables",
+  "models_dir": "/Users/sofiarest/Google Drive/My Drive/College/STScI Research Paper/atclean/extern",
 
   "peak_mag_settings": {
       "peak_mag_min": 23,
