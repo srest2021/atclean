@@ -16,7 +16,7 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 - After script finishes running, open simulation_analysis.ipynb and load in light curves and saved tables to get a walkthrough analysis.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
@@ -29,15 +29,24 @@ from download import make_dir_if_not_exists
 from lightcurve import AveragedSupernova, AveragedLightCurve, AandB, AnotB, AorB
 from pdastro import pdastrostatsclass
 
+# TODO: fix to contain parameter columns
 SIM_DETEC_TABLE_COLUMNS = [
 	'sigma_kern', 
 	'peak_appmag', 
 	'peak_flux', 
-	'peak_mjd', 
-	'sigma_sim', 
+	#'peak_mjd', 
+	#'sigma_sim', 
 	'control_index', 
 	'max_fom', 
 	'max_fom_mjd'
+]
+
+# TODO: fix to contain parameter columns
+EFFICIENCY_TABLE_COLUMNS = [
+	'sigma_kern', 
+	'peak_appmag', 
+	'peak_flux', 
+	'sigma_sim'
 ]
 
 """
@@ -69,15 +78,15 @@ def in_valid_season(mjd, valid_seasons):
 			in_season = True
 	return in_season
 
-# generate list of peak fluxes and app mags
-def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
-	peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
-	peak_fluxes = list(map(mag2flux, peak_mags))
+# # generate list of peak fluxes and app mags
+# def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
+# 	peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
+# 	peak_fluxes = list(map(mag2flux, peak_mags))
 
-	peak_mags = [round(item, 2) for item in peak_mags]
-	peak_fluxes = [round(item, 2) for item in peak_fluxes]
+# 	peak_mags = [round(item, 2) for item in peak_mags]
+# 	peak_fluxes = [round(item, 2) for item in peak_fluxes]
 
-	return peak_mags, peak_fluxes
+# 	return peak_mags, peak_fluxes
 
 """
 ABSTRACT SIMULATION CLASS
@@ -100,6 +109,15 @@ class Simulation(ABC):
 		:param t0_mjd: MJD where the start of the model should occur (optional).
 
 		:return: An array of flux values corresponding to the input MJDs.
+		"""
+		pass
+
+	@abstractmethod
+	def get_row_params(self):
+		"""
+		Construct a dictionary of parameters to add to a row in a SimDetecTable.
+		Dictionary keys should function as column names and dictionary values 
+		as column values.
 		"""
 		pass
 
@@ -142,6 +160,12 @@ class Gaussian(Simulation):
 		sim_flux = fn(mjds)
 		return sim_flux 
 	
+	def get_row_params(self):
+		parameters = {
+			'sigma_sim': self.sigma
+		}
+		return parameters
+	
 	def __str__(self):
 		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
 	
@@ -152,8 +176,9 @@ SIMULATED MODEL FROM LIGHT CURVE
 class Model(Simulation):
 	def __init__(self, filename, sigma=2.8, peak_appmag=None, name='Pre-SN Outburst Model', **kwargs):
 		Simulation.__init__(self, name=name, **kwargs)
-		self.sigma = sigma
 		self.peak_appmag = peak_appmag
+		self.sigma = sigma
+		self.peak_mjd = None
 
 		self.t = None 
 		self.load(filename)
@@ -175,6 +200,7 @@ class Model(Simulation):
 	def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
 		if peak_mjd is None:
 			raise RuntimeError('ERROR: Peak MJD required to construct simulated model.')
+		self.peak_mjd = peak_mjd
 		
 		# get original peak appmag index
 		peak_idx = self.t['m'].idxmin() 
@@ -199,19 +225,15 @@ class Model(Simulation):
 		sim_flux = fn(mjds)
 		return sim_flux
 	
+	def get_row_params(self):
+		parameters = {
+			'sigma_sim': self.sigma, # TODO: is this necessary?
+			'peak_mjd': self.peak_mjd
+		}
+		return parameters
+	
 	def __str__(self):
 		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
-	
-"""
-LIST OF MODELS OR GAUSSIANS TO ADD TO LIGHT CURVES
-"""
-
-class ModelsLists():
-	def __init__(self):
-		self.lists: List[List[Simulation]] = []
-
-	def new_list(self, model_list: List[Simulation]):
-		self.lists.append(model_list)
 
 """
 ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE 
@@ -321,7 +343,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 		self.t.loc[indices,'SNRsumnorm'] = list(SNRsum.loc[dataindices] / norm_temp_sum.loc[dataindices] * max(norm_temp_sum.loc[dataindices]))
 
 	# add simulated flux to the light curve and add SNRsim and SNRsimsum columns
-	def add_simulation(self, lc, good_ix, sim_flux, cur_sigma_kern=None, verbose=False):
+	def add_sim_flux(self, lc, good_ix, sim_flux, cur_sigma_kern=None, verbose=False):
 		if cur_sigma_kern is None:
 			cur_sigma_kern = self.cur_sigma_kern
 		if cur_sigma_kern is None:
@@ -358,9 +380,9 @@ class SimDetecLightCurve(AveragedLightCurve):
 
 		lc = deepcopy(self)
 		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
-		sim_flux = model.model2fn(lc.t.loc[good_ix,'MJD'], peak_mjd, peak_appmag)
+		sim_flux = model.get_sim_flux(lc.t.loc[good_ix,'MJD'], peak_mjd, peak_appmag)
 
-		return self.add_simulation(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+		return self.add_sim_flux(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
 
 	# add a Gaussian bump to the light curve at a certain peak MJD
 	def add_gaussian(self, gaussian:Gaussian, peak_mjd, cur_sigma_kern=None, flag=0x800000, verbose=False):
@@ -369,15 +391,27 @@ class SimDetecLightCurve(AveragedLightCurve):
 
 		lc = deepcopy(self)
 		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
-		sim_flux = gaussian.gauss2fn(lc.t.loc[good_ix,'MJD'], peak_mjd)
+		sim_flux = gaussian.get_sim_flux(lc.t.loc[good_ix,'MJD'], peak_mjd)
 			
-		return self.add_simulation(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+		return self.add_sim_flux(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+
+	# add any simulation to the light curve, specifying parameters using keyword arguments
+	def add_simulation(self, sim:Simulation, cur_sigma_kern=None, flag=0x800000, verbose=False, **kwargs):
+		if verbose:
+			print(f'Adding simulation: {sim}')
 		
+		lc = deepcopy(self)
+		good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
+		sim_flux = sim.get_sim_flux(lc.t.loc[good_ix,'MJD'], **kwargs)
+			
+		return self.add_sim_flux(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
+	
 	# get max FOM (for simulated FOM, column='SNRsimsum'; else column='SNRsumnorm') 
-	# of measurements within 1 sigma of the peak MJD
-	def get_max_fom(self, peak_mjd, sigma_sim, column='SNRsimsum'):
-		mjd_ix = self.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
-		max_fom_idx = self.t.loc[mjd_ix, column].idxmax()
+	# of measurements within the given indices
+	def get_max_fom(self, indices=None, column='SNRsimsum'):
+		if indices is None:
+			indices = self.getindices()
+		max_fom_idx = self.t.loc[indices, column].idxmax()
 
 		max_fom_mjd = self.t.loc[max_fom_idx, 'MJDbin']
 		max_fom = self.t.loc[max_fom_idx, column]
@@ -443,23 +477,23 @@ class SimDetecTable(pdastrostatsclass):
 		self.write(filename=filename, overwrite=overwrite)
 
 	# get efficiency for a certain sigma_sim using the given FOM limit
-	def get_efficiency(self, fom_limit, valid_seasons=None, sigma_sim=None):
-		if sigma_sim is None: 
+	def get_efficiency(self, fom_limit, valid_seasons=None, column='sigma_sim', column_value=None):
+		if column_value is None: 
 			# get efficiency for all sigma_sims (entire table)
-			sigma_sim_ix = self.getindices()
+			column_ix = self.getindices()
 		else:
-			sigma_sim_ix = self.ix_equal('sigma_sim', sigma_sim) #np.where(self.t['sigma_sim'] == sigma_sim)[0]
-		if len(sigma_sim_ix) < 1:
-			print(f'WARNING: No sim sigma matches for {sigma_sim}; returning NaN...')
+			column_ix = self.ix_equal(column, column_value) #np.where(self.t['sigma_sim'] == sigma_sim)[0]
+		if len(column_ix) < 1:
+			print(f'WARNING: No {column} matches for {column_value}; returning NaN...')
 			return np.nan
 		
 		if not valid_seasons is None:
 			# get efficiency for simulations only occurring within mjd_ranges
 			mjd_ix = get_valid_ix(self.t, 'peak_mjd', valid_seasons)
-			sigma_sim_ix = AandB(sigma_sim_ix, mjd_ix)
+			column_ix = AandB(column_ix, mjd_ix)
 		
-		detected_ix = self.ix_inrange('max_fom', lowlim=fom_limit, indices=sigma_sim_ix)
-		efficiency = len(detected_ix)/len(sigma_sim_ix) * 100
+		detected_ix = self.ix_inrange('max_fom', lowlim=fom_limit, indices=column_ix)
+		efficiency = len(detected_ix)/len(column_ix) * 100
 		return efficiency
 
 class SimDetecTables:
@@ -497,9 +531,9 @@ class SimDetecTables:
 		self.d[key].update_row_at_index(index, data)
 				
 	# get efficiency for a certain SimDetecTable and sigma_sim using the given FOM limit
-	def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, valid_seasons=None, sigma_sim=None):
+	def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, valid_seasons=None, column_name='sigma_sim', column_value=None):
 		key = get_key(sigma_kern, peak_appmag=peak_appmag)
-		return self.d[key].get_efficiency(fom_limit, valid_seasons=valid_seasons, sigma_sim=sigma_sim)
+		return self.d[key].get_efficiency(fom_limit, valid_seasons=valid_seasons, column_name=column_name, column_value=column_value)
 	
 	def load_all(self, tables_dir):
 		self.d = {}
@@ -592,7 +626,7 @@ class EfficiencyTable(pdastrostatsclass):
 				self.t[f'pct_detec_{fom_limit:0.2f}'] = np.full(len(self.t), np.nan)
 	
 	# calculate efficiencies using SimDetecTables and update EfficiencyTable
-	def get_efficiencies(self, sd:SimDetecTables, valid_seasons=None, verbose=False):
+	def get_efficiencies(self, sd:SimDetecTables, valid_seasons=None, column_name='sigma_sim', column_value=None, verbose=False):
 		if self.fom_limits is None:
 			raise RuntimeError('ERROR: fom_limits is None')
 		
@@ -609,12 +643,13 @@ class EfficiencyTable(pdastrostatsclass):
 					sd.get_efficiency(sigma_kern, 
 											 			peak_appmag,
 														fom_limit, 
-														valid_seasons=valid_seasons, 
-														sigma_sim=sigma_sim)
+														valid_seasons=valid_seasons,
+														column_name=column_name,
+														column_value=column_value)
 	
 	# get a subset of the EfficiencyTable
 	def get_subset(self, sigma_kern=None, fom_limit=None, sigma_sim=None):
-		colnames = ['sigma_kern', 'peak_appmag', 'peak_flux', 'sigma_sim']
+		colnames = EFFICIENCY_TABLE_COLUMNS
 		
 		if sigma_kern is None:
 			ix = self.getindices()
@@ -690,109 +725,154 @@ def load_json_config(config_file):
 				return json.load(cfg)
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
-		
-class SimDetecLoop:
-	def __init__(self, output_dir:str, tables_dir:str, sigma_kerns:List, sigma_sims, 
-							 peak_mag_min:float=23.0, peak_mag_max:float=16.0, n_peaks:int=20, fom_limits:Dict=None, num_iterations:int=50000, calc_efficiencies:bool=False):
+
+# TODO: documentation
+class SimDetecLoop(ABC):
+	def __init__(self, output_dir:str, tables_dir:str, sigma_kerns:List, **kwargs):
 		self.output_dir = output_dir
 		self.tables_dir = tables_dir
-		self.num_iterations = num_iterations
-		self.calc_efficiencies = calc_efficiencies
-		
 		self.sigma_kerns = sigma_kerns
-		self.sigma_sims = sigma_sims
-		self.fom_limits = fom_limits
 
-		self.generate_peaks(peak_mag_min, peak_mag_max, n_peaks)
-		
 		self.sn:SimDetecSupernova = None
-		self.e:EfficiencyTable = EfficiencyTable(sigma_kerns, 
-																					 	 sigma_sims, 
-																						 peak_appmags=self.peak_appmags, 
-																						 peak_fluxes=self.peak_fluxes, 
-																						 fom_limits=fom_limits)
-		self.sd:SimDetecTables = SimDetecTables(sigma_kerns, 
-																						num_iterations=num_iterations, 
-																						peak_appmags=self.peak_appmags, 
-																						peak_fluxes=self.peak_fluxes)
+		self.e:EfficiencyTable = None
+		self.sd:SimDetecTables = None
 
-	# generate matching lists of peak apparent magnitudes and fluxes
-	def generate_peaks(self, peak_mag_min, peak_mag_max, n_peaks):
-		peak_mags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
-		peak_fluxes = list(map(mag2flux, peak_mags))
-		self.peak_appmags = [round(item, 2) for item in peak_mags]
-		self.peak_fluxes = [round(item, 2) for item in peak_fluxes]
-
-	def loop(self, tnsname, num_controls, valid_control_ix, mjd0=None, filt='o', mjdbinsize=1.0, valid_seasons=None, flag=0x800000):
-		if mjd0 is None:
-			if filt == 'tess':
-				# require MJD0 for TESS light curves
-				raise RuntimeError('ERROR: Filter set to \"tess\" but no MJD0 provided. Please set MJD0 via the --mjd0 argument.')
-			else:
-				print('WARNING: No MJD0 provided. Using entire MJD range for simulations.')
-
-		# load SN and control light curves
-		self.sn = SimDetecSupernova(tnsname=tnsname, mjd0=mjd0, mjdbinsize=mjdbinsize, filt=filt)
+	@abstractmethod
+	def set_peak_mags_and_fluxes(self, peak_mag_min:float=23.0, peak_mag_max:float=16.0, n_peaks:int=20, **kwargs):
+		self.peak_appmags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
+		self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
+	
+	@abstractmethod
+	def load_sn(self, tnsname, num_controls, valid_seasons=None, mjd0=None, mjdbinsize=1.0, filt='c'):
 		self.sn.load_all(output_dir, num_controls=num_controls)
 		self.sn.remove_rolling_sums()
 		self.sn.remove_simulations()
 		self.sn.set_valid_seasons_ix(valid_seasons=valid_seasons)
 
+	@abstractmethod
+	def modify_light_curve(self, control_index=0):
+		pass
+
+	@abstractmethod
+	def generate_random_simulation(self, **kwargs) -> Simulation:
+		pass
+	
+	@abstractmethod
+	def generate_peak_mjd(self, control_index):
+		peak_mjd = self.sn.avg_lcs[control_index].get_rand_valid_mjd()
+		return peak_mjd
+
+	@abstractmethod
+	def get_max_fom(self, sim_lc:SimDetecLightCurve, **kwargs) -> Tuple[float, float]:
+		pass
+
+	@abstractmethod
+	def add_row_to_sd(self, sigma_kern, peak_appmag, index, sim:Simulation, control_index, max_fom, max_fom_mjd):
+		sim_params = sim.get_row_params()
+		other_params = {
+			'control_index': control_index,
+			'max_fom': max_fom,
+			'max_fom_mjd': max_fom_mjd
+		}
+		row = other_params.update(sim_params)
+		self.sd.update_row_at_index(sigma_kern, peak_appmag, index, row)
+
+	@abstractmethod
+	def calculate_efficiencies(self, valid_seasons=None):
+		pass
+
+	@abstractmethod
+	def loop(self, num_iterations=50000):
+		pass
+
+class AtlasSimDetecLoop(SimDetecLoop):
+	def __init__(self, 
+							 output_dir:str, 
+							 tables_dir:str, 
+							 sigma_kerns:List, 
+							 sigma_sims):
+		SimDetecLoop.__init__(output_dir, tables_dir, sigma_kerns)
+		self.sigma_sims = sigma_sims
+
+	def load_sn(self, tnsname, num_controls, valid_seasons=None, mjd0=None, mjdbinsize=1, filt='c'):
+		if mjd0 is None:
+			print('WARNING: No MJD0 provided. Using entire MJD range for simulations.')
+		super().load_sn(tnsname, num_controls, valid_seasons, mjd0, mjdbinsize, filt)
+
+	def generate_random_simulation(self, peak_appmag=None, **kwargs):
+		if peak_appmag is None:
+			raise RuntimeError('ERROR: A peak apparent magnitude is required to generate a Gaussian simulation.')
+		# pick random sigma_sim
+		sigma_sim = random.choice(self.sigma_sims)
+		# construct Gaussian object with random sigma_sim and given peak_appmag
+		return Gaussian(sigma_sim, peak_appmag)
+	
+	def get_max_fom(self, sim_lc:SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs):
+		if peak_mjd is None or sigma_sim is None:
+			raise RuntimeError('ERROR: A peak MJD and sigma of the simulated Gaussian is required to find the max FOM.')
+		# measurements within 1 sigma of the peak MJD
+		indices = sim_lc.ix_inrange(colnames='MJDbin', lowlim=peak_mjd-sigma_sim, uplim=peak_mjd+sigma_sim)
+		# get max FOM of those measurements
+		max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
+		return max_fom_mjd, max_fom
+
+	def calculate_efficiencies(self, fom_limits=None, valid_seasons=None):
+		self.e:EfficiencyTable = EfficiencyTable(self.sigma_kerns, 
+																					 	 self.sigma_sims, 
+																						 peak_appmags=self.peak_appmags, 
+																						 peak_fluxes=self.peak_fluxes, 
+																						 fom_limits=fom_limits)
+		print(f'\nCalculating efficiencies...')
+		# calculate efficiencies using FOM limits from config file
+		self.e.get_efficiencies(self.sd, valid_seasons=valid_seasons)
+		print(self.e.t.to_string())
+		self.e.save(self.tables_dir)
+	
+	def loop(self, flag=0x800000, num_iterations=50000):
+		self.sd:SimDetecTables = SimDetecTables(sigma_kerns, 
+																						num_iterations=num_iterations, 
+																						peak_appmags=self.peak_appmags, 
+																						peak_fluxes=self.peak_fluxes)
+		
 		# loop through each rolling sum kernel
 		for sigma_kern in self.sigma_kerns:
 			print(f'\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...')
-
 			self.sn.apply_rolling_sums(sigma_kern)
-
+			
 			# loop through each possible peak apparent magnitude
-			for peak_index in range(len(self.e.peak_appmags)):
+			for peak_index in range(len(self.peak_appmags)):
 				peak_appmag = self.peak_appmags[peak_index]
 				peak_flux = self.peak_fluxes[peak_index]
-				sigma_sims = self.sigma_sims[sigma_kern]
-
-				# construct list of Gaussian objects for each sigma_sim
-				gaussians = {}
-				for sigma_sim in sigma_sims:
-					gaussians[sigma_sim] = Gaussian(sigma_sim, peak_appmag)
-
-				print(f'Commencing {self.num_iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
-				for j in range(self.num_iterations):
+				
+				print(f'Commencing {num_iterations} iterations for peak app mag {peak_appmag} (peak flux {peak_flux})...')
+				for j in range(num_iterations):
 					# pick random control light curve
 					rand_control_index = random.choice(valid_control_ix)
 
-					# pick random sigma_sim		
-					sigma_sim = random.choice(sigma_sims)
+					# generate random simulated Gaussian
+					gaussian = self.generate_random_simulation(peak_appmag=peak_appmag)
 
-					# pick random peak MJD
-					peak_mjd = self.sn.avg_lcs[rand_control_index].get_rand_valid_mjd()
-					
+					# generate random peak MJD within valid observation seasons
+					peak_mjd = self.generate_peak_mjd()
+
 					# add simulated Gaussian to the control light curve
-					sim_lc = self.sn.avg_lcs[rand_control_index].add_gaussian(gaussians[sigma_sim], peak_mjd, flag=flag)
+					sim_lc = self.sn.avg_lcs[rand_control_index].add_gaussian(gaussian, peak_mjd, flag=flag)
 
 					# get max simulated FOM within 1 sigma of the peak MJD
-					max_fom_mjd, max_fom = sim_lc.get_max_fom(peak_mjd, sigma_sim)
-
-					# update SimDetecTable with simulation info
-					data = {
-						'peak_mjd': peak_mjd,
-						'sigma_sim': sigma_sim, 
-						'control_index': rand_control_index,
-						'max_fom': max_fom,
-						'max_fom_mjd': max_fom_mjd
-					}
-					self.sd.update_row_at_index(sigma_kern, peak_appmag, j, data)
-
+					max_fom_mjd, max_fom = self.get_max_fom(sim_lc, peak_mjd=peak_mjd, sigma_sim=gaussian.sigma)
+					
+					self.add_row_to_sd(sigma_kern, 
+														 peak_appmag, 
+														 j, 
+														 gaussian, 
+														 rand_control_index, 
+														 max_fom, 
+														 max_fom_mjd)
+					
 				# save SimDetecTable
-				self.sd.save(tables_dir, sigma_kern, peak_appmag)
-
+				self.sd.save(self.tables_dir, sigma_kern, peak_appmag)
+		
 		print('\nSuccess')
-
-		if self.calc_efficiencies:
-			print(f'\nCalculating efficiencies...')
-			# calculate efficiencies using FOM limits from config file
-			self.e.get_efficiencies(self.sd, valid_seasons=valid_seasons)
-			print(self.e.t.to_string())
-		self.e.save(self.tables_dir)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
@@ -839,6 +919,8 @@ if __name__ == "__main__":
 	print(f'\nSimulated event kernel sizes (sigma_sims) for each sigma_kern: \n{sigma_sims}')
 	if args.efficiencies:
 		print(f'\nFOM limits for each sigma_kern: \n{fom_limits}')
+
+	# TODO: FIX
 
 	simdetec = SimDetecLoop(output_dir, 
 												 	tables_dir,
