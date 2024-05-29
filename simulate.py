@@ -84,11 +84,11 @@ ABSTRACT SIMULATION CLASS
 """
 
 class Simulation(ABC):
-	def __init__(self, **kwargs):
+	def __init__(self, name=None, **kwargs):
 		"""
 		Initialize the Simulation object.
 		"""
-		pass
+		self.name = name
 
 	@abstractmethod
 	def get_sim_flux(self, mjds, peak_mjd=None, t0_mjd=None, **kwargs):
@@ -103,14 +103,19 @@ class Simulation(ABC):
 		"""
 		pass
 
+	def __str__(self):
+		return f'Simulation of type {self.name}'
+
 """
 ASYM GAUSSIAN
 Adapted from A. Rest
 """
 
 class Gaussian(Simulation):
-	def __init__(self, sigma, peak_appmag, **kwargs):
-		Simulation.__init__(self, **kwargs)
+	def __init__(self, sigma, peak_appmag, name='Gaussian', **kwargs):
+		Simulation.__init__(self, name=name, **kwargs)
+		self.peak_appmag = peak_appmag
+		self.sigma = sigma
 		self.g = self.new_gaussian(mag2flux(peak_appmag), sigma)
 
 	def new_gaussian(self, peak_flux, sigma):
@@ -138,16 +143,15 @@ class Gaussian(Simulation):
 		return sim_flux 
 	
 	def __str__(self):
-		return f'Gaussian with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
+		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
 	
 """
 SIMULATED MODEL FROM LIGHT CURVE
 """
 
 class Model(Simulation):
-	def __init__(self, filename, sigma=2.8, peak_appmag=None, **kwargs):
-		Simulation.__init__(self, **kwargs)
-
+	def __init__(self, filename, sigma=2.8, peak_appmag=None, name='Pre-SN Outburst Model', **kwargs):
+		Simulation.__init__(self, name=name, **kwargs)
 		self.sigma = sigma
 		self.peak_appmag = peak_appmag
 
@@ -163,34 +167,40 @@ class Model(Simulation):
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load model at {filename}: {str(e)}')
 	
-		# app mag -> flux
+		# calculate flux column
 		self.t['uJy'] = self.t['m'].apply(lambda mag: mag2flux(mag))
 
 	# get interpolated function of model at peak MJD (peak_mjd) 
 	# and match to time array (mjds)
 	def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
-		if self.t is None:
-			raise RuntimeError('ERROR: No model has been loaded.')
-		
 		if peak_mjd is None:
 			raise RuntimeError('ERROR: Peak MJD required to construct simulated model.')
-		self.peak_appmag = peak_appmag
-
-		peak_idx = self.t['m'].idxmin() # get original peak appmag
-		self.t['MJD'] -= self.t.loc[peak_idx,'MJD'] # put it at days=0
-		self.t['MJD'] += peak_mjd # put it at days=peak_mjd
-
+		
+		# get original peak appmag index
+		peak_idx = self.t['m'].idxmin() 
+		
 		if not peak_appmag is None:
-			# scale the flux to the desired peak appmag
+			self.peak_appmag = peak_appmag
+			
+			# scale flux to the desired peak appmag
 			self.t['uJy'] *= mag2flux(peak_appmag)/self.t.loc[peak_idx, 'uJy']
+
+			# recalulate appmag column
+			self.t['m'] = self.t['uJy'].apply(lambda flux: flux2mag(flux)) 
+		else:
+			self.peak_appmag = self.t.loc[peak_idx,'m']
+
+		# put peak appmag at peak_mjd
+		self.t['MJD'] -= self.t.loc[peak_idx,'MJD']
+		self.t['MJD'] += peak_mjd 
 		
-		# flux -> appmag
-		self.t['m'] = self.t['uJy'].apply(lambda flux: flux2mag(flux)) 
-		
-		# interpolate lc
+		# interpolate lc and match to time array
 		fn = interp1d(self.t['MJD'], self.t['uJy'], bounds_error=False, fill_value=0)
 		sim_flux = fn(mjds)
 		return sim_flux
+	
+	def __str__(self):
+		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
 	
 """
 LIST OF MODELS OR GAUSSIANS TO ADD TO LIGHT CURVES
