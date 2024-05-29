@@ -17,6 +17,7 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 """
 
 from typing import Dict, List
+from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import sys, random, re, os, argparse, json
@@ -44,11 +45,11 @@ UTILITY
 """
 
 # convert flux to magnitude 
-def flux2mag(flux):
+def flux2mag(flux:float):
 	return -2.5 * np.log10(flux) + 23.9
 
 # convert magnitude to flux
-def mag2flux(mag):
+def mag2flux(mag:float):
 	return 10 ** ((mag - 23.9) / -2.5)
 
 def get_valid_ix(table, colname, mjd_ranges, indices=None):
@@ -79,14 +80,37 @@ def generate_peaks(peak_mag_min, peak_mag_max, n_peaks):
 	return peak_mags, peak_fluxes
 
 """
+ABSTRACT SIMULATION CLASS
+"""
+
+class Simulation(ABC):
+	def __init__(self, **kwargs):
+		"""
+		Initialize the Simulation object.
+		"""
+		pass
+
+	@abstractmethod
+	def get_sim_flux(self, mjds, peak_mjd=None, t0_mjd=None, **kwargs):
+		"""
+		Compute the simulated flux for given MJDs.
+
+		:param mjds: List or array of MJDs.
+		:param peak_mjd: MJD where the peak apparent magnitude should occur (optional).
+		:param t0_mjd: MJD where the start of the model should occur (optional).
+
+		:return: An array of flux values corresponding to the input MJDs.
+		"""
+		pass
+
+"""
 ASYM GAUSSIAN
 Adapted from A. Rest
 """
 
-class Gaussian:
-	def __init__(self, sigma, peak_appmag):
-		self.peak_appmag = peak_appmag
-		self.sigma = sigma
+class Gaussian(Simulation):
+	def __init__(self, sigma, peak_appmag, **kwargs):
+		Simulation.__init__(self, **kwargs)
 		self.g = self.new_gaussian(mag2flux(peak_appmag), sigma)
 
 	def new_gaussian(self, peak_flux, sigma):
@@ -100,14 +124,18 @@ class Gaussian:
 		gauss = np.array([x,g3])
 		return gauss
 	
-	# get interpolated function of gaussian at peak MJD (peak_mjd) and match to time array (mjds)
-	def gauss2fn(self, mjds, peak_mjd):
+	# get interpolated function of gaussian at peak MJD (peak_mjd) 
+	# and match to time array (mjds)
+	def get_sim_flux(self, mjds, peak_mjd=None, **kwargs):
+		if peak_mjd is None:
+			raise RuntimeError('ERROR: Peak MJD required to get flux of simulated Gaussian.')
+		
 		g = deepcopy(self.g)
 		g[0,:] += peak_mjd
 		
 		fn = interp1d(g[0],g[1],bounds_error=False,fill_value=0)
-		fn = fn(mjds)
-		return fn 
+		sim_flux = fn(mjds)
+		return sim_flux 
 	
 	def __str__(self):
 		return f'Gaussian with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
@@ -116,10 +144,12 @@ class Gaussian:
 SIMULATED MODEL FROM LIGHT CURVE
 """
 
-class Model:
-	def __init__(self, filename, sigma=2.8):
-		self.peak_appmag = None
+class Model(Simulation):
+	def __init__(self, filename, sigma=2.8, peak_appmag=None, **kwargs):
+		Simulation.__init__(self, **kwargs)
+
 		self.sigma = sigma
+		self.peak_appmag = peak_appmag
 
 		self.t = None 
 		self.load(filename)
@@ -136,25 +166,42 @@ class Model:
 		# app mag -> flux
 		self.t['uJy'] = self.t['m'].apply(lambda mag: mag2flux(mag))
 
-	# get interpolated function of eruption light curve
-	def model2fn(self, mjds, peak_mjd, peak_appmag):
+	# get interpolated function of model at peak MJD (peak_mjd) 
+	# and match to time array (mjds)
+	def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
+		if self.t is None:
+			raise RuntimeError('ERROR: No model has been loaded.')
+		
+		if peak_mjd is None:
+			raise RuntimeError('ERROR: Peak MJD required to construct simulated model.')
 		self.peak_appmag = peak_appmag
 
-		peak_idx = self.t['m'].idxmin() # get peak appmag
+		peak_idx = self.t['m'].idxmin() # get original peak appmag
+		self.t['MJD'] -= self.t.loc[peak_idx,'MJD'] # put it at days=0
+		self.t['MJD'] += peak_mjd # put it at days=peak_mjd
 
-		self.t['MJD'] -= self.t.loc[peak_idx,'MJD'] # put peak appmag at days=0
-		self.t['MJD'] += peak_mjd # put peak appmag at days=peak_mjd
-
-		# scale
-		self.t['uJy'] *= mag2flux(peak_appmag)/self.t.loc[peak_idx, 'uJy']
+		if not peak_appmag is None:
+			# scale the flux to the desired peak appmag
+			self.t['uJy'] *= mag2flux(peak_appmag)/self.t.loc[peak_idx, 'uJy']
 		
-		# flux -> app mag
+		# flux -> appmag
 		self.t['m'] = self.t['uJy'].apply(lambda flux: flux2mag(flux)) 
 		
 		# interpolate lc
 		fn = interp1d(self.t['MJD'], self.t['uJy'], bounds_error=False, fill_value=0)
-		fn = fn(mjds)
-		return fn
+		sim_flux = fn(mjds)
+		return sim_flux
+	
+"""
+LIST OF MODELS OR GAUSSIANS TO ADD TO LIGHT CURVES
+"""
+
+class ModelsLists():
+	def __init__(self):
+		self.lists: List[List[Simulation]] = []
+
+	def new_list(self, model_list: List[Simulation]):
+		self.lists.append(model_list)
 
 """
 ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE 
