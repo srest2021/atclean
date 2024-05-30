@@ -10,8 +10,7 @@
 
   "data_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg",
   "tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/tables",
-  "models_dir": "/Users/sofiarest/Google Drive/My Drive/College/STScI Research Paper/atclean/extern",
-
+  
   "peak_mag_settings": {
       "peak_mag_min": 23,
       "peak_mag_max": 16,
@@ -24,41 +23,5 @@
 
   "observation_seasons": [],
 
-  "sim_settings": [
-      {
-          "sigma_kern": 5,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 20,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 40,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 80,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 100,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 150,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      },
-      {
-          "sigma_kern": 200,
-          "sigma_sims": [5, 20, 40, 80, 100, 150, 200],
-          "fom_limits": []
-      }
-  ]
+  "sigma_kerns": [5, 20, 40, 80, 100, 150, 200]
 }

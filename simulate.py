@@ -16,7 +16,7 @@ For each sigma_kern, we vary the peak magnitude ("peak_mag") and the kernel size
 - After script finishes running, open simulation_analysis.ipynb and load in light curves and saved tables to get a walkthrough analysis.
 """
 
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
@@ -98,6 +98,7 @@ class Simulation(ABC):
 		Initialize the Simulation object.
 		"""
 		self.name = name
+		self.peak_mjd = None
 
 	@abstractmethod
 	def get_sim_flux(self, mjds, peak_mjd=None, t0_mjd=None, **kwargs):
@@ -119,7 +120,11 @@ class Simulation(ABC):
 		Dictionary keys should function as column names and dictionary values 
 		as column values.
 		"""
-		pass
+		parameters = {
+			'name': self.name,
+			'peak_mjd': self.peak_mjd
+		}
+		return parameters
 
 	def __str__(self):
 		return f'Simulation of type {self.name}'
@@ -152,7 +157,8 @@ class Gaussian(Simulation):
 	def get_sim_flux(self, mjds, peak_mjd=None, **kwargs):
 		if peak_mjd is None:
 			raise RuntimeError('ERROR: Peak MJD required to get flux of simulated Gaussian.')
-		
+		self.peak_mjd = peak_mjd
+
 		g = deepcopy(self.g)
 		g[0,:] += peak_mjd
 		
@@ -162,9 +168,9 @@ class Gaussian(Simulation):
 	
 	def get_row_params(self):
 		parameters = {
-			'sigma_sim': self.sigma
+			'sigma_sim': self.sigma,
 		}
-		return parameters
+		return parameters.update(super().get_row_params())
 	
 	def __str__(self):
 		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
@@ -174,11 +180,10 @@ SIMULATED MODEL FROM LIGHT CURVE
 """
 
 class Model(Simulation):
-	def __init__(self, filename, sigma=2.8, peak_appmag=None, name='Pre-SN Outburst Model', **kwargs):
+	def __init__(self, filename, peak_appmag=None, name='Pre-SN Outburst Model', **kwargs):
 		Simulation.__init__(self, name=name, **kwargs)
 		self.peak_appmag = peak_appmag
-		self.sigma = sigma
-		self.peak_mjd = None
+		#self.sigma = 2.8
 
 		self.t = None 
 		self.load(filename)
@@ -226,17 +231,37 @@ class Model(Simulation):
 		return sim_flux
 	
 	def get_row_params(self):
-		parameters = {
-			'sigma_sim': self.sigma, # TODO: is this necessary?
-			'peak_mjd': self.peak_mjd
-		}
-		return parameters
+		# parameters = {
+		# 	'sigma_sim': self.sigma, # TODO: is this necessary?
+		# 	'peak_mjd': self.peak_mjd
+		# }
+		return super().get_row_params()
 	
 	def __str__(self):
-		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f} and sigma_sim {self.sigma}'
+		return f'Simulation of type {self.name} with peak app mag {self.peak_appmag:0.2f}'
+
+class TessModel(Model):
+	def __init__(self, filename, peak_appmag=None, name='TESS Pre-SN Outburst Model', **kwargs):
+		Model.__init__(self, filename, name=name, peak_appmag=peak_appmag, **kwargs)
+	
+	def get_sim_flux(self, mjds, fn:interp1d):
+		sim_flux = fn(mjds)
+		return sim_flux
 
 """
 ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE 
+
+first create table
+go through row, using name or filename read params, use params to create object
+sd can also be passed by user
+for a loop, stick to one type of model
+each parameter can be list/range/random
+in config file have each possible model and their parameters, choose list/range/random for each parameter
+now table can use config to know what params to expect
+
+when loading file, pass desired MJD and mag or flux colnames
+
+create sd table function in loop? can be overwritten by user
 """
 
 class SimDetecSupernova(AveragedSupernova):
@@ -874,6 +899,13 @@ class AtlasSimDetecLoop(SimDetecLoop):
 		
 		print('\nSuccess')
 
+class TessSimDetecLoop(SimDetecLoop):
+	def __init__(self, 
+							 output_dir:str, 
+							 tables_dir:str, 
+							 sigma_kerns:List):
+		pass
+
 if __name__ == "__main__":
 	args = define_args().parse_args()
 	config = load_json_config(args.config_file)
@@ -920,28 +952,15 @@ if __name__ == "__main__":
 	if args.efficiencies:
 		print(f'\nFOM limits for each sigma_kern: \n{fom_limits}')
 
-	# TODO: FIX
-
-	simdetec = SimDetecLoop(output_dir, 
-												 	tables_dir,
-													sigma_kerns, 
-													sigma_sims,
-													peak_mag_min=config["peak_mag_settings"]["peak_mag_min"],
-													peak_mag_max=config["peak_mag_settings"]["peak_mag_max"],
-													n_peaks=int(config["peak_mag_settings"]["n_peaks"]),
-													fom_limits=fom_limits,
-													num_iterations=num_iterations, 
-													calc_efficiencies=args.efficiencies)
-	
-	print(f'\nSimulation peak magnitudes: \n{simdetec.peak_appmags}')
-	print(f'Simulation peak fluxes (uJy): \n{simdetec.peak_fluxes}')
-
-	simdetec.loop(config["sn_settings"]["tnsname"],
-							 	num_controls,
-								valid_control_ix,
-								mjd=args.mjd0,
-								filt=config["sn_settings"]["filt"],
-								mjdbinsize=config["sn_settings"]["mjd_bin_size"],
-								valid_seasons=valid_seasons,
-								flag=badday_flag)
-	
+	simdetec = SimDetecLoop(output_dir, tables_dir, sigma_kerns, sigma_sims)
+	simdetec.set_peak_mags_and_fluxes()
+	simdetec.load_sn(config["sn_settings"]["tnsname"], 
+									 num_controls, 
+									 valid_seasons=valid_seasons,
+									 mjd0=args.mjd0,
+									 mjdbinsize=config["sn_settings"]["mjd_bin_size"],
+									 filt=config["sn_settings"]["filt"])
+	simdetec.loop(num_iterations=num_iterations, flag=badday_flag)
+	if args.efficiencies:
+		simdetec.calculate_efficiencies(fom_limits=fom_limits, 
+																		valid_seasons=valid_seasons)
