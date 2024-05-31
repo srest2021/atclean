@@ -1,5 +1,5 @@
 {
-  "Gaussian": {
+  "gaussian": {
     "parameters": {
       "peak_appmag": {
         "type": "list",
@@ -67,11 +67,11 @@
     }
   },
 
-  "Charlie's Model": {
+  "charlie_model": {
     "mjd_column_name": null,
     "mag_column_name": null,
     "flux_column_name": false,
-    "filename": "/Users/sofiarest/Google Drive/My Drive/College/STScI Research Paper/atclean/extern/eruption_m3e-07.dat",
+    "filename": "/Users/sofiarest/Desktop/Supernovae/data_refactor/atclean_input/eruption_m3e-07.dat",
 
     "parameters": {
       "peak_appmag": {
@@ -117,7 +117,7 @@
     }
   }, 
 
-  "Qinan's Model": {
+  "qinan_model": {
     "mjd_column_name": "MJD",
     "mag_column_name": "m",
     "flux_column_name": "uJy",

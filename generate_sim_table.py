@@ -8,9 +8,11 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Callable, Tuple
 
+from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
 
-SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'filename']
+GAUSSIAN_MODEL_NAME = "gaussian"
+SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'peak_mjd', 'filename']
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -126,8 +128,8 @@ class SimTable(pdastrostatsclass):
 	def update_row_at_index(self, index, data: Dict):
 		self.t.loc[index, data.keys()] = np.array(list(data.values()))
 
-	def save(self, tables_dir):
-		filename = f'simtable_{self.peak_appmag:0.2f}.txt'
+	def save(self, model_name, tables_dir):
+		filename = f'simtable_{model_name}_{self.peak_appmag:0.2f}.txt'
 		print(f'Saving SimTable {filename}...')
 		filename = f'{tables_dir}/{filename}'
 		self.write(filename=filename, overwrite=True, index=False)
@@ -172,8 +174,9 @@ class SimTables:
 
 	def save(self, tables_dir):
 		print(f'\nSaving SimTables in directory: {tables_dir}')
+		make_dir_if_not_exists(tables_dir)
 		for peak_appmag in self.peak_appmags:
-			self.d[peak_appmag].save(tables_dir)
+			self.d[peak_appmag].save(self.model_name, tables_dir)
 		print('Success')
 
 if __name__ == "__main__":
@@ -181,6 +184,8 @@ if __name__ == "__main__":
 	config = load_json_config(args.config_file)
 	model_config = load_json_config(args.model_config_file)
 
+	if ' ' in args.model_name:
+		raise RuntimeError('ERROR: Model name cannot have spaces.')
 	try:
 		model_settings = model_config[args.model_name]
 	except Exception as e:
@@ -194,12 +199,15 @@ if __name__ == "__main__":
 		raise RuntimeError('ERROR: Parameters must include peak apparent magnitude (\"peak_appmag\").')
 
 	filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
-	if not args.model_name == 'Gaussian':
+	if not args.model_name == GAUSSIAN_MODEL_NAME:
 		try:
 			filename = model_settings['filename']
 			mjd_colname = model_settings['mjd_column_name']
 			mag_colname = model_settings['mag_column_name']
 			flux_colname = model_settings['flux_column_name']
+
+			if ' ' in filename:
+				raise RuntimeError('ERROR: Filename cannot have spaces.')
 
 			if mjd_colname is False:
 				raise RuntimeError(f'ERROR: Model must have an MJD column. Please set the field to null or the correct column name.')
