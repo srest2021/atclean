@@ -2,6 +2,7 @@
 
 import json, argparse
 import math
+import sys
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Callable, Tuple
@@ -148,4 +149,23 @@ if __name__ == "__main__":
 	parsed_params = {}
 	for param_name in model_settings['parameters']:
 		parsed_params[param_name] = parse_param(param_name, model_settings['parameters'][param_name])
-	
+
+	filename, mjd_column_name, mag_column_name, flux_column_name = None, False, False, False
+	if not args.model_name == 'Gaussian':
+		try:
+			filename = model_settings['filename']
+			mjd_column_name = model_settings['mjd_column_name']
+			mag_column_name = model_settings['mag_column_name']
+			flux_column_name = model_settings['flux_column_name']
+
+			if not mag_column_name and not flux_column_name:
+				raise RuntimeError(f'ERROR: Model must have mag or flux column.')
+		except Exception as e:
+			raise RuntimeError(f'ERROR: {str(e)}')
+			
+	generate_sim_detec_tables(args.model_name, 
+													 	parsed_params, 
+														filename=filename, 
+														mjd_column_name=mjd_column_name, 
+														mag_column_name=mag_column_name, 
+														flux_column_name=flux_column_name)

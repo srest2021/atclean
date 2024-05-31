@@ -118,9 +118,9 @@
   }, 
 
   "Qinan's Model": {
-    "mjd_column_name": null,
-    "mag_column_name": null,
-    "flux_column_name": false,
+    "mjd_column_name": "MJD",
+    "mag_column_name": "m",
+    "flux_column_name": "uJy",
     "filename": "",
 
     "parameters": {
