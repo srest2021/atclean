@@ -9,7 +9,8 @@
   },
 
   "data_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg",
-  "tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/tables",
+  "sim_tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/sim_tables",
+  "detec_tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/detec_tables",
   
   "peak_mag_settings": {
       "peak_mag_min": 23,

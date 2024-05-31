@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import itertools
 import json, argparse
 import math
 import sys
@@ -10,26 +11,6 @@ from typing import Dict, List, Callable, Tuple
 from pdastro import pdastrostatsclass
 
 SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'filename']
-
-class SimTable(pdastrostatsclass):
-	def __init__(self, **kwargs):
-		pdastrostatsclass.__init__(self, **kwargs)
-
-	def add_row(self, parameters: Dict, filename=None):
-		pass
-
-	# update a certain row of the table
-	# data should be structured like: data = {'column1': value1, 'column2': value2}
-	def update_row_at_index(self, index, data: Dict):
-		self.t.loc[index, data.keys()] = np.array(list(data.values()))
-
-class SimTables:
-	def __init__(self, peak_appmags: List):
-		self.d: Dict[str, SimTable] = None
-		self.peak_appmags = peak_appmags
-
-	def setup(self, ):
-		pass
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
@@ -132,9 +113,68 @@ def parse_param(param_name: str, param_info):
 	print(f'Result: {res}')
 	return res
 
-def generate_sim_detec_tables(model_name, parsed_params, filename=None, 
-															mjd_column_name=None, mag_column_name=None, flux_column_name=None):
-	pass
+class SimTable(pdastrostatsclass):
+	def __init__(self, peak_appmag, **kwargs):
+		pdastrostatsclass.__init__(self, **kwargs)
+		self.peak_appmag = peak_appmag
+
+	def add_row(self, data: Dict):
+		self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
+
+	# update a certain row of the table
+	# data should be structured like: data = {'column1': value1, 'column2': value2}
+	def update_row_at_index(self, index, data: Dict):
+		self.t.loc[index, data.keys()] = np.array(list(data.values()))
+
+	def save(self, tables_dir):
+		filename = f'simtable_{self.peak_appmag:0.2f}.txt'
+		print(f'Saving SimTable {filename}...')
+		filename = f'{tables_dir}/{filename}'
+		self.write(filename=filename, overwrite=True, index=False)
+
+class SimTables:
+	def __init__(self, peak_appmags: List, model_name: str):
+		self.d: Dict[str, SimTable] = {None}
+		self.peak_appmags = [round(peak_appmag,2) for peak_appmag in peak_appmags]
+		self.model_name = model_name
+
+	def generate(self, parsed_params: Dict[str, List], filename=None, mjd_colname=None, mag_colname=None, flux_colname=None):
+		del parsed_params['peak_appmag']
+		num_rows = 0
+		for param_name in parsed_params:
+			num_rows += len(parsed_params[param_name])
+
+		row = {
+			'model_name': self.model_name,
+			'filename': np.nan if filename is None else filename
+		}
+		if not mjd_colname is False:
+			row['mjd_colname'] = np.nan if mjd_colname is None else mjd_colname
+		if not mag_colname is False:
+			row['mag_colname'] = np.nan if mag_colname is None else mag_colname
+		if not flux_colname is False:
+			row['flux_colname'] = np.nan if flux_colname is None else flux_colname
+		
+		print()
+		self.d = {}
+		for peak_appmag in self.peak_appmags:
+			print(f'Generating {num_rows}-length SimTable for peak_appmag={peak_appmag}...')
+			self.d[peak_appmag] = SimTable(peak_appmag)
+			
+			combinations = list(itertools.product(*(parsed_params.values())))
+			combinations_dicts = [dict(zip(parsed_params.keys(), combo)) for combo in combinations]
+
+			for combination in combinations_dicts:
+				combination.update(row)
+				self.d[peak_appmag].add_row(combination)
+
+		print('Success')
+
+	def save(self, tables_dir):
+		print(f'\nSaving SimTables in directory: {tables_dir}')
+		for peak_appmag in self.peak_appmags:
+			self.d[peak_appmag].save(tables_dir)
+		print('Success')
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
@@ -150,22 +190,28 @@ if __name__ == "__main__":
 	for param_name in model_settings['parameters']:
 		parsed_params[param_name] = parse_param(param_name, model_settings['parameters'][param_name])
 
-	filename, mjd_column_name, mag_column_name, flux_column_name = None, False, False, False
+	if not 'peak_appmag' in parsed_params:
+		raise RuntimeError('ERROR: Parameters must include peak apparent magnitude (\"peak_appmag\").')
+
+	filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
 	if not args.model_name == 'Gaussian':
 		try:
 			filename = model_settings['filename']
-			mjd_column_name = model_settings['mjd_column_name']
-			mag_column_name = model_settings['mag_column_name']
-			flux_column_name = model_settings['flux_column_name']
+			mjd_colname = model_settings['mjd_column_name']
+			mag_colname = model_settings['mag_column_name']
+			flux_colname = model_settings['flux_column_name']
 
-			if not mag_column_name and not flux_column_name:
-				raise RuntimeError(f'ERROR: Model must have mag or flux column.')
+			if mjd_colname is False:
+				raise RuntimeError(f'ERROR: Model must have an MJD column. Please set the field to null or the correct column name.')
+			if mag_colname is False and flux_colname is False:
+				raise RuntimeError(f'ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name.')
 		except Exception as e:
 			raise RuntimeError(f'ERROR: {str(e)}')
-			
-	generate_sim_detec_tables(args.model_name, 
-													 	parsed_params, 
-														filename=filename, 
-														mjd_column_name=mjd_column_name, 
-														mag_column_name=mag_column_name, 
-														flux_column_name=flux_column_name)
+		
+	sim_tables = SimTables(parsed_params['peak_appmag'], args.model_name)
+	sim_tables.generate(parsed_params,
+										 	filename=filename, 
+									    mjd_colname=mjd_colname, 
+									 		mag_colname=mag_colname, 
+									 		flux_colname=flux_colname)
+	sim_tables.save(config['sim_tables_dir'])
