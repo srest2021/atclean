@@ -128,11 +128,20 @@ class SimTable(pdastrostatsclass):
 	def update_row_at_index(self, index, data: Dict):
 		self.t.loc[index, data.keys()] = np.array(list(data.values()))
 
+	def get_filename(self, model_name, tables_dir):
+		return f'{tables_dir}/simtable_{model_name}_{self.peak_appmag:0.2f}.txt'
+
 	def save(self, model_name, tables_dir):
-		filename = f'simtable_{model_name}_{self.peak_appmag:0.2f}.txt'
+		filename = self.get_filename(model_name, tables_dir)
 		print(f'Saving SimTable {filename}...')
-		filename = f'{tables_dir}/{filename}'
 		self.write(filename=filename, overwrite=True, index=False)
+
+	def load(self, model_name, tables_dir):
+		filename = self.get_filename(model_name, tables_dir)
+		try:
+			self.load_spacesep(filename, delim_whitespace=True)
+		except Exception as e:
+			raise RuntimeError(f'ERROR: Could not load SimTable at {filename}: {str(e)}')
 
 class SimTables:
 	def __init__(self, peak_appmags: List, model_name: str):
@@ -178,6 +187,12 @@ class SimTables:
 		for peak_appmag in self.peak_appmags:
 			self.d[peak_appmag].save(self.model_name, tables_dir)
 		print('Success')
+
+	def load_all(self, tables_dir):
+		print(f'\nLoading SimTables in directory: {tables_dir}')
+		self.d = {}
+		for peak_appmag in self.peak_appmags:
+			self.d[peak_appmag].load(self.model_name, tables_dir)
 
 if __name__ == "__main__":
 	args = define_args().parse_args()
