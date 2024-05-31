@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 from astropy.modeling.functional_models import Gaussian1D
 
 from generate_sim_table import load_json_config
-from lightcurve import SimDetecLightCurve, SimDetecSupernova
+from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
 # convert flux to magnitude
@@ -21,28 +21,6 @@ def flux2mag(flux: float):
 # convert magnitude to flux
 def mag2flux(mag: float):
     return 10 ** ((mag - 23.9) / -2.5)
-
-
-class Simulation(ABC):
-    def __init__(self, model_name=None, **kwargs):
-        """
-        Initialize the Simulation object.
-        """
-        self.model_name = model_name
-
-    @abstractmethod
-    def get_sim_flux(self, mjds, **kwargs):
-        """
-        Compute the simulated flux for given MJDs.
-
-        :param mjds: List or array of MJDs.
-
-        :return: An array of flux values corresponding to the input MJDs.
-        """
-        pass
-
-    def __str__(self):
-        return f'Simulation with model name "{self.model_name}"'
 
 
 class Gaussian(Simulation):
@@ -98,6 +76,7 @@ class Model(Simulation):
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.peak_appmag = None
         self.t = None
+
         self.load(
             filename,
             mjd_colname=mjd_colname,
@@ -112,10 +91,18 @@ class Model(Simulation):
         mag_colname=False,
         flux_colname=False,
     ):
-        print(f"Loading model light curve at {filename}...")
+        print(f"\nLoading model at {filename}...")
+
+        if mag_colname is False and flux_colname is False:
+            raise RuntimeError(
+                f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
+            )
 
         try:
-            self.t = pd.read_table(filename, delim_whitespace=True, header=None)
+            header = "infer"
+            if not mjd_colname and not mag_colname and not flux_colname:
+                header = None
+            self.t = pd.read_table(filename, delim_whitespace=True, header=header)
         except Exception as e:
             raise RuntimeError(f"ERROR: Could not load model at {filename}: {str(e)}")
 
@@ -152,6 +139,9 @@ class Model(Simulation):
                     columns={2 if flux_colname is None else flux_colname: "uJy"},
                     inplace=True,
                 )
+
+        print(self.t[["MJD", "m", "uJy"]].head().to_string())
+        print("Success")
 
     # get interpolated function of model at peak MJD (peak_mjd)
     # and match to time array (mjds)
@@ -194,8 +184,8 @@ class SimDetecLoop(ABC):
         self.sigma_kerns = sigma_kerns
 
         self.sn: SimDetecSupernova = None
-        self.e: EfficiencyTable = None
-        self.sd: SimDetecTables = None
+        # self.e: EfficiencyTable = None
+        # self.sd: SimDetecTables = None
 
     @abstractmethod
     def set_peak_mags_and_fluxes(
@@ -298,3 +288,10 @@ if __name__ == "__main__":
     fom_limits = None
     if args.efficiencies:
         fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
+
+    # model = Model(
+    #     filename=sim_config["charlie_model"]["filename"],
+    #     mjd_colname=sim_config["charlie_model"]["mjd_column_name"],
+    #     mag_colname=sim_config["charlie_model"]["mag_column_name"],
+    #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
+    # )

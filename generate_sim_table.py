@@ -2,11 +2,9 @@
 
 import itertools
 import json, argparse
-import math
-import sys
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Callable, Tuple
+from typing import Dict, List
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass

@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
+from abc import ABC, abstractmethod
 from typing import Dict, Type, Any
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
 from collections import OrderedDict
-from generate_detec_table import Simulation
 from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
@@ -1484,6 +1484,28 @@ class FullLightCurve:
 """
 ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE 
 """
+
+
+class Simulation(ABC):
+    def __init__(self, model_name=None, **kwargs):
+        """
+        Initialize the Simulation object.
+        """
+        self.model_name = model_name
+
+    @abstractmethod
+    def get_sim_flux(self, mjds, **kwargs):
+        """
+        Compute the simulated flux for given MJDs.
+
+        :param mjds: List or array of MJDs.
+
+        :return: An array of flux values corresponding to the input MJDs.
+        """
+        pass
+
+    def __str__(self):
+        return f'Simulation with model name "{self.model_name}"'
 
 
 class SimDetecSupernova(AveragedSupernova):
