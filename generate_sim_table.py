@@ -12,7 +12,7 @@ from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
 
 GAUSSIAN_MODEL_NAME = "gaussian"
-SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'peak_mjd', 'filename']
+SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'filename']
 
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler='resolve'):
