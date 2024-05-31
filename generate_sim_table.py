@@ -197,9 +197,9 @@ class SimTables:
         self,
         parsed_params: Dict[str, List],
         filename=None,
-        mjd_colname=None,
-        mag_colname=None,
-        flux_colname=None,
+        mjd_colname=False,
+        mag_colname=False,
+        flux_colname=False,
     ):
         del parsed_params["peak_appmag"]
         num_rows = 0
@@ -286,10 +286,6 @@ if __name__ == "__main__":
             if " " in filename:
                 raise RuntimeError("ERROR: Filename cannot have spaces.")
 
-            if mjd_colname is False:
-                raise RuntimeError(
-                    f"ERROR: Model must have an MJD column. Please set the field to null or the correct column name."
-                )
             if mag_colname is False and flux_colname is False:
                 raise RuntimeError(
                     f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."

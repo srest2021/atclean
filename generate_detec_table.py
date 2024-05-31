@@ -2,9 +2,12 @@
 
 from abc import ABC, abstractmethod
 import argparse
-from typing import Tuple
+from copy import deepcopy
+from typing import List, Tuple
 import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
+from astropy.modeling.functional_models import Gaussian1D
 
 from generate_sim_table import load_json_config
 from lightcurve import SimDetecLightCurve, SimDetecSupernova
@@ -26,36 +29,161 @@ class Simulation(ABC):
         Initialize the Simulation object.
         """
         self.model_name = model_name
-        self.peak_mjd = None
 
     @abstractmethod
-    def get_sim_flux(self, mjds, peak_mjd=None, t0_mjd=None, **kwargs):
+    def get_sim_flux(self, mjds, **kwargs):
         """
         Compute the simulated flux for given MJDs.
 
         :param mjds: List or array of MJDs.
-        :param peak_mjd: MJD where the peak apparent magnitude should occur (optional).
-        :param t0_mjd: MJD where the start of the model should occur (optional).
 
         :return: An array of flux values corresponding to the input MJDs.
         """
         pass
 
-    # @abstractmethod
-    # def get_row_params(self):
-    # 	"""
-    # 	Construct a dictionary of parameters to add to a row in a SimDetecTable.
-    # 	Dictionary keys should function as column names and dictionary values
-    # 	as column values.
-    # 	"""
-    # 	parameters = {
-    # 		'name': self.name,
-    # 		'peak_mjd': self.peak_mjd
-    # 	}
-    # 	return parameters
+    def __str__(self):
+        return f'Simulation with model name "{self.model_name}"'
+
+
+class Gaussian(Simulation):
+    def __init__(self, sigma, peak_appmag=None, model_name="gaussian", **kwargs):
+        Simulation.__init__(self, model_name=model_name, **kwargs)
+        self.sigma = sigma
+        self.peak_appmag = peak_appmag
+        self.g = self.new_gaussian(mag2flux(peak_appmag), sigma)
+
+    def new_gaussian(self, peak_flux, sigma):
+        x = np.arange(-100, 100, 0.01)
+        g1 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
+        g2 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
+
+        ind = np.argmin(abs(x))
+        g3 = np.copy(g1)
+        g3[ind:] = g2[ind:]
+        gauss = np.array([x, g3])
+        return gauss
+
+    # get interpolated function of gaussian at peak MJD (peak_mjd)
+    # and match to time array (mjds)
+    def get_sim_flux(self, mjds, peak_mjd=None, **kwargs):
+        if peak_mjd is None:
+            raise RuntimeError(
+                "ERROR: Peak MJD required to get flux of simulated Gaussian."
+            )
+
+        g = deepcopy(self.g)
+        g[0, :] += peak_mjd
+
+        fn = interp1d(g[0], g[1], bounds_error=False, fill_value=0)
+        sim_flux = fn(mjds)
+        return sim_flux
 
     def __str__(self):
-        return f"Simulation with model name {self.model_name}"
+        return (
+            super().__str__()
+            + f": peak appmag = {self.peak_appmag:0.2f}, sigma = {self.sigma}"
+        )
+
+
+class Model(Simulation):
+    def __init__(
+        self,
+        filename,
+        mjd_colname=False,
+        mag_colname=False,
+        flux_colname=False,
+        model_name="pre_SN_outburst",
+        **kwargs,
+    ):
+        Simulation.__init__(self, model_name=model_name, **kwargs)
+        self.peak_appmag = None
+        self.t = None
+        self.load(
+            filename,
+            mjd_colname=mjd_colname,
+            mag_colname=mag_colname,
+            flux_colname=flux_colname,
+        )
+
+    def load(
+        self,
+        filename,
+        mjd_colname=False,
+        mag_colname=False,
+        flux_colname=False,
+    ):
+        print(f"Loading model light curve at {filename}...")
+
+        try:
+            self.t = pd.read_table(filename, delim_whitespace=True, header=None)
+        except Exception as e:
+            raise RuntimeError(f"ERROR: Could not load model at {filename}: {str(e)}")
+
+        if mjd_colname is False:
+            # create MJD column
+            columns = ["MJD"] + self.t.columns
+            self.t["MJD"] = range(len(self.t))
+            self.t = self.t[columns]
+        else:
+            # rename column to "MJD"
+            self.t.rename(
+                columns={0 if mjd_colname is None else mjd_colname: "MJD"}, inplace=True
+            )
+
+        if mag_colname is False:
+            # rename flux column to "uJy"
+            self.t.rename(
+                columns={1 if flux_colname is None else flux_colname: "uJy"},
+                inplace=True,
+            )
+            # create mag column
+            self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
+        else:
+            # rename mag column to "m"
+            self.t.rename(
+                columns={1 if mag_colname is None else mag_colname: "m"}, inplace=True
+            )
+            if flux_colname is False:
+                # create flux column
+                self.t["uJy"] = self.t["m"].apply(lambda mag: mag2flux(mag))
+            else:
+                # rename flux column to "uJy"
+                self.t.rename(
+                    columns={2 if flux_colname is None else flux_colname: "uJy"},
+                    inplace=True,
+                )
+
+    # get interpolated function of model at peak MJD (peak_mjd)
+    # and match to time array (mjds)
+    def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
+        if peak_mjd is None:
+            raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
+
+        # get original peak appmag index
+        peak_idx = self.t["m"].idxmin()
+
+        if not peak_appmag is None:
+            self.peak_appmag = peak_appmag
+
+            # scale flux to the desired peak appmag
+            self.t["uJy"] *= mag2flux(peak_appmag) / self.t.loc[peak_idx, "uJy"]
+
+            # recalulate appmag column
+            self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
+        else:
+            self.peak_appmag = self.t.loc[peak_idx, "m"]
+
+        # put peak appmag at peak_mjd
+        self.t["MJD"] -= self.t.loc[peak_idx, "MJD"]
+        self.t["MJD"] += peak_mjd
+
+        # interpolate lc and match to time array
+        fn = interp1d(self.t["MJD"], self.t["uJy"], bounds_error=False, fill_value=0)
+        sim_flux = fn(mjds)
+        return sim_flux
+
+    def __str__(self):
+        return super().__str__() + f": peak appmag = {self.peak_appmag:0.2f}"
 
 
 # TODO: documentation
