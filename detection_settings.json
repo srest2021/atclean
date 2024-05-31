@@ -1,0 +1,47 @@
+{
+  "sn_info": {
+    "tnsname": "2023vbg",
+    "filt": "o", 
+    "num_controls": 8,
+    "mjd0": 60212.497002,
+    "mjd_bin_size": 1.0,
+    "badday_flag": 8388608
+  },
+
+  "data_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg",
+  "sim_tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/sim_tables",
+  "detec_tables_dir": "/Users/sofiarest/Desktop/Supernovae/data_refactor/output/misc/2023vbg/bump_analysis/detec_tables",
+
+  "skip_control_ix": [],
+  
+  "sigma_kerns": [
+    {
+      "sigma_kern": 5,
+      "fom_limits": []
+    },
+    {
+      "sigma_kern": 20,
+      "fom_limits": []
+    },
+    {
+      "sigma_kern": 40,
+      "fom_limits": []
+    }, 
+    {
+      "sigma_kern": 80,
+      "fom_limits": []
+    },
+    {
+      "sigma_kern": 100,
+      "fom_limits": []
+    },
+    {
+      "sigma_kern": 150,
+      "fom_limits": []
+    },
+    {
+      "sigma_kern": 200,
+      "fom_limits": []
+    }
+  ]
+}
