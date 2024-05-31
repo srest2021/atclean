@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 
 import json, argparse
+import math
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Callable
+from typing import Dict, List, Callable, Tuple
 
 from pdastro import pdastrostatsclass
 
-SIM_DETEC_TABLE_REQUIRED_COLUMNS = ['model_name', 'filename']
+SIM_TABLE_REQUIRED_COLUMNS = ['model_name', 'filename']
 
-class SimDetecTable(pdastrostatsclass):
+class SimTable(pdastrostatsclass):
 	def __init__(self, **kwargs):
 		pdastrostatsclass.__init__(self, **kwargs)
 
@@ -18,14 +19,12 @@ class SimDetecTable(pdastrostatsclass):
 
 	# update a certain row of the table
 	# data should be structured like: data = {'column1': value1, 'column2': value2}
-	def update_row_at_index(self, index, data:Dict):
+	def update_row_at_index(self, index, data: Dict):
 		self.t.loc[index, data.keys()] = np.array(list(data.values()))
 
-class SimDetecTables:
-	def __init__(self, sigma_kerns, peak_appmags):
-		self.d:Dict[str, SimDetecTable] = None
-
-		self.sigma_kerns = sigma_kerns
+class SimTables:
+	def __init__(self, peak_appmags: List):
+		self.d: Dict[str, SimTable] = None
 		self.peak_appmags = peak_appmags
 
 	def setup(self, ):
@@ -41,7 +40,7 @@ def define_args(parser=None, usage=None, conflict_handler='resolve'):
 	return parser
 
 # load the JSON config file
-def load_json_config(config_file):
+def load_json_config(config_file: str):
 		try:
 			print(f'Loading config file at {config_file}...')
 			with open(config_file) as cfg:
@@ -49,7 +48,7 @@ def load_json_config(config_file):
 		except Exception as e:
 			raise RuntimeError(f'ERROR: Could not load config file at {config_file}: {str(e)}')
 
-def parse_range_param(minval, maxval, step):
+def parse_range_param(minval: float, maxval: float, step: float):
 	print(f'Setting to range from {minval} to {maxval} with step size {step}')
 	if maxval <= minval:
 		raise RuntimeError('ERROR: maxval must be greater than minval.')
@@ -57,7 +56,7 @@ def parse_range_param(minval, maxval, step):
 		raise RuntimeError('ERROR: step size cannot be greater than the difference between minval and maxval.')
 	return list(np.arange(minval, maxval, step))
 
-def parse_logrange_param(minval, maxval, base:int, n:int, to_int=False):
+def parse_logrange_param(minval: float, maxval: float, base:int, n:int, to_int=False):
 	print(f'Generating {n}-length {"integer" if to_int else "float"} range using log base {base}')
 	if maxval <= minval:
 		raise RuntimeError('ERROR: maxval must be greater than minval.')
@@ -68,7 +67,7 @@ def parse_logrange_param(minval, maxval, base:int, n:int, to_int=False):
 		res = [round(num) for num in res]
 	return res
 
-def parse_random_param(minval, maxval, n:int, to_int=False):
+def parse_random_param(minval: float, maxval: float, n:int, to_int=False):
 	print(f'Generating {n}-length random list')
 	if maxval <= minval:
 		raise RuntimeError('ERROR: maxval must be greater than minval.')
@@ -77,16 +76,27 @@ def parse_random_param(minval, maxval, n:int, to_int=False):
 		res = [round(num) for num in res]
 	return res
 
-def parse_random_inrange_param(valid_ranges:List[List[float]], n_per_range:int):
-	print(f'Generating {len(valid_ranges) * n_per_range}-length random list within the following valid ranges: {valid_ranges}')
-	res = []
-	for valid_range in valid_ranges:
-		if len(valid_range) != 2:
-			raise RuntimeError(f'ERROR: Valid range must have length 2: {valid_range}')
-		res += list(np.random.uniform(valid_range[0], valid_range[1], n_per_range))
-	return res
+def filter_valid_draws(valid_ranges: List[List[float]], draws: List):
+	return [
+		draw for draw in draws
+		if any(valid_range[0] <= draw <= valid_range[1] for valid_range in valid_ranges)
+	]
 
-def parse_param(param_name, param_info):
+def rec_get_valid_draws(valid_ranges: List[List[float]], n: int):
+	m = 2 * n
+	m_draws = list(np.random.uniform(valid_ranges[0][0], valid_ranges[-1][1], m))
+	valid_draws = filter_valid_draws(valid_ranges, m_draws)
+	
+	m_prime = len(valid_draws)
+	if m_prime >= n:
+		return valid_draws
+	return valid_draws + rec_get_valid_draws(valid_ranges, n - m_prime)
+
+def parse_random_inrange_param(valid_ranges: List[List[float]], n: int):
+	print(f'Generating {n}-length random list within the following valid ranges: {valid_ranges}')
+	return rec_get_valid_draws(valid_ranges, n)
+
+def parse_param(param_name: str, param_info):
 	print(f'\nParsing parameter {param_name}:')
 	
 	if param_info['type'] == 'list':
@@ -112,7 +122,8 @@ def parse_param(param_name, param_info):
 														 to_int=param_info['random']['to_int'])
 	
 	elif param_info['type'] == 'random_inrange':
-		res = parse_random_inrange_param(param_info['random_inrange']['valid_ranges'], param_info['random_inrange']['n_per_range'])
+		res = parse_random_inrange_param(param_info['random_inrange']['valid_ranges'], 
+																	 	 param_info['random_inrange']['n'])
 
 	else:
 		raise RuntimeError('ERROR: Type must be one of the following: list, range, logrange, random, random_inrange.')
