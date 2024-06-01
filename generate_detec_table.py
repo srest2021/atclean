@@ -267,6 +267,7 @@ class EfficiencyTable(pdastrostatsclass):
         self,
         sigma_kerns,
         peak_appmags,
+        params,
         fom_limits=None,
         **kwargs,
     ):
@@ -278,7 +279,11 @@ class EfficiencyTable(pdastrostatsclass):
         self.peak_appmags = peak_appmags
         self.peak_fluxes = list(map(mag2flux, peak_appmags))
 
-        # self.setup()
+        self.setup(params)
+
+    def setup(self, params):
+        # TODO
+        self.params: Dict[str, List] = params
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def get_fom_limits(self, fom_limits):
@@ -300,8 +305,44 @@ class EfficiencyTable(pdastrostatsclass):
     def get_efficiencies(self):
         pass
 
-    def get_subset(self):
-        pass
+    def get_subset(self, fom_limits: List = None, **kwargs):
+        """
+        Get a subset of the table where the columns match the given values.
+
+        :param fom_limits: List of FOM limits to get columns for. Set to None for all FOM limit columns.
+        :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
+        Example usage for columns A, B, C: self.get_efficiency(10.0, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
+
+        :return: Efficiency of the rows that match the criteria.
+        """
+        ix = self.getindices()
+        colnames: List = ["sigma_kern", "peak_appmag"] + self.params.keys()
+
+        if not fom_limits is None:
+            for col in self.t.columns:
+                for fom_limit in fom_limits:
+                    if re.search(f"^pct_detec_{fom_limit:0.2f}", col):
+                        colnames.append(col)
+        else:
+            for col in self.t.columns:
+                if re.search("^pct_detec_", col):
+                    colnames.append(col)
+
+        for column, value in kwargs.items():
+            if isinstance(value, list):
+                if all(isinstance(v, list) for v in value):
+                    mask = self.t.loc[ix, column].apply(
+                        lambda x: any(a <= x <= b for a, b in value)
+                    )
+                    ix = self.t.index[mask].tolist()
+                else:
+                    ix = self.ix_inrange(
+                        colnames=column, lowlim=value[0], uplim=value[1], indices=ix
+                    )
+            else:
+                ix = self.ix_equal(column, value, indices=ix)
+
+        return self.t.loc[ix, colnames]
 
     # remove previously calculated efficiency columns
     def reset_table(self):
