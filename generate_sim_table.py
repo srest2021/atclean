@@ -162,13 +162,8 @@ class SimTable(pdastrostatsclass):
     def add_row(self, data: Dict):
         self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
-    # update a certain row of the table
-    # data should be structured like: data = {'column1': value1, 'column2': value2}
-    def update_row_at_index(self, index, data: Dict):
-        self.t.loc[index, data.keys()] = np.array(list(data.values()))
-
     def get_filename(self, model_name, tables_dir):
-        return f"{tables_dir}/simtable_{model_name}_{self.peak_appmag:0.2f}.txt"
+        return f"{tables_dir}/sim_{model_name}_{self.peak_appmag:0.2f}.txt"
 
     def save(self, model_name, tables_dir):
         filename = self.get_filename(model_name, tables_dir)
@@ -187,7 +182,7 @@ class SimTable(pdastrostatsclass):
 
 class SimTables:
     def __init__(self, peak_appmags: List, model_name: str):
-        self.d: Dict[str, SimTable] = {None}
+        self.d: Dict[str, SimTable] = {}
         self.peak_appmags = [round(peak_appmag, 2) for peak_appmag in peak_appmags]
         self.model_name = model_name
 
@@ -205,6 +200,7 @@ class SimTables:
             num_rows += len(parsed_params[param_name])
 
         row = {
+            # "peak_appmag": self.peak_appmag,
             "model_name": self.model_name,
             "filename": np.nan if filename is None else filename,
         }
@@ -229,12 +225,13 @@ class SimTables:
             ]
 
             for combination in combinations_dicts:
+                combination.update({"peak_appmag": peak_appmag})
                 combination.update(row)
                 self.d[peak_appmag].add_row(combination)
 
         print("Success")
 
-    def save(self, tables_dir):
+    def save_all(self, tables_dir):
         print(f"\nSaving SimTables in directory: {tables_dir}")
         make_dir_if_not_exists(tables_dir)
         for peak_appmag in self.peak_appmags:
@@ -245,6 +242,7 @@ class SimTables:
         print(f"\nLoading SimTables in directory: {tables_dir}")
         self.d = {}
         for peak_appmag in self.peak_appmags:
+            self.d[peak_appmag] = SimTable(peak_appmag)
             self.d[peak_appmag].load(self.model_name, tables_dir)
 
 
@@ -299,4 +297,4 @@ if __name__ == "__main__":
         mag_colname=mag_colname,
         flux_colname=flux_colname,
     )
-    sim_tables.save(config["sim_tables_dir"])
+    sim_tables.save_all(config["sim_tables_dir"])

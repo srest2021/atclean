@@ -3,13 +3,15 @@
 from abc import ABC, abstractmethod
 import argparse
 from copy import deepcopy
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 from astropy.modeling.functional_models import Gaussian1D
 
-from generate_sim_table import load_json_config
+from download import make_dir_if_not_exists
+from pdastro import pdastrostatsclass
+from generate_sim_table import SimTable, SimTables, load_json_config
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
@@ -174,6 +176,126 @@ class Model(Simulation):
 
     def __str__(self):
         return super().__str__() + f": peak appmag = {self.peak_appmag:0.2f}"
+
+
+class SimDetecTable(SimTable):
+    def __init__(self, sigma_kern, peak_appmag, **kwargs):
+        SimTable.__init__(peak_appmag, **kwargs)
+        self.sigma_kern = sigma_kern
+
+    # update a certain row of the table
+    # data should be structured like: data = {'column1': value1, 'column2': value2}
+    def update_row_at_index(self, index, data: Dict):
+        # self.t.loc[index, data.keys()] = np.array(list(data.values()))
+        for key, value in data.items():
+            self.t.at[index, key] = value
+
+    def get_filename(self, model_name, tables_dir):
+        return f"{tables_dir}/simdetec_{model_name}_{self.sigma_kern}_{self.peak_appmag:0.2f}.txt"
+
+    def load_from_sim_table(self, model_name, tables_dir):
+        super().load(model_name, tables_dir)
+        self.t["sigma_kern"] = self.sigma_kern
+
+    def get_efficiency(self, fom_limit, **kwargs):
+        """
+        Get the efficiency where columns match all the given values and are within all the given ranges.
+
+        :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
+        Example usage for columns A, B, C: self.get_efficiency(10.0, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
+
+        :return: Efficiency of the rows that match the criteria.
+        """
+        col_ix = self.getindices()
+        for column, value in kwargs.items():
+            if isinstance(value, list):
+                if all(isinstance(v, list) for v in value):
+                    mask = self.t.loc[col_ix, column].apply(
+                        lambda x: any(a <= x <= b for a, b in value)
+                    )
+                    col_ix = self.t.index[mask].tolist()
+                else:
+                    col_ix = self.ix_inrange(
+                        colnames=column, lowlim=value[0], uplim=value[1], indices=col_ix
+                    )
+            else:
+                col_ix = self.ix_equal(column, value, indices=col_ix)
+
+        detected_ix = self.ix_inrange("max_fom", lowlim=fom_limit, indices=col_ix)
+        efficiency = 100 * len(detected_ix) / len(col_ix)
+        return efficiency
+
+
+class SimDetecTables(SimTables):
+    def __init__(self, peak_appmags: List, model_name: str, sigma_kerns: List):
+        SimTables.__init__(peak_appmags, model_name)
+        self.sigma_kerns = sigma_kerns
+        self.d: Dict[float, Dict[float, SimDetecTable]] = {}
+
+    def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, **kwargs):
+        return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **kwargs)
+
+    def save_all(self, tables_dir):
+        print(f"\nSaving SimDetecTables in directory: {tables_dir}")
+        make_dir_if_not_exists(tables_dir)
+        for sigma_kern in self.d.keys():
+            for table in self.d[sigma_kern].values():
+                table.save(self.model_name, tables_dir)
+        print("Success")
+
+    def load_all_from_sim_tables(self, sim_tables_dir):
+        print(
+            f"\nConstructing SimDetecTables from existing SimTables in directory: {sim_tables_dir}"
+        )
+        for sigma_kern in self.sigma_kerns:
+            for peak_appmag in self.peak_appmags:
+                self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
+                self.d[sigma_kern][peak_appmag].load_from_sim_table(
+                    self.model_name, sim_tables_dir
+                )
+
+    def load_all(self, tables_dir):
+        print(f"\nLoading SimDetecTables from directory: {tables_dir}")
+        for sigma_kern in self.sigma_kerns:
+            for peak_appmag in self.peak_appmags:
+                self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
+                self.d[sigma_kern][peak_appmag].load(self.model_name, tables_dir)
+
+
+class EfficiencyTable(pdastrostatsclass):
+    def __init__(
+        self,
+        sigma_kerns,
+        peak_appmags,
+        fom_limits=None,
+        **kwargs,
+    ):
+        pdastrostatsclass.__init__(self, **kwargs)
+
+        self.sigma_kerns = sigma_kerns
+        self.fom_limits = self.get_fom_limits(fom_limits)
+
+        self.peak_appmags = peak_appmags
+        self.peak_fluxes = list(map(mag2flux, peak_appmags))
+
+        # self.setup()
+
+    # create dictionary of FOM limits, with sigma_kerns as the keys
+    def get_fom_limits(self, fom_limits):
+        if fom_limits is None:
+            return None
+
+        if isinstance(fom_limits, list):
+            res = {}
+            for i in range(len(self.sigma_kerns)):
+                res[self.sigma_kerns[i]] = fom_limits[i]
+        elif len(fom_limits) != len(self.sigma_kerns):
+            raise RuntimeError(
+                "ERROR: Each entry in sigma_kerns must have a matching list in fom_limits"
+            )
+        else:
+            res = fom_limits
+        return res
 
 
 # TODO: documentation
