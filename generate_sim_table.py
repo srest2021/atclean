@@ -108,7 +108,13 @@ def parse_random_inrange_param(valid_ranges: List[List[float]], n: int):
     return rec_get_valid_draws(valid_ranges, n)
 
 
-def parse_param(param_name: str, param_info):
+def parse_param(param_name: str, param_info: Dict):
+    """
+    Parse the parameters in the config file and generate lists of possible values for each parameter.
+
+    :param_name: Name of parameter as in config file.
+    :param_info: Dictionary corresponding to the JSON data under the given parameter in the config file.
+    """
     print(f"\nParsing parameter {param_name}:")
 
     if param_info["type"] == "list":
@@ -156,10 +162,20 @@ def parse_param(param_name: str, param_info):
 
 class SimTable(pdastrostatsclass):
     def __init__(self, peak_appmag, **kwargs):
+        """
+        Initialize a SimTable.
+
+        :peak_appmag: Peak apparent magnitude for all simulations in this table.
+        """
         pdastrostatsclass.__init__(self, **kwargs)
         self.peak_appmag = peak_appmag
 
     def add_row(self, data: Dict):
+        """
+        Add a row to the end of the table.
+
+        :param data: Dictionary of column-value pairs.
+        """
         self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
     def get_filename(self, model_name, tables_dir):
@@ -185,6 +201,12 @@ class SimTable(pdastrostatsclass):
 
 class SimTables:
     def __init__(self, peak_appmags: List, model_name: str):
+        """
+        Initialize a SimTable.
+
+        :param peak_appmags: List of possible peak apparent magnitudes.
+        :param model_name: Name of the model to be used assigned in the config file.
+        """
         self.d: Dict[str, SimTable] = {}
         self.peak_appmags = [round(peak_appmag, 2) for peak_appmag in peak_appmags]
         self.model_name = model_name
@@ -197,13 +219,21 @@ class SimTables:
         mag_colname=False,
         flux_colname=False,
     ):
+        """
+        Generate the table content of the SimTable using parsed parameters from the config file.
+
+        :param parsed_params: Dictionary of parameter names and lists of possible parameter values.
+        :param filename: File name of the model to be used (None if using Gaussian model).
+        :param mjd_colname: MJD column name in the model file (None if present but no column name; False if not present).
+        :param mag_colname: Magnitude column name in the model file (None if present but no column name; False if not present).
+        :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
+        """
         del parsed_params["peak_appmag"]
         num_rows = 0
         for param_name in parsed_params:
             num_rows += len(parsed_params[param_name])
 
         row = {
-            # "peak_appmag": self.peak_appmag,
             "model_name": self.model_name,
             "filename": np.nan if filename is None else filename,
         }

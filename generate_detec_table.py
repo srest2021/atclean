@@ -27,8 +27,17 @@ def mag2flux(mag: float):
 
 class Gaussian(Simulation):
     def __init__(self, sigma, peak_appmag=None, model_name="gaussian", **kwargs):
+        """
+        Initialize a Gaussian simulation object.
+
+        :param sigma: Sigma or kernel size of the Gaussian.
+        :param peak_appmag: Peak apparent magnitude of the Gaussian.
+        :param model_name: Name of the Gaussian model in the config file.
+        """
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.sigma = sigma
+        if peak_appmag is None:
+            raise RuntimeError("ERROR: Gaussian must have a peak_appmag.")
         self.peak_appmag = peak_appmag
         self.g = self.new_gaussian(mag2flux(peak_appmag), sigma)
 
@@ -46,6 +55,14 @@ class Gaussian(Simulation):
     # get interpolated function of gaussian at peak MJD (peak_mjd)
     # and match to time array (mjds)
     def get_sim_flux(self, mjds, peak_mjd=None, **kwargs):
+        """
+        Get the interpolated function of the Gaussian at a given peak MJD and match it to the given time array.
+
+        :param mjds: Time array of MJDs.
+        :param peak_mjd: MJD at which the Gaussian should reach its peak apparent magnitude.
+
+        :return: The simulated flux corresponding to the given time array.
+        """
         if peak_mjd is None:
             raise RuntimeError(
                 "ERROR: Peak MJD required to get flux of simulated Gaussian."
@@ -75,6 +92,15 @@ class Model(Simulation):
         model_name="pre_SN_outburst",
         **kwargs,
     ):
+        """
+        Initialize a model simulation object.
+
+        :param filename: File name of the model to load.
+        :param mjd_colname: MJD column name in the model file (None if present but no column name; False if not present).
+        :param mag_colname: Magnitude column name in the model file (None if present but no column name; False if not present).
+        :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
+        :param model_name: Name of the model assigned in the config file.
+        """
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.peak_appmag = None
         self.t = None
@@ -93,6 +119,16 @@ class Model(Simulation):
         mag_colname=False,
         flux_colname=False,
     ):
+        """
+        Load the model from a file into a DataFrame.
+        Discern which column is which using the given column names.
+        If necessary, create any missing MJD, magnitude, or flux columns.
+
+        :param filename: File name of the model to load.
+        :param mjd_colname: MJD column name in the model file (None if present but no column name; False if not present).
+        :param mag_colname: Magnitude column name in the model file (None if present but no column name; False if not present).
+        :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
+        """
         print(f"\nLoading model at {filename}...")
 
         if mag_colname is False and flux_colname is False:
@@ -103,13 +139,14 @@ class Model(Simulation):
         try:
             header = "infer"
             if not mjd_colname and not mag_colname and not flux_colname:
+                # all three column names are null or false
                 header = None
             self.t = pd.read_table(filename, delim_whitespace=True, header=header)
         except Exception as e:
             raise RuntimeError(f"ERROR: Could not load model at {filename}: {str(e)}")
 
         if mjd_colname is False:
-            # create MJD column
+            # create MJD column and make it the first column
             columns = ["MJD"] + self.t.columns
             self.t["MJD"] = range(len(self.t))
             self.t = self.t[columns]
@@ -120,6 +157,7 @@ class Model(Simulation):
             )
 
         if mag_colname is False:
+            # flux column must be present
             # rename flux column to "uJy"
             self.t.rename(
                 columns={1 if flux_colname is None else flux_colname: "uJy"},
@@ -148,6 +186,15 @@ class Model(Simulation):
     # get interpolated function of model at peak MJD (peak_mjd)
     # and match to time array (mjds)
     def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
+        """
+        Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
+
+        :param mjds: Time array of MJDs.
+        :param peak_mjd: MJD at which the model should reach its peak apparent magnitude.
+        :param peak_appmag: Desired peak apparent magnitude of the model.
+
+        :return: The simulated flux corresponding to the given time array.
+        """
         if peak_mjd is None:
             raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
 
@@ -183,9 +230,13 @@ class SimDetecTable(SimTable):
         SimTable.__init__(peak_appmag, **kwargs)
         self.sigma_kern = sigma_kern
 
-    # update a certain row of the table
-    # data should be structured like: data = {'column1': value1, 'column2': value2}
     def update_row_at_index(self, index, data: Dict):
+        """
+        Update a certain row of the table.
+
+        :param index: Index of the table to update.
+        :param data: Dictionary of column-value pairs.
+        """
         # self.t.loc[index, data.keys()] = np.array(list(data.values()))
         for key, value in data.items():
             self.t.at[index, key] = value
@@ -193,8 +244,14 @@ class SimDetecTable(SimTable):
     def get_filename(self, model_name, tables_dir):
         return f"{tables_dir}/simdetec_{model_name}_{self.sigma_kern}_{self.peak_appmag:0.2f}.txt"
 
-    def load_from_sim_table(self, model_name, tables_dir):
-        super().load(model_name, tables_dir)
+    def load_from_sim_table(self, model_name, sim_tables_dir):
+        """
+        Load an existing SimTable and turn it into a SimDetecTable.
+
+        :param model_name: Name of the model assigned in the config file.
+        :param sim_tables_dir: Directory where the SimTable is located.
+        """
+        super().load(model_name, sim_tables_dir)
         self.t["sigma_kern"] = self.sigma_kern
 
     def get_efficiency(self, fom_limit, **kwargs):
@@ -244,6 +301,11 @@ class SimDetecTables(SimTables):
         print("Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir):
+        """
+        Load existing SimTables and turn them into SimDetecTables.
+
+        :param sim_tables_dir: Directory where the SimTable is located.
+        """
         print(
             f"\nConstructing SimDetecTables from existing SimTables in directory: {sim_tables_dir}"
         )
@@ -255,6 +317,11 @@ class SimDetecTables(SimTables):
                 )
 
     def load_all(self, tables_dir):
+        """
+        Load existing SimDetecTables.
+
+        :param sim_tables_dir: Directory where the SimDetecTables are located.
+        """
         print(f"\nLoading SimDetecTables from directory: {tables_dir}")
         for sigma_kern in self.sigma_kerns:
             for peak_appmag in self.peak_appmags:
@@ -287,6 +354,9 @@ class EfficiencyTable(pdastrostatsclass):
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def get_fom_limits(self, fom_limits):
+        """
+        Create dictionary of FOM limits, with sigma_kerns as the keys.
+        """
         if fom_limits is None:
             return None
 
@@ -303,6 +373,7 @@ class EfficiencyTable(pdastrostatsclass):
         return res
 
     def get_efficiencies(self):
+        # TODO
         pass
 
     def get_subset(self, fom_limits: List = None, **kwargs):
@@ -311,7 +382,7 @@ class EfficiencyTable(pdastrostatsclass):
 
         :param fom_limits: List of FOM limits to get columns for. Set to None for all FOM limit columns.
         :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
-        Example usage for columns A, B, C: self.get_efficiency(10.0, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
+        Example usage: self.get_efficiency(10.0, sigma_kern=2, sigma_sim=[5, 6], peak_mjd=[[58000, 58100], [58200, 58300]])
 
         :return: Efficiency of the rows that match the criteria.
         """
@@ -346,6 +417,9 @@ class EfficiencyTable(pdastrostatsclass):
 
     # remove previously calculated efficiency columns
     def reset_table(self):
+        """
+        Remove any previously calculated efficiency columns.
+        """
         for col in self.t.columns:
             if re.search("^pct_detec_", col):
                 self.t.drop(col, axis=1, inplace=True)
@@ -356,6 +430,9 @@ class EfficiencyTable(pdastrostatsclass):
                 self.t[f"pct_detec_{fom_limit:0.2f}"] = np.full(len(self.t), np.nan)
 
     def merge_tables(self, other):
+        """
+        Add table content, sigma_kerns, and fom_limits from another EfficiencyTable.
+        """
         if not isinstance(other, EfficiencyTable):
             raise RuntimeError(
                 f"ERROR: Cannot merge EfficiencyTable with object type: {type(other)}"
