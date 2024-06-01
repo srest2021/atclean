@@ -179,6 +179,9 @@ class SimTable(pdastrostatsclass):
                 f"ERROR: Could not load SimTable at {filename}: {str(e)}"
             )
 
+    def __str__(self):
+        return self.t.to_string()
+
 
 class SimTables:
     def __init__(self, peak_appmags: List, model_name: str):

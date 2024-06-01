@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-import argparse
+import argparse, re
 from copy import deepcopy
 from typing import Dict, List, Tuple
 import numpy as np
@@ -296,6 +296,53 @@ class EfficiencyTable(pdastrostatsclass):
         else:
             res = fom_limits
         return res
+
+    def get_efficiencies(self):
+        pass
+
+    def get_subset(self):
+        pass
+
+    # remove previously calculated efficiency columns
+    def reset_table(self):
+        for col in self.t.columns:
+            if re.search("^pct_detec_", col):
+                self.t.drop(col, axis=1, inplace=True)
+
+        for i in range(len(self.sigma_kerns)):
+            fom_limits = self.fom_limits[self.sigma_kerns[i]]
+            for fom_limit in fom_limits:
+                self.t[f"pct_detec_{fom_limit:0.2f}"] = np.full(len(self.t), np.nan)
+
+    def merge_tables(self, other):
+        if not isinstance(other, EfficiencyTable):
+            raise RuntimeError(
+                f"ERROR: Cannot merge EfficiencyTable with object type: {type(other)}"
+            )
+
+        self.sigma_kerns += other.sigma_kerns
+        if not self.fom_limits is None:
+            self.fom_limits.update(other.fom_limits)
+
+        self.t = pd.concat([self.t, other.t], ignore_index=True)
+
+    def load(self, tables_dir, filename="efficiencies.txt"):
+        filename = f"{tables_dir}/{filename}"
+        print(f"Loading efficiency table at {filename}...")
+        try:
+            self.load_spacesep(filename, delim_whitespace=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"ERROR: Could not load efficiency table at {filename}: {str(e)}"
+            )
+
+    def save(self, tables_dir, filename="efficiencies.txt"):
+        filename = f"{tables_dir}/{filename}"
+        print(f"Saving efficiency table as {filename}...")
+        self.write(filename=filename, overwrite=True, index=False)
+
+    def __str__(self):
+        return self.t.to_string()
 
 
 # TODO: documentation
