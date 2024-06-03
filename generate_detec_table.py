@@ -256,17 +256,17 @@ class SimDetecTable(SimTable):
         super().load(model_name, sim_tables_dir)
         self.t["sigma_kern"] = self.sigma_kern
 
-    def get_efficiency(self, fom_limit, **kwargs):
+    def get_efficiency(self, fom_limit, **params):
         """
         Get the efficiency where columns match all the given values and are within all the given ranges.
 
-        :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
+        :param params: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
         Example usage for columns A, B, C: self.get_efficiency(10.0, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
 
         :return: Efficiency of the rows that match the criteria.
         """
         col_ix = self.getindices()
-        for column, value in kwargs.items():
+        for column, value in params.items():
             if isinstance(value, list):
                 if all(isinstance(v, list) for v in value):
                     mask = self.t.loc[col_ix, column].apply(
@@ -291,8 +291,11 @@ class SimDetecTables(SimTables):
         self.sigma_kerns = sigma_kerns
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
-    def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, **kwargs):
-        return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **kwargs)
+    def update_row_at_index(self, sigma_kern, peak_appmag, index, data: Dict):
+        self.d[sigma_kern][peak_appmag].update_row_at_index(index, data)
+
+    def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, **params):
+        return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **params)
 
     def save_all(self, tables_dir):
         print(f"\nSaving SimDetecTables in directory: {tables_dir}")
@@ -339,11 +342,19 @@ class EfficiencyTable(pdastrostatsclass):
         params,
         **kwargs,
     ):
+        """
+        Initialize an EfficiencyTable.
+
+        :param sigma_kerns: List of detection algorithm kernel sizes.
+        :param peak_appmags: List of possible simulation peak apparent magnitudes.
+        :param peak_fluxes: List of possible simulation peak fluxes.
+        :param params: Dictionary of parameter names and
+        """
         pdastrostatsclass.__init__(self, **kwargs)
 
-        self.sigma_kerns = sigma_kerns
-        self.peak_appmags = peak_appmags
-        self.peak_fluxes = list(map(mag2flux, peak_appmags))
+        self.sigma_kerns: List = sigma_kerns
+        self.peak_appmags: List = peak_appmags
+        self.peak_fluxes: List = list(map(mag2flux, peak_appmags))
 
         self.params: Dict[str, List] = params
         if "peak_appmag" in self.params.keys():
@@ -355,6 +366,9 @@ class EfficiencyTable(pdastrostatsclass):
 
         :param skip_params: Names of parameters not to include as a column. Recommended: any peak MJD or MJD0 parameters.
         """
+        if skip_params is None:
+            skip_params = []
+
         all_params = dict(
             {
                 "sigma_kerns": self.sigma_kerns,
@@ -398,7 +412,20 @@ class EfficiencyTable(pdastrostatsclass):
             res = fom_limits
         return res
 
-    def get_efficiencies(self, sd: SimDetecTables, fom_limits, verbose=False, **kwargs):
+    def get_efficiencies(
+        self,
+        sd: SimDetecTables,
+        fom_limits: Dict[float, List[float]],
+        verbose=False,
+        **kwargs,
+    ):
+        """
+        For each row in the efficiency table, compute efficiencies for the FOM limits corresponding to the given sigma_kern.
+
+        :param sd: SimDetecTables object that contains simulation information, max FOM, and other data needed to run the detection algorithm.
+                   Each SimDetecTable corresponds to one sigma_kern x peak_appmag combination.
+        :param fom_limits: Dictionary with sigma_kerns as keys and lists of FOM limits as values.
+        """
         fom_limits = self.get_fom_limits(fom_limits)
 
         for i in range(len(sd.t)):
@@ -406,18 +433,18 @@ class EfficiencyTable(pdastrostatsclass):
             peak_appmag = self.t.loc[i, "peak_appmag"]
 
             if kwargs:
-                param_names = kwargs
+                params = kwargs
             else:
-                param_names = dict(self.t.loc[i, self.t.columns[2:]])
+                params = dict(self.t.loc[i, self.t.columns[2:]])
 
             if verbose:
                 print(
-                    f"Getting efficiencies for sigma_kern {sigma_kern}, peak_mag {peak_appmag} and parameters: {param_names}..."
+                    f"Getting efficiencies for sigma_kern {sigma_kern}, peak_mag {peak_appmag} and parameters: {params}..."
                 )
 
             for fom_limit in fom_limits[sigma_kern]:
                 efficiency = sd.get_efficiency(
-                    sigma_kern, peak_appmag, fom_limit, **param_names
+                    sigma_kern, peak_appmag, fom_limit, **params
                 )
                 self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
 
@@ -516,8 +543,8 @@ class SimDetecLoop(ABC):
         self.sigma_kerns = sigma_kerns
 
         self.sn: SimDetecSupernova = None
-        # self.e: EfficiencyTable = None
-        # self.sd: SimDetecTables = None
+        self.e: EfficiencyTable = None
+        self.sd: SimDetecTables = None
 
     @abstractmethod
     def set_peak_mags_and_fluxes(
@@ -545,31 +572,78 @@ class SimDetecLoop(ABC):
         pass
 
     @abstractmethod
-    def add_row_to_sd(
-        self,
-        sigma_kern,
-        peak_appmag,
-        index,
-        sim: Simulation,
-        control_index,
-        max_fom,
-        max_fom_mjd,
+    def update_sd_row(
+        self, sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
     ):
-        pass
-        # sim_params = sim.get_row_params()
-        # other_params = {
-        # 	'control_index': control_index,
-        # 	'max_fom': max_fom,
-        # 	'max_fom_mjd': max_fom_mjd
-        # }
-        # row = other_params.update(sim_params)
-        # self.sd.update_row_at_index(sigma_kern, peak_appmag, index, row)
+        data = {
+            "control_index": control_index,
+            "max_fom": max_fom,
+            "max_fom_mjd": max_fom_mjd,
+        }
+        self.sd.update_row_at_index(sigma_kern, peak_appmag, index, data)
 
     @abstractmethod
-    def calculate_efficiencies(self):
-        pass
+    def calculate_efficiencies(self, fom_limits, params, **kwargs):
+        self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
+        self.e.setup()
+        self.e.get_efficiencies(self.sd, fom_limits)
 
     @abstractmethod
+    def loop(self):
+        pass
+
+
+class AtlasSimDetecLoop(SimDetecLoop):
+    def __init__(self, output_dir: str, tables_dir: str, sigma_kerns: List, **kwargs):
+        super().__init__(output_dir, tables_dir, sigma_kerns, **kwargs)
+
+    def set_peak_mags_and_fluxes(
+        self,
+        peak_mag_min: float = 23,
+        peak_mag_max: float = 16,
+        n_peaks: int = 20,
+        **kwargs,
+    ):
+        return super().set_peak_mags_and_fluxes(
+            peak_mag_min, peak_mag_max, n_peaks, **kwargs
+        )
+
+    def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
+        return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
+
+    def modify_light_curve(self, control_index=0):
+        # do nothing
+        pass
+
+    def get_max_fom(
+        self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
+    ) -> Tuple[float]:
+        if peak_mjd is None or sigma_sim is None:
+            raise RuntimeError(
+                "ERROR: A peak MJD and sigma of the simulated Gaussian is required to find the max FOM."
+            )
+        # measurements within 1 sigma of the peak MJD
+        indices = sim_lc.ix_inrange(
+            colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
+        )
+        # get max FOM of those measurements
+        max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
+        return max_fom_mjd, max_fom
+
+    def update_sd_row(
+        self, sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
+    ):
+        return super().update_sd_row(
+            sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
+        )
+
+    def calculate_efficiencies(self, fom_limits, params, **kwargs):
+        self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
+        self.e.setup(skip_params=["peak_mjd"])
+        self.e.get_efficiencies(self.sd, fom_limits)
+
+    # TODO: implement the rest of the abstract functions
+
     def loop(self):
         pass
 
