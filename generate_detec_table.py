@@ -337,14 +337,11 @@ class EfficiencyTable(pdastrostatsclass):
         sigma_kerns,
         peak_appmags,
         params,
-        fom_limits=None,
         **kwargs,
     ):
         pdastrostatsclass.__init__(self, **kwargs)
 
         self.sigma_kerns = sigma_kerns
-        self.fom_limits = self.get_fom_limits(fom_limits)
-
         self.peak_appmags = peak_appmags
         self.peak_fluxes = list(map(mag2flux, peak_appmags))
 
@@ -353,6 +350,11 @@ class EfficiencyTable(pdastrostatsclass):
             del self.params["peak_appmag"]
 
     def setup(self, skip_params=None):
+        """
+        Set up the table columns for sigma_kerns, peak_appmags, and other known parameter values.
+
+        :param skip_params: Names of parameters not to include as a column. Recommended: any peak MJD or MJD0 parameters.
+        """
         all_params = dict(
             {
                 "sigma_kerns": self.sigma_kerns,
@@ -368,7 +370,13 @@ class EfficiencyTable(pdastrostatsclass):
         keys, values = zip(*(all_params).items())
         combinations = list(itertools.product(*values))
         self.t = pd.DataFrame(combinations, columns=keys)
+
         self.t["peak_flux"] = self.t["peak_appmag"].apply(lambda mag: mag2flux(mag))
+
+        col_order = ["sigma_kerns", "peak_appmag", "peak_flux"]
+        other_cols = [col for col in self.t.columns if col not in col_order]
+        col_order += other_cols
+        self.t = self.t[col_order]
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def get_fom_limits(self, fom_limits):
@@ -390,9 +398,28 @@ class EfficiencyTable(pdastrostatsclass):
             res = fom_limits
         return res
 
-    def get_efficiencies(self):
-        # TODO
-        pass
+    def get_efficiencies(self, sd: SimDetecTables, fom_limits, verbose=False, **kwargs):
+        fom_limits = self.get_fom_limits(fom_limits)
+
+        for i in range(len(sd.t)):
+            sigma_kern = self.t.loc[i, "sigma_kern"]
+            peak_appmag = self.t.loc[i, "peak_appmag"]
+
+            if kwargs:
+                param_names = kwargs
+            else:
+                param_names = dict(self.t.loc[i, self.t.columns[2:]])
+
+            if verbose:
+                print(
+                    f"Getting efficiencies for sigma_kern {sigma_kern}, peak_mag {peak_appmag} and parameters: {param_names}..."
+                )
+
+            for fom_limit in fom_limits[sigma_kern]:
+                efficiency = sd.get_efficiency(
+                    sigma_kern, peak_appmag, fom_limit, **param_names
+                )
+                self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
 
     def get_subset(self, fom_limits: List = None, **kwargs):
         """
@@ -612,32 +639,32 @@ if __name__ == "__main__":
     #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
     # )
 
-    e = EfficiencyTable(
-        sigma_kerns=sigma_kerns,
-        peak_appmags=[
-            23.0,
-            22.63,
-            22.26,
-            21.89,
-            21.53,
-            21.16,
-            20.79,
-            20.42,
-            20.05,
-            19.68,
-            19.32,
-            18.95,
-            18.58,
-            18.21,
-            17.84,
-            17.47,
-            17.11,
-            16.74,
-            16.37,
-            16.0,
-        ],
-        params=parsed_params,
-    )
-    e.setup(skip_params=["peak_mjd"])
-    print(e)
-    e.save(detec_tables_dir)
+    # e = EfficiencyTable(
+    #     sigma_kerns=sigma_kerns,
+    #     peak_appmags=[
+    #         23.0,
+    #         22.63,
+    #         22.26,
+    #         21.89,
+    #         21.53,
+    #         21.16,
+    #         20.79,
+    #         20.42,
+    #         20.05,
+    #         19.68,
+    #         19.32,
+    #         18.95,
+    #         18.58,
+    #         18.21,
+    #         17.84,
+    #         17.47,
+    #         17.11,
+    #         16.74,
+    #         16.37,
+    #         16.0,
+    #     ],
+    #     params=parsed_params,
+    # )
+    # e.setup(skip_params=["peak_mjd"])
+    # print(e)
+    # e.save(detec_tables_dir)
