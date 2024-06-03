@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
+import itertools
 import argparse, re
 from copy import deepcopy
+import sys
 from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
@@ -11,7 +13,7 @@ from astropy.modeling.functional_models import Gaussian1D
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from generate_sim_table import SimTable, SimTables, load_json_config
+from generate_sim_table import SimTable, SimTables, load_json_config, parse_params
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
@@ -346,11 +348,27 @@ class EfficiencyTable(pdastrostatsclass):
         self.peak_appmags = peak_appmags
         self.peak_fluxes = list(map(mag2flux, peak_appmags))
 
-        self.setup(params)
-
-    def setup(self, params):
-        # TODO
         self.params: Dict[str, List] = params
+        if "peak_appmag" in self.params.keys():
+            del self.params["peak_appmag"]
+
+    def setup(self, skip_params=None):
+        all_params = dict(
+            {
+                "sigma_kerns": self.sigma_kerns,
+                "peak_appmag": self.peak_appmags,
+            },
+            **self.params,
+        )
+
+        for param_name in skip_params:
+            if param_name in all_params.keys():
+                del all_params[param_name]
+
+        keys, values = zip(*(all_params).items())
+        combinations = list(itertools.product(*values))
+        self.t = pd.DataFrame(combinations, columns=keys)
+        self.t["peak_flux"] = self.t["peak_appmag"].apply(lambda mag: mag2flux(mag))
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def get_fom_limits(self, fom_limits):
@@ -533,7 +551,7 @@ class SimDetecLoop(ABC):
 def define_args(parser=None, usage=None, conflict_handler="resolve"):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
-
+    parser.add_argument("model_name", type=str, help="name of model to use")
     parser.add_argument(
         "-f",
         "--config_file",
@@ -564,6 +582,17 @@ if __name__ == "__main__":
     config = load_json_config(args.config_file)
     sim_config = load_json_config(args.sim_config_file)
 
+    if " " in args.model_name:
+        raise RuntimeError("ERROR: Model name cannot have spaces.")
+    try:
+        model_settings = sim_config[args.model_name]
+    except Exception as e:
+        raise RuntimeError(
+            f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
+        )
+
+    parsed_params = parse_params(model_settings["parameters"])
+
     sn_info = config["sn_info"]
 
     data_dir = config["data_dir"]
@@ -582,3 +611,33 @@ if __name__ == "__main__":
     #     mag_colname=sim_config["charlie_model"]["mag_column_name"],
     #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
     # )
+
+    e = EfficiencyTable(
+        sigma_kerns=sigma_kerns,
+        peak_appmags=[
+            23.0,
+            22.63,
+            22.26,
+            21.89,
+            21.53,
+            21.16,
+            20.79,
+            20.42,
+            20.05,
+            19.68,
+            19.32,
+            18.95,
+            18.58,
+            18.21,
+            17.84,
+            17.47,
+            17.11,
+            16.74,
+            16.37,
+            16.0,
+        ],
+        params=parsed_params,
+    )
+    e.setup(skip_params=["peak_mjd"])
+    print(e)
+    e.save(detec_tables_dir)

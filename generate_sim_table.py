@@ -160,6 +160,19 @@ def parse_param(param_name: str, param_info: Dict):
     return res
 
 
+def parse_params(settings):
+    parsed_params = {}
+    for param_name in settings:
+        parsed_params[param_name] = parse_param(param_name, settings[param_name])
+
+    if not "peak_appmag" in parsed_params:
+        raise RuntimeError(
+            'ERROR: Parameters must include peak apparent magnitude ("peak_appmag").'
+        )
+
+    return parsed_params
+
+
 class SimTable(pdastrostatsclass):
     def __init__(self, peak_appmag, **kwargs):
         """
@@ -293,16 +306,7 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    parsed_params = {}
-    for param_name in model_settings["parameters"]:
-        parsed_params[param_name] = parse_param(
-            param_name, model_settings["parameters"][param_name]
-        )
-
-    if not "peak_appmag" in parsed_params:
-        raise RuntimeError(
-            'ERROR: Parameters must include peak apparent magnitude ("peak_appmag").'
-        )
+    parsed_params = parse_params(model_settings["parameters"])
 
     filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
     if not args.model_name == GAUSSIAN_MODEL_NAME:
