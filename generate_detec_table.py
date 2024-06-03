@@ -229,7 +229,7 @@ class Model(Simulation):
 
 class SimDetecTable(SimTable):
     def __init__(self, sigma_kern, peak_appmag, **kwargs):
-        SimTable.__init__(peak_appmag, **kwargs)
+        SimTable.__init__(self, peak_appmag, **kwargs)
         self.sigma_kern = sigma_kern
 
     def update_row_at_index(self, index, data: Dict):
@@ -243,8 +243,17 @@ class SimDetecTable(SimTable):
         for key, value in data.items():
             self.t.at[index, key] = value
 
-    def get_filename(self, model_name, tables_dir):
+    def get_detec_filename(self, model_name, tables_dir):
         return f"{tables_dir}/simdetec_{model_name}_{self.sigma_kern}_{self.peak_appmag:0.2f}.txt"
+
+    def load_detec_table(self, model_name, tables_dir):
+        filename = self.get_detec_filename(model_name, tables_dir)
+        try:
+            self.load_spacesep(filename, delim_whitespace=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"ERROR: Could not load SimDetecTable at {filename}: {str(e)}"
+            )
 
     def load_from_sim_table(self, model_name, sim_tables_dir):
         """
@@ -253,8 +262,12 @@ class SimDetecTable(SimTable):
         :param model_name: Name of the model assigned in the config file.
         :param sim_tables_dir: Directory where the SimTable is located.
         """
-        super().load(model_name, sim_tables_dir)
+        super().load_sim_table(model_name, sim_tables_dir)
         self.t["sigma_kern"] = self.sigma_kern
+
+    def save_detec_table(self, model_name, tables_dir):
+        filename = self.get_detec_filename(model_name, tables_dir)
+        self.write(filename=filename, overwrite=True, index=False)
 
     def get_efficiency(self, fom_limit, **params):
         """
@@ -287,7 +300,7 @@ class SimDetecTable(SimTable):
 
 class SimDetecTables(SimTables):
     def __init__(self, peak_appmags: List, model_name: str, sigma_kerns: List):
-        SimTables.__init__(peak_appmags, model_name)
+        SimTables.__init__(self, peak_appmags, model_name)
         self.sigma_kerns = sigma_kerns
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
@@ -302,7 +315,7 @@ class SimDetecTables(SimTables):
         make_dir_if_not_exists(tables_dir)
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
-                table.save(self.model_name, tables_dir)
+                table.save_detec_table(self.model_name, tables_dir)
         print("Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir):
@@ -315,11 +328,13 @@ class SimDetecTables(SimTables):
             f"\nConstructing SimDetecTables from existing SimTables in directory: {sim_tables_dir}"
         )
         for sigma_kern in self.sigma_kerns:
+            self.d[sigma_kern] = {}
             for peak_appmag in self.peak_appmags:
                 self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
                 self.d[sigma_kern][peak_appmag].load_from_sim_table(
                     self.model_name, sim_tables_dir
                 )
+        print('Success')
 
     def load_all(self, tables_dir):
         """
@@ -332,6 +347,7 @@ class SimDetecTables(SimTables):
             for peak_appmag in self.peak_appmags:
                 self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
                 self.d[sigma_kern][peak_appmag].load(self.model_name, tables_dir)
+        print('Success')
 
 
 class EfficiencyTable(pdastrostatsclass):
@@ -705,6 +721,10 @@ if __name__ == "__main__":
     fom_limits = None
     if args.efficiencies:
         fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
+
+    sd = SimDetecTables(parsed_params["peak_appmag"], args.model_name, sigma_kerns)
+    sd.load_all_from_sim_tables(sim_tables_dir)
+    sd.save_all(detec_tables_dir)
 
     # model = Model(
     #     filename=sim_config["charlie_model"]["filename"],

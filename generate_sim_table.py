@@ -191,16 +191,16 @@ class SimTable(pdastrostatsclass):
         """
         self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
-    def get_filename(self, model_name, tables_dir):
+    def get_sim_filename(self, model_name, tables_dir):
         return f"{tables_dir}/sim_{model_name}_{self.peak_appmag:0.2f}.txt"
 
-    def save(self, model_name, tables_dir):
-        filename = self.get_filename(model_name, tables_dir)
+    def save_sim_table(self, model_name, tables_dir):
+        filename = self.get_sim_filename(model_name, tables_dir)
         print(f"Saving SimTable {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
 
-    def load(self, model_name, tables_dir):
-        filename = self.get_filename(model_name, tables_dir)
+    def load_sim_table(self, model_name, tables_dir):
+        filename = self.get_sim_filename(model_name, tables_dir)
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
@@ -281,7 +281,7 @@ class SimTables:
         print(f"\nSaving SimTables in directory: {tables_dir}")
         make_dir_if_not_exists(tables_dir)
         for peak_appmag in self.peak_appmags:
-            self.d[peak_appmag].save(self.model_name, tables_dir)
+            self.d[peak_appmag].save_sim_table(self.model_name, tables_dir)
         print("Success")
 
     def load_all(self, tables_dir):
@@ -289,7 +289,8 @@ class SimTables:
         self.d = {}
         for peak_appmag in self.peak_appmags:
             self.d[peak_appmag] = SimTable(peak_appmag)
-            self.d[peak_appmag].load(self.model_name, tables_dir)
+            self.d[peak_appmag].load_sim_table(self.model_name, tables_dir)
+        print("Success")
 
 
 if __name__ == "__main__":
