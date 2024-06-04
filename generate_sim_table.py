@@ -2,6 +2,8 @@
 
 import itertools
 import json, argparse
+import math
+import sys
 import pandas as pd
 import numpy as np
 from typing import Dict, List
@@ -160,22 +162,37 @@ def parse_param(param_name: str, param_info: Dict):
     return res
 
 
-def parse_params(model_settings):
+def parse_params(model_settings, time_param_name="peak_mjd"):
     parsed_params = {}
-    for param_name in model_settings['parameters']:
-        parsed_params[param_name] = parse_param(param_name, model_settings['parameters'][param_name])
+    for param_name in model_settings["parameters"]:
+        parsed_params[param_name] = parse_param(
+            param_name, model_settings["parameters"][param_name]
+        )
 
     if not "peak_appmag" in parsed_params:
         raise RuntimeError(
             'ERROR: Parameters must include peak apparent magnitude ("peak_appmag").'
         )
 
+    if not time_param_name in parsed_params:
+        raise RuntimeError(
+            f'ERROR: Time parameter name "{time_param_name}" cannot be found in listed parameters.'
+        )
+    # make sure the time parameter will match the MJDbin column
+    print(
+        f'\nMaking sure the time parameter ("{time_param_name}") values match the MJDbin column format...'
+    )
+    parsed_params[time_param_name] = list(
+        np.floor(parsed_params[time_param_name]) + 0.5
+    )
+    print("Success")
+
     return parsed_params
 
 
-def parse_info(model_settings):
+def parse_info(model_settings, model_name):
     filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
-    if not args.model_name == GAUSSIAN_MODEL_NAME:
+    if not model_name == GAUSSIAN_MODEL_NAME:
         try:
             filename = model_settings["filename"]
             mjd_colname = model_settings["mjd_column_name"]
@@ -216,9 +233,10 @@ class SimTable(pdastrostatsclass):
     def get_sim_filename(self, model_name, tables_dir):
         return f"{tables_dir}/sim_{model_name}_{self.peak_appmag:0.2f}.txt"
 
-    def save_sim_table(self, model_name, tables_dir):
+    def save_sim_table(self, model_name, tables_dir, verbose=False):
         filename = self.get_sim_filename(model_name, tables_dir)
-        print(f"Saving SimTable {filename}...")
+        if verbose:
+            print(f"Saving SimTable {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
 
     def load_sim_table(self, model_name, tables_dir):
@@ -329,8 +347,12 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    parsed_params = parse_params(model_settings)
-    filename, mjd_colname, mag_colname, flux_colname = parse_info(model_settings)
+    parsed_params = parse_params(
+        model_settings, time_param_name=model_settings["time_parameter_name"]
+    )
+    filename, mjd_colname, mag_colname, flux_colname = parse_info(
+        model_settings, args.model_name
+    )
 
     sim_tables = SimTables(parsed_params["peak_appmag"], args.model_name)
     sim_tables.generate(
