@@ -1616,7 +1616,23 @@ class SimDetecLightCurve(AveragedLightCurve):
         )
 
     # add simulated flux to the light curve and add SNRsim and SNRsimsum columns
-    def add_sim_flux(self, lc, good_ix, sim_flux, cur_sigma_kern=None, verbose=False):
+    def add_sim_flux(
+        self,
+        lc,
+        good_ix,
+        sim_flux,
+        cur_sigma_kern=None,
+        verbose=False,
+        remove_old=True,
+    ):
+        """
+        Add simulated flux to the light curve ("uJysim" column) and add "SNRsim" and "SNRsimsum" columns.
+
+        :param lc: Light curve to add the simulated flux to.
+        :param good_ix: Unmasked/unflagged indices of the light curve.
+        :param cur_sigma_kern: The current kernel size of the rolling sum.
+        :param remove_old: Remove any old simulations before adding the simulated flux.
+        """
         if cur_sigma_kern is None:
             cur_sigma_kern = self.cur_sigma_kern
         if cur_sigma_kern is None:
@@ -1624,7 +1640,9 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "ERROR: No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
-        lc.t.loc[good_ix, "uJysim"] = lc.t.loc[good_ix, "uJy"]
+        if remove_old:
+            lc.remove_simulations()
+            lc.t.loc[good_ix, "uJysim"] = lc.t.loc[good_ix, "uJy"]
         lc.t.loc[good_ix, "uJysim"] += sim_flux
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
@@ -1656,28 +1674,6 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         return lc
 
-    # # add a model to the light curve at a certain peak MJD and apparent magnitude
-    # def add_model(self, model:Model, peak_mjd, peak_appmag, cur_sigma_kern=None, flag=0x800000, verbose=False):
-    # 	if verbose:
-    # 		print(f'Adding simulated model: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {peak_appmag:0.2f}; sigma = {model.sigma:0.2f} days')
-
-    # 	lc = deepcopy(self)
-    # 	good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
-    # 	sim_flux = model.get_sim_flux(lc.t.loc[good_ix,'MJD'], peak_mjd, peak_appmag)
-
-    # 	return self.add_sim_flux(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
-
-    # # add a Gaussian bump to the light curve at a certain peak MJD
-    # def add_gaussian(self, gaussian:Gaussian, peak_mjd, cur_sigma_kern=None, flag=0x800000, verbose=False):
-    # 	if verbose:
-    # 		print(f'Adding simulated gaussian: peak MJD = {peak_mjd:0.2f} MJD; peak app mag = {gaussian.peak_appmag:0.2f}; sigma = {gaussian.sigma:0.2f} days')
-
-    # 	lc = deepcopy(self)
-    # 	good_ix = AandB(lc.getindices(), lc.ix_unmasked('Mask', flag))
-    # 	sim_flux = gaussian.get_sim_flux(lc.t.loc[good_ix,'MJD'], peak_mjd)
-
-    # 	return self.add_sim_flux(lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose)
-
     # add any simulation to the light curve, specifying parameters using keyword arguments
     def add_simulation(
         self,
@@ -1686,8 +1682,18 @@ class SimDetecLightCurve(AveragedLightCurve):
         cur_sigma_kern=None,
         flag=0x800000,
         verbose=False,
+        remove_old=True,
         **kwargs,
     ):
+        """
+        Add any Simulation object to the light curve, specifying parameters using keyword arguments.
+
+        :param sim: The Simulation to add.
+        :param peak_appmag: The desired peak apparent magnitude of the Simulation to add.
+        :param cur_sigma_kern: The current kernel size of the rolling sum.
+        :param flag: The flag value by which to filter out any flagged bins.
+        :param remove_old: Remove any old simulations before adding the simulated flux.
+        """
         if verbose:
             print(f"Adding simulation: {sim}")
 
@@ -1696,7 +1702,12 @@ class SimDetecLightCurve(AveragedLightCurve):
         sim_flux = sim.get_sim_flux(lc.t.loc[good_ix, "MJD"], peak_appmag, **kwargs)
 
         return self.add_sim_flux(
-            lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose
+            lc,
+            good_ix,
+            sim_flux,
+            cur_sigma_kern=cur_sigma_kern,
+            verbose=verbose,
+            remove_old=remove_old,
         )
 
     # get max FOM (for simulated FOM, column='SNRsimsum'; else column='SNRsumnorm')

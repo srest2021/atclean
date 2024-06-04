@@ -639,7 +639,14 @@ class SimDetecLoop(ABC):
         self.e.save(detec_tables_dir)
 
     @abstractmethod
-    def loop(self, **kwargs):
+    def loop(
+        self,
+        sim: Simulation,
+        valid_control_ix: List,
+        detec_tables_dir: str,
+        flag=0x800000,
+        **kwargs,
+    ):
         pass
 
 
@@ -726,7 +733,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
                     # add the simulated flux to the chosen control light curve
                     params = sim_detec_table.get_params_at_index(i)
                     sim_lc = self.sn.avg_lcs[rand_control_index].add_simulation(
-                        sim, peak_appmag, flag=flag, **params
+                        sim, peak_appmag, flag=flag, remove_old=True, **params
                     )
 
                     # get the max simulated FOM
