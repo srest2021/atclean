@@ -25,7 +25,17 @@ from generate_sim_table import (
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
-NON_PARAM_ROWS = ['sigma_kern', 'peak_appmag', 'peak_flux', 'filename', 'model_name', 'mjd_colname', 'mag_colname', 'flux_colname']
+NON_PARAM_ROWS = [
+    "sigma_kern",
+    "peak_appmag",
+    "peak_flux",
+    "filename",
+    "model_name",
+    "mjd_colname",
+    "mag_colname",
+    "flux_colname",
+]
+
 
 # convert flux to magnitude
 def flux2mag(flux: float):
@@ -198,8 +208,6 @@ class Model(Simulation):
         print(self.t[["MJD", "m", "uJy"]].head().to_string())
         print("Success")
 
-    # get interpolated function of model at peak MJD (peak_mjd)
-    # and match to time array (mjds)
     def get_sim_flux(self, mjds, peak_appmag, peak_mjd=None, **kwargs):
         """
         Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
@@ -246,7 +254,7 @@ class SimDetecTable(SimTable):
         for colname in self.t.columns:
             if not colname in NON_PARAM_ROWS:
                 colnames.append(colname)
-        return dict(self.t.loc[index,colnames])
+        return dict(self.t.loc[index, colnames])
 
     def update_row_at_index(self, index, data: Dict):
         """
@@ -329,6 +337,9 @@ class SimDetecTables(SimTables):
     def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, **params):
         return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **params)
 
+    def save_detec_table(self, sigma_kern, peak_appmag, tables_dir):
+        self.d[sigma_kern][peak_appmag].save_detec_table(self.model_name, tables_dir)
+
     def save_all(self, tables_dir):
         print(f"\nSaving SimDetecTables in directory: {tables_dir}")
         make_dir_if_not_exists(tables_dir)
@@ -383,7 +394,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param sigma_kerns: List of detection algorithm kernel sizes.
         :param peak_appmags: List of possible simulation peak apparent magnitudes.
         :param peak_fluxes: List of possible simulation peak fluxes.
-        :param params: Dictionary of parameter names and
+        :param params: Dictionary of parameter names and lists of possible values.
         """
         pdastrostatsclass.__init__(self, **kwargs)
 
@@ -399,7 +410,8 @@ class EfficiencyTable(pdastrostatsclass):
         """
         Set up the table columns for sigma_kerns, peak_appmags, and other known parameter values.
 
-        :param skip_params: Names of parameters not to include as a column. Recommended: any peak MJD or MJD0 parameters.
+        :param skip_params: Names of parameters not to include as a column.
+        Recommended: any peak MJD or MJD0 parameters.
         """
         if skip_params is None:
             skip_params = []
@@ -600,23 +612,6 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
         self.sd.load_all_from_sim_tables(sim_tables_dir)
 
-    # def load_model(
-    #     self,
-    #     model_name,
-    #     filename,
-    #     mjd_colname=False,
-    #     mag_colname=False,
-    #     flux_colname=False,
-    # ):
-    #     model = Model(
-    #         filename=filename,
-    #         mjd_colname=mjd_colname,
-    #         mag_colname=mag_colname,
-    #         flux_colname=flux_colname,
-    #         model_name=model_name,
-    #     )
-    #     return model
-
     @abstractmethod
     def modify_light_curve(self, control_index=0):
         pass
@@ -637,10 +632,11 @@ class SimDetecLoop(ABC):
         self.sd.update_row_at_index(sigma_kern, peak_appmag, index, data)
 
     @abstractmethod
-    def calculate_efficiencies(self, fom_limits, params, **kwargs):
+    def calculate_efficiencies(self, fom_limits, params, detec_tables_dir, **kwargs):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
         self.e.setup()
         self.e.get_efficiencies(self.sd, fom_limits)
+        self.e.save(detec_tables_dir)
 
     @abstractmethod
     def loop(self, **kwargs):
@@ -666,7 +662,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
         return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
 
     def load_sd(self, model_name, sim_tables_dir):
-        return super().get_sd(model_name, sim_tables_dir)
+        return super().load_sd(model_name, sim_tables_dir)
 
     def modify_light_curve(self, control_index=0):
         # do nothing
@@ -694,13 +690,14 @@ class AtlasSimDetecLoop(SimDetecLoop):
             sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
         )
 
-    def calculate_efficiencies(self, fom_limits, params, **kwargs):
+    def calculate_efficiencies(
+        self, fom_limits, params, detec_tables_dir, time_colname="peak_mjd", **kwargs
+    ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
-        # TODO: make some sort of time_colname variable? add to simulation_settings?
-        self.e.setup(skip_params=["peak_mjd"])
+        # TODO: make some sort of time_colname variable and add indicator to simulation_settings?
+        self.e.setup(skip_params=[time_colname])
         self.e.get_efficiencies(self.sd, fom_limits)
-
-    # TODO: implement the rest of the abstract functions
+        self.e.save(detec_tables_dir)
 
     def loop(
         self,
@@ -719,24 +716,35 @@ class AtlasSimDetecLoop(SimDetecLoop):
             for peak_appmag in self.peak_appmags:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
                 print(
-                    f"Commencing {len(sim_detec_table.t)} iterations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag)})..."
+                    f"Commencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag)})..."
                 )
 
                 for i in len(sim_detec_table.t):
-                    row = sim_detec_table.t.loc[i, :]
-                    params = sim_detec_table.get_params_at_index(i) # TODO
-
                     # pick random control light curve
                     rand_control_index = random.choice(valid_control_ix)
 
                     # add the simulated flux to the chosen control light curve
-                    self.sn.avg_lcs[rand_control_index].add_simulation(
+                    params = sim_detec_table.get_params_at_index(i)
+                    sim_lc = self.sn.avg_lcs[rand_control_index].add_simulation(
                         sim, peak_appmag, flag=flag, **params
                     )
 
-                    # TODO
-
                     # get the max simulated FOM
+                    max_fom_mjd, max_fom = self.get_max_fom(sim_lc, **params)
+
+                    # update the corresponding row in the SimDetecTable
+                    self.update_sd_row(
+                        sigma_kern,
+                        peak_appmag,
+                        i,
+                        rand_control_index,
+                        max_fom,
+                        max_fom_mjd,
+                    )
+
+                self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
+
+        print("\nSuccess")
 
 
 # define command line arguments
@@ -808,9 +816,6 @@ if __name__ == "__main__":
         for i in range(1, sn_info["num_controls"] + 1)
         if not i in config["skip_control_ix"]
     ]
-    fom_limits = None
-    if args.efficiencies:
-        fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
 
     simdetec = AtlasSimDetecLoop(sigma_kerns)
     simdetec.set_peak_mags_and_fluxes()
@@ -824,43 +829,7 @@ if __name__ == "__main__":
     simdetec.load_sd(args.model_name, sim_tables_dir)
     simdetec.loop(sim, valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
 
-    # sd = SimDetecTables(parsed_params["peak_appmag"], args.model_name, sigma_kerns)
-    # sd.load_all_from_sim_tables(sim_tables_dir)
-    # sd.save_all(detec_tables_dir)
-
-    # model = Model(
-    #     filename=sim_config["charlie_model"]["filename"],
-    #     mjd_colname=sim_config["charlie_model"]["mjd_column_name"],
-    #     mag_colname=sim_config["charlie_model"]["mag_column_name"],
-    #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
-    # )
-
-    # e = EfficiencyTable(
-    #     sigma_kerns=sigma_kerns,
-    #     peak_appmags=[
-    #         23.0,
-    #         22.63,
-    #         22.26,
-    #         21.89,
-    #         21.53,
-    #         21.16,
-    #         20.79,
-    #         20.42,
-    #         20.05,
-    #         19.68,
-    #         19.32,
-    #         18.95,
-    #         18.58,
-    #         18.21,
-    #         17.84,
-    #         17.47,
-    #         17.11,
-    #         16.74,
-    #         16.37,
-    #         16.0,
-    #     ],
-    #     params=parsed_params,
-    # )
-    # e.setup(skip_params=["peak_mjd"])
-    # print(e)
-    # e.save(detec_tables_dir)
+    if args.efficiencies:
+        fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
+        # TODO: get time_colname from simulation_settings.json
+        simdetec.calculate_efficiencies(fom_limits, parsed_params, detec_tables_dir)
