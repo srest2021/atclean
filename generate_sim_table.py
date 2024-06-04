@@ -160,10 +160,10 @@ def parse_param(param_name: str, param_info: Dict):
     return res
 
 
-def parse_params(settings):
+def parse_params(model_settings):
     parsed_params = {}
-    for param_name in settings:
-        parsed_params[param_name] = parse_param(param_name, settings[param_name])
+    for param_name in model_settings['parameters']:
+        parsed_params[param_name] = parse_param(param_name, model_settings['parameters'][param_name])
 
     if not "peak_appmag" in parsed_params:
         raise RuntimeError(
@@ -171,6 +171,28 @@ def parse_params(settings):
         )
 
     return parsed_params
+
+
+def parse_info(model_settings):
+    filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
+    if not args.model_name == GAUSSIAN_MODEL_NAME:
+        try:
+            filename = model_settings["filename"]
+            mjd_colname = model_settings["mjd_column_name"]
+            mag_colname = model_settings["mag_column_name"]
+            flux_colname = model_settings["flux_column_name"]
+
+            if " " in filename:
+                raise RuntimeError("ERROR: Filename cannot have spaces.")
+
+            if mag_colname is False and flux_colname is False:
+                raise RuntimeError(
+                    f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
+                )
+        except Exception as e:
+            raise RuntimeError(f"ERROR: {str(e)}")
+
+    return filename, mjd_colname, mag_colname, flux_colname
 
 
 class SimTable(pdastrostatsclass):
@@ -307,25 +329,8 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    parsed_params = parse_params(model_settings["parameters"])
-
-    filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
-    if not args.model_name == GAUSSIAN_MODEL_NAME:
-        try:
-            filename = model_settings["filename"]
-            mjd_colname = model_settings["mjd_column_name"]
-            mag_colname = model_settings["mag_column_name"]
-            flux_colname = model_settings["flux_column_name"]
-
-            if " " in filename:
-                raise RuntimeError("ERROR: Filename cannot have spaces.")
-
-            if mag_colname is False and flux_colname is False:
-                raise RuntimeError(
-                    f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
-                )
-        except Exception as e:
-            raise RuntimeError(f"ERROR: {str(e)}")
+    parsed_params = parse_params(model_settings)
+    filename, mjd_colname, mag_colname, flux_colname = parse_info(model_settings)
 
     sim_tables = SimTables(parsed_params["peak_appmag"], args.model_name)
     sim_tables.generate(

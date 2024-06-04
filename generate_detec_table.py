@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 import itertools
+import random
 import argparse, re
 from copy import deepcopy
 import sys
@@ -13,9 +14,18 @@ from astropy.modeling.functional_models import Gaussian1D
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from generate_sim_table import SimTable, SimTables, load_json_config, parse_params
+from generate_sim_table import (
+    SimTable,
+    SimTables,
+    load_json_config,
+    parse_info,
+    parse_params,
+    GAUSSIAN_MODEL_NAME,
+)
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
+
+NON_PARAM_ROWS = ['sigma_kern', 'peak_appmag', 'peak_flux', 'filename', 'model_name', 'mjd_colname', 'mag_colname', 'flux_colname']
 
 # convert flux to magnitude
 def flux2mag(flux: float):
@@ -28,7 +38,7 @@ def mag2flux(mag: float):
 
 
 class Gaussian(Simulation):
-    def __init__(self, sigma, peak_appmag=None, model_name="gaussian", **kwargs):
+    def __init__(self, model_name="gaussian", **kwargs):
         """
         Initialize a Gaussian simulation object.
 
@@ -37,13 +47,14 @@ class Gaussian(Simulation):
         :param model_name: Name of the Gaussian model in the config file.
         """
         Simulation.__init__(self, model_name=model_name, **kwargs)
-        self.sigma = sigma
-        if peak_appmag is None:
-            raise RuntimeError("ERROR: Gaussian must have a peak_appmag.")
-        self.peak_appmag = peak_appmag
-        self.g = self.new_gaussian(mag2flux(peak_appmag), sigma)
+        self.g = None
+        self.sigma = None
 
-    def new_gaussian(self, peak_flux, sigma):
+    def new(self, sigma, peak_appmag):
+        self.sigma = sigma
+        self.peak_appmag = peak_appmag
+
+        peak_flux = mag2flux(peak_appmag)
         x = np.arange(-100, 100, 0.01)
         g1 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
         g2 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
@@ -51,24 +62,30 @@ class Gaussian(Simulation):
         ind = np.argmin(abs(x))
         g3 = np.copy(g1)
         g3[ind:] = g2[ind:]
-        gauss = np.array([x, g3])
-        return gauss
 
-    # get interpolated function of gaussian at peak MJD (peak_mjd)
-    # and match to time array (mjds)
-    def get_sim_flux(self, mjds, peak_mjd=None, **kwargs):
+        self.g = np.array([x, g3])
+
+    def get_sim_flux(self, mjds, peak_appmag, sigma=None, peak_mjd=None, **kwargs):
         """
         Get the interpolated function of the Gaussian at a given peak MJD and match it to the given time array.
 
         :param mjds: Time array of MJDs.
+        :param peak_appmag: Desired peak apparent magnitude of the Gaussian.
+        :param sigma: Desired sigma or kernel size of the Gaussian.
         :param peak_mjd: MJD at which the Gaussian should reach its peak apparent magnitude.
 
         :return: The simulated flux corresponding to the given time array.
         """
+        if sigma is None:
+            raise RuntimeError(
+                "ERROR: Sigma required to get flux of simulated Gaussian."
+            )
         if peak_mjd is None:
             raise RuntimeError(
                 "ERROR: Peak MJD required to get flux of simulated Gaussian."
             )
+
+        self.new(sigma, peak_appmag)
 
         g = deepcopy(self.g)
         g[0, :] += peak_mjd
@@ -78,10 +95,7 @@ class Gaussian(Simulation):
         return sim_flux
 
     def __str__(self):
-        return (
-            super().__str__()
-            + f": peak appmag = {self.peak_appmag:0.2f}, sigma = {self.sigma}"
-        )
+        return super().__str__() + f", sigma = {self.sigma}"
 
 
 class Model(Simulation):
@@ -104,7 +118,6 @@ class Model(Simulation):
         :param model_name: Name of the model assigned in the config file.
         """
         Simulation.__init__(self, model_name=model_name, **kwargs)
-        self.peak_appmag = None
         self.t = None
 
         self.load(
@@ -187,32 +200,28 @@ class Model(Simulation):
 
     # get interpolated function of model at peak MJD (peak_mjd)
     # and match to time array (mjds)
-    def get_sim_flux(self, mjds, peak_mjd=None, peak_appmag=None, **kwargs):
+    def get_sim_flux(self, mjds, peak_appmag, peak_mjd=None, **kwargs):
         """
         Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
 
         :param mjds: Time array of MJDs.
-        :param peak_mjd: MJD at which the model should reach its peak apparent magnitude.
         :param peak_appmag: Desired peak apparent magnitude of the model.
+        :param peak_mjd: MJD at which the model should reach its peak apparent magnitude.
 
         :return: The simulated flux corresponding to the given time array.
         """
+        self.peak_appmag = peak_appmag
         if peak_mjd is None:
             raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
 
         # get original peak appmag index
         peak_idx = self.t["m"].idxmin()
 
-        if not peak_appmag is None:
-            self.peak_appmag = peak_appmag
+        # scale flux to the desired peak appmag
+        self.t["uJy"] *= mag2flux(peak_appmag) / self.t.loc[peak_idx, "uJy"]
 
-            # scale flux to the desired peak appmag
-            self.t["uJy"] *= mag2flux(peak_appmag) / self.t.loc[peak_idx, "uJy"]
-
-            # recalulate appmag column
-            self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
-        else:
-            self.peak_appmag = self.t.loc[peak_idx, "m"]
+        # recalulate appmag column
+        self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
 
         # put peak appmag at peak_mjd
         self.t["MJD"] -= self.t.loc[peak_idx, "MJD"]
@@ -224,13 +233,20 @@ class Model(Simulation):
         return sim_flux
 
     def __str__(self):
-        return super().__str__() + f": peak appmag = {self.peak_appmag:0.2f}"
+        return super().__str__()
 
 
 class SimDetecTable(SimTable):
     def __init__(self, sigma_kern, peak_appmag, **kwargs):
         SimTable.__init__(self, peak_appmag, **kwargs)
         self.sigma_kern = sigma_kern
+
+    def get_params_at_index(self, index) -> Dict:
+        colnames = []
+        for colname in self.t.columns:
+            if not colname in NON_PARAM_ROWS:
+                colnames.append(colname)
+        return dict(self.t.loc[index,colnames])
 
     def update_row_at_index(self, index, data: Dict):
         """
@@ -304,6 +320,9 @@ class SimDetecTables(SimTables):
         self.sigma_kerns = sigma_kerns
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
+    def get_table(self, sigma_kern, peak_appmag):
+        return self.d[sigma_kern][peak_appmag]
+
     def update_row_at_index(self, sigma_kern, peak_appmag, index, data: Dict):
         self.d[sigma_kern][peak_appmag].update_row_at_index(index, data)
 
@@ -334,7 +353,7 @@ class SimDetecTables(SimTables):
                 self.d[sigma_kern][peak_appmag].load_from_sim_table(
                     self.model_name, sim_tables_dir
                 )
-        print('Success')
+        print("Success")
 
     def load_all(self, tables_dir):
         """
@@ -347,7 +366,7 @@ class SimDetecTables(SimTables):
             for peak_appmag in self.peak_appmags:
                 self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
                 self.d[sigma_kern][peak_appmag].load(self.model_name, tables_dir)
-        print('Success')
+        print("Success")
 
 
 class EfficiencyTable(pdastrostatsclass):
@@ -553,9 +572,7 @@ class EfficiencyTable(pdastrostatsclass):
 
 # TODO: documentation
 class SimDetecLoop(ABC):
-    def __init__(self, output_dir: str, tables_dir: str, sigma_kerns: List, **kwargs):
-        self.output_dir = output_dir
-        self.tables_dir = tables_dir
+    def __init__(self, sigma_kerns: List, **kwargs):
         self.sigma_kerns = sigma_kerns
 
         self.sn: SimDetecSupernova = None
@@ -578,6 +595,27 @@ class SimDetecLoop(ABC):
         self.sn.load_all(data_dir, num_controls=num_controls)
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
+
+    def load_sd(self, model_name, sim_tables_dir):
+        self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
+        self.sd.load_all_from_sim_tables(sim_tables_dir)
+
+    # def load_model(
+    #     self,
+    #     model_name,
+    #     filename,
+    #     mjd_colname=False,
+    #     mag_colname=False,
+    #     flux_colname=False,
+    # ):
+    #     model = Model(
+    #         filename=filename,
+    #         mjd_colname=mjd_colname,
+    #         mag_colname=mag_colname,
+    #         flux_colname=flux_colname,
+    #         model_name=model_name,
+    #     )
+    #     return model
 
     @abstractmethod
     def modify_light_curve(self, control_index=0):
@@ -605,13 +643,13 @@ class SimDetecLoop(ABC):
         self.e.get_efficiencies(self.sd, fom_limits)
 
     @abstractmethod
-    def loop(self):
+    def loop(self, **kwargs):
         pass
 
 
 class AtlasSimDetecLoop(SimDetecLoop):
-    def __init__(self, output_dir: str, tables_dir: str, sigma_kerns: List, **kwargs):
-        super().__init__(output_dir, tables_dir, sigma_kerns, **kwargs)
+    def __init__(self, sigma_kerns: List, **kwargs):
+        super().__init__(sigma_kerns, **kwargs)
 
     def set_peak_mags_and_fluxes(
         self,
@@ -626,6 +664,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
     def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
         return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
+
+    def load_sd(self, model_name, sim_tables_dir):
+        return super().get_sd(model_name, sim_tables_dir)
 
     def modify_light_curve(self, control_index=0):
         # do nothing
@@ -655,13 +696,47 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
     def calculate_efficiencies(self, fom_limits, params, **kwargs):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
+        # TODO: make some sort of time_colname variable? add to simulation_settings?
         self.e.setup(skip_params=["peak_mjd"])
         self.e.get_efficiencies(self.sd, fom_limits)
 
     # TODO: implement the rest of the abstract functions
 
-    def loop(self):
-        pass
+    def loop(
+        self,
+        sim: Simulation,
+        valid_control_ix: List,
+        detec_tables_dir: str,
+        flag=0x800000,
+        **kwargs,
+    ):
+        # loop through each rolling sum kernel size
+        for sigma_kern in self.sigma_kerns:
+            print(f"\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...")
+            self.sn.apply_rolling_sums(sigma_kern, flag=flag)
+
+            # loop through each possible peak apparent magnitude
+            for peak_appmag in self.peak_appmags:
+                sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
+                print(
+                    f"Commencing {len(sim_detec_table.t)} iterations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag)})..."
+                )
+
+                for i in len(sim_detec_table.t):
+                    row = sim_detec_table.t.loc[i, :]
+                    params = sim_detec_table.get_params_at_index(i) # TODO
+
+                    # pick random control light curve
+                    rand_control_index = random.choice(valid_control_ix)
+
+                    # add the simulated flux to the chosen control light curve
+                    self.sn.avg_lcs[rand_control_index].add_simulation(
+                        sim, peak_appmag, flag=flag, **params
+                    )
+
+                    # TODO
+
+                    # get the max simulated FOM
 
 
 # define command line arguments
@@ -708,7 +783,18 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    parsed_params = parse_params(model_settings["parameters"])
+    parsed_params = parse_params(model_settings)
+    filename, mjd_colname, mag_colname, flux_colname = parse_info(model_settings)
+    if args.model_name == GAUSSIAN_MODEL_NAME:
+        sim = Gaussian()
+    else:
+        sim = Model(
+            filename,
+            mjd_colname=mjd_colname,
+            mag_colname=mag_colname,
+            flux_colname=flux_colname,
+            model_name=args.model_name,
+        )
 
     sn_info = config["sn_info"]
 
@@ -717,14 +803,30 @@ if __name__ == "__main__":
     detec_tables_dir = config["detec_tables_dir"]
 
     sigma_kerns = [obj["sigma_kern"] for obj in config["sigma_kerns"]]
-    skip_control_ix = config["skip_control_ix"]
+    valid_control_ix = [
+        i
+        for i in range(1, sn_info["num_controls"] + 1)
+        if not i in config["skip_control_ix"]
+    ]
     fom_limits = None
     if args.efficiencies:
         fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
 
-    sd = SimDetecTables(parsed_params["peak_appmag"], args.model_name, sigma_kerns)
-    sd.load_all_from_sim_tables(sim_tables_dir)
-    sd.save_all(detec_tables_dir)
+    simdetec = AtlasSimDetecLoop(sigma_kerns)
+    simdetec.set_peak_mags_and_fluxes()
+    simdetec.load_sn(
+        data_dir,
+        sn_info["tnsname"],
+        sn_info["num_controls"],
+        sn_info["mjd_bin_size"],
+        sn_info["filt"],
+    )
+    simdetec.load_sd(args.model_name, sim_tables_dir)
+    simdetec.loop(sim, valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
+
+    # sd = SimDetecTables(parsed_params["peak_appmag"], args.model_name, sigma_kerns)
+    # sd.load_all_from_sim_tables(sim_tables_dir)
+    # sd.save_all(detec_tables_dir)
 
     # model = Model(
     #     filename=sim_config["charlie_model"]["filename"],

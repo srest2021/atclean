@@ -1492,20 +1492,22 @@ class Simulation(ABC):
         Initialize the Simulation object.
         """
         self.model_name = model_name
+        self.peak_appmag = None
 
     @abstractmethod
-    def get_sim_flux(self, mjds, **kwargs):
+    def get_sim_flux(self, mjds, peak_appmag, **kwargs):
         """
-        Compute the simulated flux for given MJDs.
+        Compute the simulated flux for the given MJDs and peak apparent magnitude.
 
         :param mjds: List or array of MJDs.
+        :param peak_appmag: Desired peak apparent magnitude of the simulation.
 
         :return: An array of flux values corresponding to the input MJDs.
         """
         pass
 
     def __str__(self):
-        return f'Simulation with model name "{self.model_name}"'
+        return f'Simulation with model name "{self.model_name}": peak appmag = {self.peak_appmag:0.2f}'
 
 
 class SimDetecSupernova(AveragedSupernova):
@@ -1680,6 +1682,7 @@ class SimDetecLightCurve(AveragedLightCurve):
     def add_simulation(
         self,
         sim: Simulation,
+        peak_appmag: float,
         cur_sigma_kern=None,
         flag=0x800000,
         verbose=False,
@@ -1690,7 +1693,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         lc = deepcopy(self)
         good_ix = AandB(lc.getindices(), lc.ix_unmasked("Mask", flag))
-        sim_flux = sim.get_sim_flux(lc.t.loc[good_ix, "MJD"], **kwargs)
+        sim_flux = sim.get_sim_flux(lc.t.loc[good_ix, "MJD"], peak_appmag, **kwargs)
 
         return self.add_sim_flux(
             lc, good_ix, sim_flux, cur_sigma_kern=cur_sigma_kern, verbose=verbose
