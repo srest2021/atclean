@@ -69,6 +69,99 @@
     }
   },
 
+  "asymmetric_gaussian": {
+    "time_parameter_name": "peak_mjd",
+
+    "parameters": {
+      "peak_appmag": {
+        "type": "list",
+        "list": [23.0, 22.63, 22.26, 21.89, 21.53, 21.16, 20.79, 20.42, 20.05, 19.68, 19.32, 18.95, 18.58, 18.21, 17.84, 17.47, 17.11, 16.74, 16.37, 16.0], 
+        "range": {
+          "minval": 16.0,
+          "maxval": 23.0,
+          "step": 0.5
+        },
+        "logrange": {
+          "minval": 16.0,
+          "maxval": 23.0,
+          "base": 10,
+          "n": 20,
+          "to_int": false
+        },
+        "random": {
+          "minval": 16.0,
+          "maxval": 23.0,
+          "n": 20,
+          "to_int": false
+        }
+      },
+
+      "sigma_sim_plus": {
+        "type": "list",
+        "list": [5, 20, 40, 80, 100, 150, 200],
+        "range": {
+          "minval": 5,
+          "maxval": 200,
+          "step": 20
+        },
+        "logrange": {
+          "minval": 5,
+          "maxval": 200,
+          "base": 10,
+          "n": 7,
+          "to_int": true
+        },
+        "random": {
+          "minval": 5,
+          "maxval": 200,
+          "n": 7,
+          "to_int": true
+        }
+      },
+
+      "sigma_sim_minus": {
+        "type": "list",
+        "list": [5, 20, 40, 80, 100, 150, 200],
+        "range": {
+          "minval": 5,
+          "maxval": 200,
+          "step": 20
+        },
+        "logrange": {
+          "minval": 5,
+          "maxval": 200,
+          "base": 10,
+          "n": 7,
+          "to_int": true
+        },
+        "random": {
+          "minval": 5,
+          "maxval": 200,
+          "n": 7,
+          "to_int": true
+        }
+      },
+
+      "peak_mjd": {
+        "type": "random_inrange",
+        "random_inrange": {
+          "valid_ranges": [
+            [57302,57507],
+            [57701,57886],
+            [58021,58261],
+            [58415,58628], 
+            [58733,58986], 
+            [59094,59346], 
+            [59485,59729],
+            [59836,60072], 
+            [60195,60401]
+          ],
+          "n": 500
+        }
+      }
+    }
+  },
+
   "charlie_model": {
     "mjd_column_name": null,
     "mag_column_name": null,

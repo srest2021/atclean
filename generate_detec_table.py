@@ -21,9 +21,9 @@ from generate_sim_table import (
     SimTable,
     SimTables,
     load_json_config,
-    parse_info,
     parse_params,
     GAUSSIAN_MODEL_NAME,
+    ASYMMETRIC_GAUSSIAN_MODEL_NAME,
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
@@ -50,27 +50,30 @@ def mag2flux(mag: float):
     return 10 ** ((mag - 23.9) / -2.5)
 
 
-class Gaussian(Simulation):
-    def __init__(self, model_name="gaussian", **kwargs):
+class AsymmetricGaussian(Simulation):
+    def __init__(self, model_name=ASYMMETRIC_GAUSSIAN_MODEL_NAME, **kwargs):
         """
-        Initialize a Gaussian simulation object.
+        Initialize an asymmetric Gaussian simulation object.
 
-        :param sigma: Sigma or kernel size of the Gaussian.
+        :param sigma_plus: Sigma or kernel size of one half of the Gaussian.
+        :param sigma_minus: Sigma or kernel size of the other half of the Gaussian.
         :param peak_appmag: Peak apparent magnitude of the Gaussian.
         :param model_name: Name of the Gaussian model in the config file.
         """
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.g = None
-        self.sigma = None
+        self.sigma_plus = None
+        self.sigma_minus = None
 
-    def new(self, sigma, peak_appmag):
-        self.sigma = sigma
+    def new(self, sigma_plus, sigma_minus, peak_appmag):
+        self.sigma_plus = sigma_plus
+        self.sigma_minus = sigma_minus
         self.peak_appmag = peak_appmag
 
         peak_flux = mag2flux(peak_appmag)
         x = np.arange(-100, 100, 0.01)
-        g1 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
-        g2 = Gaussian1D(amplitude=peak_flux, stddev=sigma)(x)
+        g1 = Gaussian1D(amplitude=peak_flux, stddev=sigma_minus)(x)
+        g2 = Gaussian1D(amplitude=peak_flux, stddev=sigma_plus)(x)
 
         ind = np.argmin(abs(x))
         g3 = np.copy(g1)
@@ -78,7 +81,15 @@ class Gaussian(Simulation):
 
         self.g = np.array([x, g3])
 
-    def get_sim_flux(self, mjds, peak_appmag, sigma_sim=None, peak_mjd=None, **kwargs):
+    def get_sim_flux(
+        self,
+        mjds,
+        peak_appmag,
+        sigma_sim_plus=None,
+        sigma_sim_minus=None,
+        peak_mjd=None,
+        **kwargs,
+    ):
         """
         Get the interpolated function of the Gaussian at a given peak MJD and match it to the given time array.
 
@@ -89,17 +100,16 @@ class Gaussian(Simulation):
 
         :return: The simulated flux corresponding to the given time array.
         """
-        if sigma_sim is None:
+        if sigma_sim_plus is None or sigma_sim_minus is None:
             raise RuntimeError(
-                "ERROR: Sigma required to get flux of simulated Gaussian."
+                "ERROR: sim_sigma_plus and sim_sigma_minus required to get flux of simulated asymmetric Gaussian."
             )
         if peak_mjd is None:
             raise RuntimeError(
-                "ERROR: Peak MJD required to get flux of simulated Gaussian."
+                "ERROR: Peak MJD required to get flux of simulated asymmetric Gaussian."
             )
-        # peak_mjd = math.floor(peak_mjd) + 0.5
 
-        self.new(sigma_sim, peak_appmag)
+        self.new(sigma_sim_plus, sigma_sim_minus, peak_appmag)
 
         g = deepcopy(self.g)
         g[0, :] += peak_mjd
@@ -109,7 +119,38 @@ class Gaussian(Simulation):
         return sim_flux
 
     def __str__(self):
-        return super().__str__() + f", sigma = {self.sigma}"
+        return (
+            super().__str__()
+            + f", sigma plus = {self.sigma_plus}, sigma_minus = {self.sigma_minus}"
+        )
+
+
+class Gaussian(AsymmetricGaussian):
+    def __init__(self, model_name=GAUSSIAN_MODEL_NAME, **kwargs):
+        """
+        Initialize a Gaussian simulation object.
+
+        :param sigma: Sigma or kernel size of the Gaussian.
+        :param peak_appmag: Peak apparent magnitude of the Gaussian.
+        :param model_name: Name of the Gaussian model in the config file.
+        """
+        AsymmetricGaussian.__init__(model_name=model_name, **kwargs)
+
+    def new(self, sigma, peak_appmag):
+        return super().new(sigma, sigma, peak_appmag)
+
+    def get_sim_flux(self, mjds, peak_appmag, sigma=None, peak_mjd=None, **kwargs):
+        return super().get_sim_flux(
+            mjds,
+            peak_appmag,
+            sigma_sim_plus=sigma,
+            sigma_sim_minus=sigma,
+            peak_mjd=peak_mjd,
+            **kwargs,
+        )
+
+    def __str__(self):
+        return Simulation().__str__() + f", sigma = {self.sigma_plus}"
 
 
 class Model(Simulation):
@@ -661,6 +702,9 @@ class SimDetecLoop(ABC):
         if args.model_name == GAUSSIAN_MODEL_NAME:
             print("Using Gaussian simulations")
             sim = Gaussian()
+        elif args.model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
+            print("Using asymmetric Gaussian simulations")
+            sim = AsymmetricGaussian()
         else:
             print(
                 f'Using "{model_name}" simulations with MJD column {mjd_colname}, mag column {mag_colname}, and flux column {flux_colname} at filename: {filename}'
@@ -855,14 +899,10 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    # parsed_params = parse_params(model_settings)
-
     sn_info = config["sn_info"]
-
     data_dir = config["data_dir"]
     sim_tables_dir = config["sim_tables_dir"]
     detec_tables_dir = config["detec_tables_dir"]
-
     sigma_kerns = [obj["sigma_kern"] for obj in config["sigma_kerns"]]
     valid_control_ix = [
         i
@@ -883,9 +923,9 @@ if __name__ == "__main__":
     )
     simdetec.load_sd(args.model_name, sim_tables_dir)
     simdetec.loop(valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
-    sys.exit()
 
     if args.efficiencies:
+        parsed_params = parse_params(model_settings)
         fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
         simdetec.calculate_efficiencies(
             fom_limits,

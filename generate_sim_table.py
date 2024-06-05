@@ -12,6 +12,7 @@ from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
 
 GAUSSIAN_MODEL_NAME = "gaussian"
+ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
 SIM_TABLE_REQUIRED_COLUMNS = ["model_name", "filename"]
 
 
@@ -192,7 +193,10 @@ def parse_params(model_settings, time_param_name="peak_mjd"):
 
 def parse_info(model_settings, model_name):
     filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
-    if not model_name == GAUSSIAN_MODEL_NAME:
+    if (
+        model_name != GAUSSIAN_MODEL_NAME
+        and model_name != ASYMMETRIC_GAUSSIAN_MODEL_NAME
+    ):
         try:
             filename = model_settings["filename"]
             mjd_colname = model_settings["mjd_column_name"]
