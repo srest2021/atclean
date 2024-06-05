@@ -147,6 +147,7 @@ class Model(Simulation):
         mjd_colname=False,
         mag_colname=False,
         flux_colname=False,
+        verbose=False,
     ):
         """
         Load the model from a file into a DataFrame.
@@ -158,7 +159,8 @@ class Model(Simulation):
         :param mag_colname: Magnitude column name in the model file (None if present but no column name; False if not present).
         :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
         """
-        print(f"\nLoading model at {filename}...")
+        if verbose:
+            print(f"\nLoading model at {filename}...")
 
         if mag_colname is False and flux_colname is False:
             raise RuntimeError(
@@ -209,39 +211,9 @@ class Model(Simulation):
                     inplace=True,
                 )
 
-        print(self.t[["MJD", "m", "uJy"]].head().to_string())
-        print("Success")
-
-    # def calculate_sigma(self):
-    #     print(self.t.to_string())
-
-    #     def fwhm2sigma(fwhm):
-    #         return fwhm / math.sqrt(8 * np.log(2))
-
-    #     half_max = self.t.loc[self.t["uJy"].idxmax(), "uJy"] / 2
-
-    #     fn = interp1d(self.t["uJy"], self.t["MJD"], bounds_error=False, fill_value=0)
-
-    #     print(half_max, fn(half_max))
-    #     return 0
-
-    # roots = []
-    # mjd_guesses = np.linspace(self.t["MJD"].min(), self.t["MJD"].max(), 1000)
-    # flux_guesses = fn(mjd_guesses)
-    # roots = np.where(np.diff(np.sign(flux_guesses - half_max)))[0]
-    # print(roots)
-
-    # min_diff = np.inf
-
-    # for guess in flux_guesses:
-    #     diff = np.abs(guess - half_max)
-    #     if diff < min_diff:
-    #         min_diff = diff
-
-    # fwhm = abs(roots[1] - roots[0])
-    # print(fwhm)
-    # sigma = fwhm2sigma(fwhm)
-    # return sigma
+        if verbose:
+            print(self.t[["MJD", "m", "uJy"]].head().to_string())
+            print("Success")
 
     def get_sim_flux(self, mjds, peak_appmag, peak_mjd=None, **kwargs):
         """
@@ -650,6 +622,8 @@ class SimDetecLoop(ABC):
                 peak_appmag = float(match.group(1))
                 self.peak_appmags.append(peak_appmag)
 
+        self.peak_appmags.sort()
+
         self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
 
     @abstractmethod
@@ -659,13 +633,46 @@ class SimDetecLoop(ABC):
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
 
+    @abstractmethod
     def load_sd(self, model_name, sim_tables_dir):
         self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
         self.sd.load_all_from_sim_tables(sim_tables_dir)
 
     @abstractmethod
-    def modify_light_curve(self, control_index=0):
-        pass
+    def load_sim(
+        self,
+        settings: Dict,
+    ) -> Simulation:
+        model_name = settings["model_name"]
+        filename = (
+            None if not isinstance(settings["filename"], str) else settings["filename"]
+        )
+
+        def get_col_val(colname, settings):
+            if colname in settings:
+                return None if np.isnan(settings[colname]) else settings[colname]
+            else:
+                return False
+
+        mjd_colname = get_col_val("mjd_colname", settings)
+        mag_colname = get_col_val("mag_colname", settings)
+        flux_colname = get_col_val("flux_colname", settings)
+
+        if args.model_name == GAUSSIAN_MODEL_NAME:
+            print("Using Gaussian simulations")
+            sim = Gaussian()
+        else:
+            print(
+                f'Using "{model_name}" simulations with MJD column {mjd_colname}, mag column {mag_colname}, and flux column {flux_colname} at filename: {filename}'
+            )
+            sim = Model(
+                filename=filename,
+                mjd_colname=mjd_colname,
+                mag_colname=mag_colname,
+                flux_colname=flux_colname,
+                model_name=model_name,
+            )
+        return sim
 
     @abstractmethod
     def get_max_fom_indices(
@@ -696,7 +703,6 @@ class SimDetecLoop(ABC):
     @abstractmethod
     def loop(
         self,
-        sim: Simulation,
         valid_control_ix: List,
         detec_tables_dir: str,
         flag=0x800000,
@@ -710,7 +716,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
         super().__init__(sigma_kerns, **kwargs)
 
     def set_peak_mags_and_fluxes(self, model_name=None, sim_tables_dir=None, **kwargs):
-        return super().set_peak_mags_and_fluxes(model_name, sim_tables_dir, **kwargs)
+        return super().set_peak_mags_and_fluxes(
+            model_name=model_name, sim_tables_dir=sim_tables_dir, **kwargs
+        )
 
     def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
         return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
@@ -718,9 +726,8 @@ class AtlasSimDetecLoop(SimDetecLoop):
     def load_sd(self, model_name, sim_tables_dir):
         return super().load_sd(model_name, sim_tables_dir)
 
-    def modify_light_curve(self, control_index=0):
-        # do nothing
-        pass
+    def load_sim(self, data: Dict) -> Simulation:
+        return super().load_sim(data)
 
     def get_max_fom_indices(
         self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
@@ -736,21 +743,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
             colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
         )
         return indices
-
-    # def get_max_fom(
-    #     self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
-    # ) -> Tuple[float]:
-    #     if peak_mjd is None or sigma_sim is None:
-    #         raise RuntimeError(
-    #             "ERROR: A peak MJD and sigma of the simulated Gaussian is required to find the max FOM."
-    #         )
-    #     # measurements within 1 sigma of the peak MJD
-    #     indices = sim_lc.ix_inrange(
-    #         colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
-    #     )
-    #     # get max FOM of those measurements
-    #     max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
-    #     return max_fom_mjd, max_fom
 
     def update_sd_row(
         self, sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
@@ -769,7 +761,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
     def loop(
         self,
-        sim: Simulation,
         valid_control_ix: List,
         detec_tables_dir: str,
         flag=0x800000,
@@ -777,15 +768,18 @@ class AtlasSimDetecLoop(SimDetecLoop):
     ):
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
-            print(f"\nUsing rolling sum kernel size sigma_kern={sigma_kern} days...")
+            print(f"\n\tUsing rolling sum kernel size sigma_kern={sigma_kern} days...")
             self.sn.apply_rolling_sums(sigma_kern, flag=flag)
 
             # loop through each possible peak apparent magnitude
             for peak_appmag in self.peak_appmags:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
                 print(
-                    f"Commencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag):0.2f} uJy)..."
+                    f"\nCommencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag):0.2f} uJy)..."
                 )
+
+                # load the Simulation object
+                sim = self.load_sim(dict(sim_detec_table.t.loc[0, :]))
 
                 for i in range(len(sim_detec_table.t)):
                     # pick random control light curve
@@ -812,8 +806,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
                     )
 
                 self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
+                print("Success")
 
-        print("\nSuccess")
+        print("\nFinished generating all SimDetecTables")
 
 
 # define command line arguments
@@ -860,22 +855,7 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    #parsed_params = parse_params(model_settings)
-
-    # TODO: model should be loaded at first row
-    filename, mjd_colname, mag_colname, flux_colname = parse_info(
-        model_settings, args.model_name
-    )
-    if args.model_name == GAUSSIAN_MODEL_NAME:
-        sim = Gaussian()
-    else:
-        sim = Model(
-            filename,
-            mjd_colname=mjd_colname,
-            mag_colname=mag_colname,
-            flux_colname=flux_colname,
-            model_name=args.model_name,
-        )
+    # parsed_params = parse_params(model_settings)
 
     sn_info = config["sn_info"]
 
@@ -890,21 +870,10 @@ if __name__ == "__main__":
         if not i in config["skip_control_ix"]
     ]
 
-    # model = Model(
-    #     filename=sim_config["charlie_model"]["filename"],
-    #     mjd_colname=sim_config["charlie_model"]["mjd_column_name"],
-    #     mag_colname=sim_config["charlie_model"]["mag_column_name"],
-    #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
-    # )
-    # sigma = model.calculate_sigma()
-    # print(sigma)
-
-    # sys.exit()
-
     simdetec = AtlasSimDetecLoop(sigma_kerns)
-    simdetec.set_peak_mags_and_fluxes(args.model_name, sim_tables_dir)
-    # print(simdetec.peak_appmags)
-    # sys.exit()
+    simdetec.set_peak_mags_and_fluxes(
+        model_name=args.model_name, sim_tables_dir=sim_tables_dir
+    )
     simdetec.load_sn(
         data_dir,
         sn_info["tnsname"],
@@ -913,7 +882,7 @@ if __name__ == "__main__":
         sn_info["filt"],
     )
     simdetec.load_sd(args.model_name, sim_tables_dir)
-    simdetec.loop(sim, valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
+    simdetec.loop(valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
     sys.exit()
 
     if args.efficiencies:
