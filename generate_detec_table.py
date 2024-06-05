@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 import itertools
+import math
+import os
 import random
 import argparse, re
 from copy import deepcopy
@@ -10,6 +12,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.optimize import root
 from astropy.modeling.functional_models import Gaussian1D
 
 from download import make_dir_if_not_exists
@@ -75,7 +78,7 @@ class Gaussian(Simulation):
 
         self.g = np.array([x, g3])
 
-    def get_sim_flux(self, mjds, peak_appmag, sigma=None, peak_mjd=None, **kwargs):
+    def get_sim_flux(self, mjds, peak_appmag, sigma_sim=None, peak_mjd=None, **kwargs):
         """
         Get the interpolated function of the Gaussian at a given peak MJD and match it to the given time array.
 
@@ -86,7 +89,7 @@ class Gaussian(Simulation):
 
         :return: The simulated flux corresponding to the given time array.
         """
-        if sigma is None:
+        if sigma_sim is None:
             raise RuntimeError(
                 "ERROR: Sigma required to get flux of simulated Gaussian."
             )
@@ -94,8 +97,9 @@ class Gaussian(Simulation):
             raise RuntimeError(
                 "ERROR: Peak MJD required to get flux of simulated Gaussian."
             )
+        # peak_mjd = math.floor(peak_mjd) + 0.5
 
-        self.new(sigma, peak_appmag)
+        self.new(sigma_sim, peak_appmag)
 
         g = deepcopy(self.g)
         g[0, :] += peak_mjd
@@ -208,6 +212,37 @@ class Model(Simulation):
         print(self.t[["MJD", "m", "uJy"]].head().to_string())
         print("Success")
 
+    # def calculate_sigma(self):
+    #     print(self.t.to_string())
+
+    #     def fwhm2sigma(fwhm):
+    #         return fwhm / math.sqrt(8 * np.log(2))
+
+    #     half_max = self.t.loc[self.t["uJy"].idxmax(), "uJy"] / 2
+
+    #     fn = interp1d(self.t["uJy"], self.t["MJD"], bounds_error=False, fill_value=0)
+
+    #     print(half_max, fn(half_max))
+    #     return 0
+
+    # roots = []
+    # mjd_guesses = np.linspace(self.t["MJD"].min(), self.t["MJD"].max(), 1000)
+    # flux_guesses = fn(mjd_guesses)
+    # roots = np.where(np.diff(np.sign(flux_guesses - half_max)))[0]
+    # print(roots)
+
+    # min_diff = np.inf
+
+    # for guess in flux_guesses:
+    #     diff = np.abs(guess - half_max)
+    #     if diff < min_diff:
+    #         min_diff = diff
+
+    # fwhm = abs(roots[1] - roots[0])
+    # print(fwhm)
+    # sigma = fwhm2sigma(fwhm)
+    # return sigma
+
     def get_sim_flux(self, mjds, peak_appmag, peak_mjd=None, **kwargs):
         """
         Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
@@ -221,6 +256,7 @@ class Model(Simulation):
         self.peak_appmag = peak_appmag
         if peak_mjd is None:
             raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
+        # peak_mjd = math.floor(peak_mjd) + 0.5
 
         # get original peak appmag index
         peak_idx = self.t["m"].idxmin()
@@ -586,6 +622,8 @@ class EfficiencyTable(pdastrostatsclass):
 class SimDetecLoop(ABC):
     def __init__(self, sigma_kerns: List, **kwargs):
         self.sigma_kerns = sigma_kerns
+        self.peak_appmags = None
+        self.peak_fluxes = None
 
         self.sn: SimDetecSupernova = None
         self.e: EfficiencyTable = None
@@ -594,16 +632,29 @@ class SimDetecLoop(ABC):
     @abstractmethod
     def set_peak_mags_and_fluxes(
         self,
-        peak_mag_min: float = 23.0,
-        peak_mag_max: float = 16.0,
-        n_peaks: int = 20,
+        model_name=None,
+        sim_tables_dir=None,
         **kwargs,
     ):
-        self.peak_appmags = list(np.linspace(peak_mag_min, peak_mag_max, num=n_peaks))
+        if model_name is None or sim_tables_dir is None:
+            raise RuntimeError(
+                "ERROR: Please either provide a model name and SimTable directory, or overwrite this function with your own."
+            )
+        self.peak_appmags = []
+        pattern = re.compile(f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt")
+        re.compile(f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt")
+
+        for filename in os.listdir(sim_tables_dir):
+            match = pattern.match(filename)
+            if match:
+                peak_appmag = float(match.group(1))
+                self.peak_appmags.append(peak_appmag)
+
         self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
 
     @abstractmethod
     def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1.0, filt="o"):
+        self.sn = SimDetecSupernova(tnsname, mjdbinsize=mjdbinsize, filt=filt)
         self.sn.load_all(data_dir, num_controls=num_controls)
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
@@ -617,7 +668,11 @@ class SimDetecLoop(ABC):
         pass
 
     @abstractmethod
-    def get_max_fom(self, sim_lc: SimDetecLightCurve, **kwargs) -> Tuple[float, float]:
+    def get_max_fom_indices(
+        self,
+        sim_lc: SimDetecLightCurve,
+        **kwargs,
+    ):
         pass
 
     @abstractmethod
@@ -654,16 +709,8 @@ class AtlasSimDetecLoop(SimDetecLoop):
     def __init__(self, sigma_kerns: List, **kwargs):
         super().__init__(sigma_kerns, **kwargs)
 
-    def set_peak_mags_and_fluxes(
-        self,
-        peak_mag_min: float = 23,
-        peak_mag_max: float = 16,
-        n_peaks: int = 20,
-        **kwargs,
-    ):
-        return super().set_peak_mags_and_fluxes(
-            peak_mag_min, peak_mag_max, n_peaks, **kwargs
-        )
+    def set_peak_mags_and_fluxes(self, model_name=None, sim_tables_dir=None, **kwargs):
+        return super().set_peak_mags_and_fluxes(model_name, sim_tables_dir, **kwargs)
 
     def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
         return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
@@ -675,20 +722,35 @@ class AtlasSimDetecLoop(SimDetecLoop):
         # do nothing
         pass
 
-    def get_max_fom(
+    def get_max_fom_indices(
         self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
-    ) -> Tuple[float]:
-        if peak_mjd is None or sigma_sim is None:
-            raise RuntimeError(
-                "ERROR: A peak MJD and sigma of the simulated Gaussian is required to find the max FOM."
-            )
+    ):
+        if peak_mjd is None:
+            raise RuntimeError("ERROR: A peak MJD is required to find the max FOM.")
+        if sigma_sim is None:
+            # replace with default sigma sim for Charlie's model
+            sigma_sim = 2.8
+
         # measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
             colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
         )
-        # get max FOM of those measurements
-        max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
-        return max_fom_mjd, max_fom
+        return indices
+
+    # def get_max_fom(
+    #     self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
+    # ) -> Tuple[float]:
+    #     if peak_mjd is None or sigma_sim is None:
+    #         raise RuntimeError(
+    #             "ERROR: A peak MJD and sigma of the simulated Gaussian is required to find the max FOM."
+    #         )
+    #     # measurements within 1 sigma of the peak MJD
+    #     indices = sim_lc.ix_inrange(
+    #         colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
+    #     )
+    #     # get max FOM of those measurements
+    #     max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
+    #     return max_fom_mjd, max_fom
 
     def update_sd_row(
         self, sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
@@ -701,7 +763,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
         self, fom_limits, params, detec_tables_dir, time_colname="peak_mjd", **kwargs
     ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
-        # TODO: make some sort of time_colname variable and add indicator to simulation_settings?
         self.e.setup(skip_params=[time_colname])
         self.e.get_efficiencies(self.sd, fom_limits)
         self.e.save(detec_tables_dir)
@@ -723,10 +784,10 @@ class AtlasSimDetecLoop(SimDetecLoop):
             for peak_appmag in self.peak_appmags:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
                 print(
-                    f"Commencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag)})..."
+                    f"Commencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag):0.2f} uJy)..."
                 )
 
-                for i in len(sim_detec_table.t):
+                for i in range(len(sim_detec_table.t)):
                     # pick random control light curve
                     rand_control_index = random.choice(valid_control_ix)
 
@@ -736,8 +797,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
                         sim, peak_appmag, flag=flag, remove_old=True, **params
                     )
 
-                    # get the max simulated FOM
-                    max_fom_mjd, max_fom = self.get_max_fom(sim_lc, **params)
+                    # get the max simulated FOM within certain indices of the light curve
+                    indices = self.get_max_fom_indices(sim_lc, **params)
+                    max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
 
                     # update the corresponding row in the SimDetecTable
                     self.update_sd_row(
@@ -798,8 +860,12 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    parsed_params = parse_params(model_settings)
-    filename, mjd_colname, mag_colname, flux_colname = parse_info(model_settings)
+    #parsed_params = parse_params(model_settings)
+
+    # TODO: model should be loaded at first row
+    filename, mjd_colname, mag_colname, flux_colname = parse_info(
+        model_settings, args.model_name
+    )
     if args.model_name == GAUSSIAN_MODEL_NAME:
         sim = Gaussian()
     else:
@@ -824,8 +890,21 @@ if __name__ == "__main__":
         if not i in config["skip_control_ix"]
     ]
 
+    # model = Model(
+    #     filename=sim_config["charlie_model"]["filename"],
+    #     mjd_colname=sim_config["charlie_model"]["mjd_column_name"],
+    #     mag_colname=sim_config["charlie_model"]["mag_column_name"],
+    #     flux_colname=sim_config["charlie_model"]["flux_column_name"],
+    # )
+    # sigma = model.calculate_sigma()
+    # print(sigma)
+
+    # sys.exit()
+
     simdetec = AtlasSimDetecLoop(sigma_kerns)
-    simdetec.set_peak_mags_and_fluxes()
+    simdetec.set_peak_mags_and_fluxes(args.model_name, sim_tables_dir)
+    # print(simdetec.peak_appmags)
+    # sys.exit()
     simdetec.load_sn(
         data_dir,
         sn_info["tnsname"],
@@ -835,8 +914,13 @@ if __name__ == "__main__":
     )
     simdetec.load_sd(args.model_name, sim_tables_dir)
     simdetec.loop(sim, valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
+    sys.exit()
 
     if args.efficiencies:
         fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
-        # TODO: get time_colname from simulation_settings.json
-        simdetec.calculate_efficiencies(fom_limits, parsed_params, detec_tables_dir)
+        simdetec.calculate_efficiencies(
+            fom_limits,
+            parsed_params,
+            detec_tables_dir,
+            time_colname=model_settings["time_parameter_name"],
+        )
