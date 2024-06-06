@@ -134,17 +134,14 @@ class Gaussian(AsymmetricGaussian):
         :param peak_appmag: Peak apparent magnitude of the Gaussian.
         :param model_name: Name of the Gaussian model in the config file.
         """
-        AsymmetricGaussian.__init__(model_name=model_name, **kwargs)
+        AsymmetricGaussian.__init__(self, model_name=model_name, **kwargs)
 
-    def new(self, sigma, peak_appmag):
-        return super().new(sigma, sigma, peak_appmag)
-
-    def get_sim_flux(self, mjds, peak_appmag, sigma=None, peak_mjd=None, **kwargs):
+    def get_sim_flux(self, mjds, peak_appmag, sigma_sim=None, peak_mjd=None, **kwargs):
         return super().get_sim_flux(
             mjds,
             peak_appmag,
-            sigma_sim_plus=sigma,
-            sigma_sim_minus=sigma,
+            sigma_sim_plus=sigma_sim,
+            sigma_sim_minus=sigma_sim,
             peak_mjd=peak_mjd,
             **kwargs,
         )
@@ -822,7 +819,8 @@ class AtlasSimDetecLoop(SimDetecLoop):
                     f"\nCommencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag):0.2f} uJy)..."
                 )
 
-                # load the Simulation object
+                # load the Simulation object based on the data in the first row
+                # we assume here that every row adds the same type of model
                 sim = self.load_sim(dict(sim_detec_table.t.loc[0, :]))
 
                 for i in range(len(sim_detec_table.t)):

@@ -532,9 +532,8 @@ class DownloadLoop:
                 print(f"\nControl light curve {i}")
                 self.lcs[i] = FullLightCurve(
                     i,
-                    self.ctrl_coords.t["ra"],
-                    self.ctrl_coords.t["dec"],
-                    self.ctrl_coords.t["mjd0"],
+                    self.ctrl_coords.t.loc[i, "ra"],
+                    self.ctrl_coords.t.loc[i, "dec"],
                 )
                 self.lcs[i].download(
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd

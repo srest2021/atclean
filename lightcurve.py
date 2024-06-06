@@ -1475,7 +1475,7 @@ class FullLightCurve:
             print(
                 f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}..."
             )
-            lc.save_by_filename(filename, indices=indices, overwrite=overwrite)
+            lc.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
     def __str__(self):
         return f"Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}"
