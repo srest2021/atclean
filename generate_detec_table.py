@@ -383,15 +383,17 @@ class SimDetecTables(SimTables):
     def get_efficiency(self, sigma_kern, peak_appmag, fom_limit, **params):
         return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **params)
 
-    def save_detec_table(self, sigma_kern, peak_appmag, tables_dir):
-        self.d[sigma_kern][peak_appmag].save_detec_table(self.model_name, tables_dir)
+    def save_detec_table(self, sigma_kern, peak_appmag, detec_tables_dir):
+        self.d[sigma_kern][peak_appmag].save_detec_table(
+            self.model_name, detec_tables_dir
+        )
 
-    def save_all(self, tables_dir):
-        print(f"\nSaving SimDetecTables in directory: {tables_dir}")
-        make_dir_if_not_exists(tables_dir)
+    def save_all(self, detec_tables_dir):
+        print(f"\nSaving SimDetecTables in directory: {detec_tables_dir}")
+        make_dir_if_not_exists(detec_tables_dir)
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
-                table.save_detec_table(self.model_name, tables_dir)
+                table.save_detec_table(self.model_name, detec_tables_dir)
         print("Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir):
@@ -412,17 +414,17 @@ class SimDetecTables(SimTables):
                 )
         print("Success")
 
-    def load_all(self, tables_dir):
+    def load_all(self, detec_tables_dir):
         """
         Load existing SimDetecTables.
 
         :param sim_tables_dir: Directory where the SimDetecTables are located.
         """
-        print(f"\nLoading SimDetecTables from directory: {tables_dir}")
+        print(f"\nLoading SimDetecTables from directory: {detec_tables_dir}")
         for sigma_kern in self.sigma_kerns:
             for peak_appmag in self.peak_appmags:
                 self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
-                self.d[sigma_kern][peak_appmag].load(self.model_name, tables_dir)
+                self.d[sigma_kern][peak_appmag].load(self.model_name, detec_tables_dir)
         print("Success")
 
 
@@ -644,17 +646,29 @@ class SimDetecLoop(ABC):
         self,
         model_name=None,
         sim_tables_dir=None,
+        detec_tables_dir=None,
         **kwargs,
     ):
-        if model_name is None or sim_tables_dir is None:
+        if model_name is None or (sim_tables_dir is None and detec_tables_dir is None):
             raise RuntimeError(
-                "ERROR: Please either provide a model name and SimTable directory, or overwrite this function with your own."
+                "ERROR: Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
             )
-        self.peak_appmags = []
-        pattern = re.compile(f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt")
-        re.compile(f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt")
+        if not sim_tables_dir is None and not detec_tables_dir is None:
+            raise RuntimeError(
+                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+            )
 
-        for filename in os.listdir(sim_tables_dir):
+        self.peak_appmags = []
+        pattern = re.compile(
+            f"sim{'' if detec_tables_dir is None else 'detec'}_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
+        )
+
+        filenames = (
+            os.listdir(sim_tables_dir)
+            if detec_tables_dir is None
+            else os.listdir(detec_tables_dir)
+        )
+        for filename in filenames:
             match = pattern.match(filename)
             if match:
                 peak_appmag = float(match.group(1))
@@ -672,9 +686,21 @@ class SimDetecLoop(ABC):
         self.sn.remove_simulations()
 
     @abstractmethod
-    def load_sd(self, model_name, sim_tables_dir):
+    def load_sd(self, model_name, sim_tables_dir=None, detec_tables_dir=None):
         self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
-        self.sd.load_all_from_sim_tables(sim_tables_dir)
+        if sim_tables_dir is None and detec_tables_dir is None:
+            raise RuntimeError(
+                "ERROR: Please either provide a SimTables or SimDetecTables directory."
+            )
+        if not sim_tables_dir is None and not detec_tables_dir is None:
+            raise RuntimeError(
+                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+            )
+
+        if detec_tables_dir is None:
+            self.sd.load_all_from_sim_tables(sim_tables_dir)
+        else:
+            self.sd.load_all(detec_tables_dir)
 
     @abstractmethod
     def load_sim(
@@ -764,8 +790,10 @@ class AtlasSimDetecLoop(SimDetecLoop):
     def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
         return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
 
-    def load_sd(self, model_name, sim_tables_dir):
-        return super().load_sd(model_name, sim_tables_dir)
+    def load_sd(self, model_name, sim_tables_dir=None, detec_tables_dir=None):
+        return super().load_sd(
+            model_name, sim_tables_dir=sim_tables_dir, detec_tables_dir=detec_tables_dir
+        )
 
     def load_sim(self, data: Dict) -> Simulation:
         return super().load_sim(data)
@@ -859,18 +887,24 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
     parser.add_argument("model_name", type=str, help="name of model to use")
     parser.add_argument(
-        "-f",
-        "--config_file",
+        "-d",
+        "--detec_config_file",
         default="detection_settings.json",
         type=str,
-        help="file name of JSON file with general settings",
+        help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
     )
     parser.add_argument(
         "-f",
         "--sim_config_file",
         default="simulation_settings.json",
         type=str,
-        help="file name of JSON file with model settings",
+        help="file name of JSON file with model information and SimTable generation settings",
+    )
+    parser.add_argument(
+        "--skip_generate",
+        default=False,
+        action="store_true",
+        help="skip SimDetecTable generation and directly load them instead; use -e argument to calculate efficiencies on loaded SimDetecTables",
     )
     parser.add_argument(
         "-e",
@@ -885,7 +919,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 if __name__ == "__main__":
     args = define_args().parse_args()
-    config = load_json_config(args.config_file)
+    detec_config = load_json_config(args.detec_config_file)
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
@@ -897,21 +931,18 @@ if __name__ == "__main__":
             f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
-    sn_info = config["sn_info"]
-    data_dir = config["data_dir"]
-    sim_tables_dir = config["sim_tables_dir"]
-    detec_tables_dir = config["detec_tables_dir"]
-    sigma_kerns = [obj["sigma_kern"] for obj in config["sigma_kerns"]]
+    sn_info = detec_config["sn_info"]
+    data_dir = detec_config["data_dir"]
+    sim_tables_dir = detec_config["sim_tables_dir"]
+    detec_tables_dir = detec_config["detec_tables_dir"]
+    sigma_kerns = [obj["sigma_kern"] for obj in detec_config["sigma_kerns"]]
     valid_control_ix = [
         i
         for i in range(1, sn_info["num_controls"] + 1)
-        if not i in config["skip_control_ix"]
+        if not i in detec_config["skip_control_ix"]
     ]
 
     simdetec = AtlasSimDetecLoop(sigma_kerns)
-    simdetec.set_peak_mags_and_fluxes(
-        model_name=args.model_name, sim_tables_dir=sim_tables_dir
-    )
     simdetec.load_sn(
         data_dir,
         sn_info["tnsname"],
@@ -919,12 +950,23 @@ if __name__ == "__main__":
         sn_info["mjd_bin_size"],
         sn_info["filt"],
     )
-    simdetec.load_sd(args.model_name, sim_tables_dir)
-    simdetec.loop(valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
+
+    if args.skip_generate:
+        simdetec.set_peak_mags_and_fluxes(
+            model_name=args.model_name, detec_tables_dir=detec_tables_dir
+        )
+        simdetec.load_sd(args.model_name, detec_tables_dir=detec_tables_dir)
+    else:
+        simdetec.set_peak_mags_and_fluxes(
+            model_name=args.model_name, sim_tables_dir=sim_tables_dir
+        )
+        simdetec.load_sd(args.model_name, sim_tables_dir=sim_tables_dir)
+
+        simdetec.loop(valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
 
     if args.efficiencies:
         parsed_params = parse_params(model_settings)
-        fom_limits = [obj["fom_limits"] for obj in config["sigma_kerns"]]
+        fom_limits = [obj["fom_limits"] for obj in detec_config["sigma_kerns"]]
         simdetec.calculate_efficiencies(
             fom_limits,
             parsed_params,

@@ -22,18 +22,18 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
     parser.add_argument("model_name", type=str, help="name of model to use")
     parser.add_argument(
-        "-f",
-        "--config_file",
+        "-d",
+        "--detec_config_file",
         default="detection_settings.json",
         type=str,
-        help="file name of JSON file with general settings",
+        help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
     )
     parser.add_argument(
         "-f",
         "--sim_config_file",
         default="simulation_settings.json",
         type=str,
-        help="file name of JSON file with model settings",
+        help="file name of JSON file with model information and SimTable generation settings",
     )
     return parser
 
@@ -339,7 +339,7 @@ class SimTables:
 
 if __name__ == "__main__":
     args = define_args().parse_args()
-    config = load_json_config(args.config_file)
+    detec_config = load_json_config(args.detec_config_file)
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
@@ -366,4 +366,4 @@ if __name__ == "__main__":
         mag_colname=mag_colname,
         flux_colname=flux_colname,
     )
-    sim_tables.save_all(config["sim_tables_dir"])
+    sim_tables.save_all(detec_config["sim_tables_dir"])
