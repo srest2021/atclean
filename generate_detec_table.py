@@ -24,8 +24,9 @@ from generate_sim_table import (
     parse_params,
     GAUSSIAN_MODEL_NAME,
     ASYMMETRIC_GAUSSIAN_MODEL_NAME,
+    printProgressBar,
 )
-from lightcurve import AnotB, SimDetecLightCurve, SimDetecSupernova, Simulation
+from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
 NON_PARAM_ROWS = [
@@ -486,6 +487,8 @@ class EfficiencyTable(pdastrostatsclass):
             if param_name in all_params.keys():
                 del all_params[param_name]
 
+        print(f"\nSetting up efficiency table with columns: {all_params.keys()}")
+
         keys, values = zip(*(all_params).items())
         combinations = list(itertools.product(*values))
         self.t = pd.DataFrame(combinations, columns=keys)
@@ -532,9 +535,13 @@ class EfficiencyTable(pdastrostatsclass):
                    Each SimDetecTable corresponds to one sigma_kern x peak_appmag combination.
         :param fom_limits: Dictionary with sigma_kerns as keys and lists of FOM limits as values.
         """
+
         fom_limits = self.get_fom_limits(fom_limits)
 
-        for i in range(len(self.t)):
+        l = len(self.t)
+        print('Calculating efficiencies...')
+        printProgressBar(0, l, prefix="Progress:", suffix="Complete", length=50)
+        for i in range(l):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             peak_appmag = self.t.loc[i, "peak_appmag"]
             sim_detec_table = sd.get_table(sigma_kern, peak_appmag)
@@ -543,17 +550,19 @@ class EfficiencyTable(pdastrostatsclass):
                 params = kwargs
             else:
                 params = sim_detec_table.get_params_at_index(i, skip_params=skip_params)
-                
-            if verbose:
-                print(
-                    f"Getting efficiencies for sigma_kern {sigma_kern}, peak_mag {peak_appmag} and parameters: {params}..."
-                )
 
             for fom_limit in fom_limits[sigma_kern]:
-                efficiency = sd.get_efficiency(
-                    sigma_kern, peak_appmag, fom_limit, **params
-                )
+                try:
+                    efficiency = sd.get_efficiency(
+                        sigma_kern, peak_appmag, fom_limit, **params
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"ERROR: Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
+                    )
                 self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
+
+            printProgressBar(i + 1, l, prefix="Progress:", suffix="Complete", length=50)
 
     def get_subset(self, fom_limits: List = None, **kwargs):
         """
@@ -857,8 +866,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
     ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
         self.e.setup(skip_params=[time_colname])
-        print(self.e)
-        self.e.get_efficiencies(self.sd, fom_limits, skip_params=[time_colname])
+        self.e.get_efficiencies(
+            self.sd, fom_limits, skip_params=[time_colname], verbose=True
+        )
         self.e.save(detec_tables_dir, model_name)
 
     def loop(
