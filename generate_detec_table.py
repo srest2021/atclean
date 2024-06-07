@@ -25,7 +25,7 @@ from generate_sim_table import (
     GAUSSIAN_MODEL_NAME,
     ASYMMETRIC_GAUSSIAN_MODEL_NAME,
 )
-from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
+from lightcurve import AnotB, SimDetecLightCurve, SimDetecSupernova, Simulation
 
 
 NON_PARAM_ROWS = [
@@ -37,6 +37,9 @@ NON_PARAM_ROWS = [
     "mjd_colname",
     "mag_colname",
     "flux_colname",
+    "control_index",
+    "max_fom",
+    "max_fom_mjd",
 ]
 
 
@@ -295,10 +298,14 @@ class SimDetecTable(SimTable):
         SimTable.__init__(self, peak_appmag, **kwargs)
         self.sigma_kern = sigma_kern
 
-    def get_params_at_index(self, index) -> Dict:
+    def get_params_at_index(self, index, skip_params=None) -> Dict:
+        if skip_params is None:
+            skip_params = NON_PARAM_ROWS
+        else:
+            skip_params += NON_PARAM_ROWS
         colnames = []
         for colname in self.t.columns:
-            if not colname in NON_PARAM_ROWS:
+            if not colname in skip_params:
                 colnames.append(colname)
         return dict(self.t.loc[index, colnames])
 
@@ -514,6 +521,7 @@ class EfficiencyTable(pdastrostatsclass):
         self,
         sd: SimDetecTables,
         fom_limits: Dict[float, List[float]],
+        skip_params: List = None,
         verbose=False,
         **kwargs,
     ):
@@ -526,15 +534,16 @@ class EfficiencyTable(pdastrostatsclass):
         """
         fom_limits = self.get_fom_limits(fom_limits)
 
-        for i in range(len(self.t)):  # sd.d)):
+        for i in range(len(self.t)):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             peak_appmag = self.t.loc[i, "peak_appmag"]
+            sim_detec_table = sd.get_table(sigma_kern, peak_appmag)
 
             if kwargs:
                 params = kwargs
             else:
-                params = dict(self.t.loc[i, self.t.columns[2:]])
-
+                params = sim_detec_table.get_params_at_index(i, skip_params=skip_params)
+                
             if verbose:
                 print(
                     f"Getting efficiencies for sigma_kern {sigma_kern}, peak_mag {peak_appmag} and parameters: {params}..."
@@ -780,8 +789,8 @@ class SimDetecLoop(ABC):
         **kwargs,
     ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
-        self.e.setup()
-        self.e.get_efficiencies(self.sd, fom_limits)
+        self.e.setup(skip_params=[time_colname])
+        self.e.get_efficiencies(self.sd, fom_limits, skip_params=[time_colname])
         self.e.save(detec_tables_dir, model_name)
 
     @abstractmethod
@@ -849,7 +858,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
         self.e.setup(skip_params=[time_colname])
         print(self.e)
-        self.e.get_efficiencies(self.sd, fom_limits)
+        self.e.get_efficiencies(self.sd, fom_limits, skip_params=[time_colname])
         self.e.save(detec_tables_dir, model_name)
 
     def loop(
