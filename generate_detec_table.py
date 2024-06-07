@@ -422,9 +422,12 @@ class SimDetecTables(SimTables):
         """
         print(f"\nLoading SimDetecTables from directory: {detec_tables_dir}")
         for sigma_kern in self.sigma_kerns:
+            self.d[sigma_kern] = {}
             for peak_appmag in self.peak_appmags:
                 self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
-                self.d[sigma_kern][peak_appmag].load(self.model_name, detec_tables_dir)
+                self.d[sigma_kern][peak_appmag].load_detec_table(
+                    self.model_name, detec_tables_dir
+                )
         print("Success")
 
 
@@ -466,7 +469,7 @@ class EfficiencyTable(pdastrostatsclass):
 
         all_params = dict(
             {
-                "sigma_kerns": self.sigma_kerns,
+                "sigma_kern": self.sigma_kerns,
                 "peak_appmag": self.peak_appmags,
             },
             **self.params,
@@ -482,7 +485,7 @@ class EfficiencyTable(pdastrostatsclass):
 
         self.t["peak_flux"] = self.t["peak_appmag"].apply(lambda mag: mag2flux(mag))
 
-        col_order = ["sigma_kerns", "peak_appmag", "peak_flux"]
+        col_order = ["sigma_kern", "peak_appmag", "peak_flux"]
         other_cols = [col for col in self.t.columns if col not in col_order]
         col_order += other_cols
         self.t = self.t[col_order]
@@ -523,7 +526,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         fom_limits = self.get_fom_limits(fom_limits)
 
-        for i in range(len(sd.t)):
+        for i in range(len(self.t)):  # sd.d)):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             peak_appmag = self.t.loc[i, "peak_appmag"]
 
@@ -611,8 +614,8 @@ class EfficiencyTable(pdastrostatsclass):
 
         self.t = pd.concat([self.t, other.t], ignore_index=True)
 
-    def load(self, tables_dir, filename="efficiencies.txt"):
-        filename = f"{tables_dir}/{filename}"
+    def load(self, tables_dir, model_name):
+        filename = f"{tables_dir}/efficiencies_{model_name}.txt"
         print(f"Loading efficiency table at {filename}...")
         try:
             self.load_spacesep(filename, delim_whitespace=True)
@@ -621,8 +624,8 @@ class EfficiencyTable(pdastrostatsclass):
                 f"ERROR: Could not load efficiency table at {filename}: {str(e)}"
             )
 
-    def save(self, tables_dir, filename="efficiencies.txt"):
-        filename = f"{tables_dir}/{filename}"
+    def save(self, tables_dir, model_name):
+        filename = f"{tables_dir}/efficiencies_{model_name}.txt"
         print(f"Saving efficiency table as {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
 
@@ -658,10 +661,15 @@ class SimDetecLoop(ABC):
                 "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
-        self.peak_appmags = []
-        pattern = re.compile(
-            f"sim{'' if detec_tables_dir is None else 'detec'}_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
-        )
+        self.peak_appmags = set()
+        if detec_tables_dir is None:
+            pattern = re.compile(
+                f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
+            )
+        else:
+            pattern = re.compile(
+                f"simdetec_{re.escape(model_name)}_" + r"\d+_(\d+\.\d{2})\.txt$"
+            )
 
         filenames = (
             os.listdir(sim_tables_dir)
@@ -672,8 +680,9 @@ class SimDetecLoop(ABC):
             match = pattern.match(filename)
             if match:
                 peak_appmag = float(match.group(1))
-                self.peak_appmags.append(peak_appmag)
+                self.peak_appmags.add(peak_appmag)
 
+        self.peak_appmags = list(self.peak_appmags)
         self.peak_appmags.sort()
 
         self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
@@ -761,11 +770,19 @@ class SimDetecLoop(ABC):
         self.sd.update_row_at_index(sigma_kern, peak_appmag, index, data)
 
     @abstractmethod
-    def calculate_efficiencies(self, fom_limits, params, detec_tables_dir, **kwargs):
+    def calculate_efficiencies(
+        self,
+        fom_limits,
+        params,
+        detec_tables_dir,
+        model_name,
+        time_colname="peak_mjd",
+        **kwargs,
+    ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
         self.e.setup()
         self.e.get_efficiencies(self.sd, fom_limits)
-        self.e.save(detec_tables_dir)
+        self.e.save(detec_tables_dir, model_name)
 
     @abstractmethod
     def loop(
@@ -821,12 +838,19 @@ class AtlasSimDetecLoop(SimDetecLoop):
         )
 
     def calculate_efficiencies(
-        self, fom_limits, params, detec_tables_dir, time_colname="peak_mjd", **kwargs
+        self,
+        fom_limits,
+        params,
+        detec_tables_dir,
+        model_name,
+        time_colname="peak_mjd",
+        **kwargs,
     ):
         self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
         self.e.setup(skip_params=[time_colname])
+        print(self.e)
         self.e.get_efficiencies(self.sd, fom_limits)
-        self.e.save(detec_tables_dir)
+        self.e.save(detec_tables_dir, model_name)
 
     def loop(
         self,
@@ -971,5 +995,6 @@ if __name__ == "__main__":
             fom_limits,
             parsed_params,
             detec_tables_dir,
+            args.model_name,
             time_colname=model_settings["time_parameter_name"],
         )
