@@ -58,7 +58,7 @@ To set up a TNS bot and get an API key, login to TNS, then navigate [here](https
 
 ### `download.py`
 
-This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). To download light curves from the ATLAS server, make sure to add your ATLAS username and password to the `credentials` section in `config.ini`. 
+This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). All downloaded files will be storied in the directory specified by the `atclean_input` field in `config.ini`. Make sure to add your ATLAS username and password to the `credentials` section in `config.ini`. 
 
 This script allows the user to download a single SN or a batch of SNe, as well as their optional control light curves. 
 - To download control light curves, use the `-c` argument.
@@ -100,6 +100,10 @@ Arguments will override default config file settings if specified.
     - Type: str
     - Default: `config.ini`
     - Usage: `--config_file config.ini`
+- `-o`, `--overwrite`: If specified, existing files with the same name will be overwritten.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-o` or `--overwrite`
 - `-l`, `--lookbacktime`: Sets the lookback time in days. 
     - Type: int
     - Default: `None` (i.e., look back as far as possible)
@@ -108,10 +112,6 @@ Arguments will override default config file settings if specified.
     - Type: float
     - Default: `None`
     - Usage: `--max_mjd 59500.0`
-- `-o`, `--overwrite`: If specified, existing files with the same name will be overwritten.
-    - Type: bool
-    - Default: `False`
-    - Usage: `-o` or `--overwrite`
 - `--coords`: comma-separated RA and Dec of the SN light curve to download.
     - Type: str
     - Default: `None` (i.e., reference the SN info file or query TNS)
@@ -141,6 +141,15 @@ Arguments will override default config file settings if specified.
     - Default: `None` (i.e., use the SN location as the center of the circle pattern)
     - Usage: `--closebright 10.684,41.269`
 
+#### Filename scheme
+- All downloaded files will be storied in the directory specified by the `atclean_input` field in `config.ini`.
+- Files for a single location are separated by filter (`c` for cyan, `o` for orange).
+- Control light curves will contain the control ID in the filename. 
+- SN filenames: `[ATCLEAN_INPUT]/[TNSNAME]/[TNSNAME].[FILTER].lc.txt`
+    - Examples: `/path/to/atclean_input/2020lse/2020lse.c.lc.txt` and `/path/to/atclean_input/2020lse/2020lse.o.lc.txt`
+- Control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].lc.txt`
+    - Examples: `/path/to/atclean_input/2020lse/controls/2020lse_i001.c.lc.txt` and `/path/to/atclean_input/2020lse/controls/2020lse_i001.o.lc.txt`
+
 #### Example commands
 - Download a single SN: `./download.py 2020lse -o`
 - Download a batch of SNe: `./download.py 2020lse 2019vxm 2023ixf -o`
@@ -148,9 +157,9 @@ Arguments will override default config file settings if specified.
 - Specify SN info table: `./download.py 2020lse 2019vxm 2023ixf --sninfo_file my_custom_SN_info.txt -o`
 - Download only the last 10 days of data: `./download.py 2020lse -l 10 -o`
 - Download control light curves: `./download.py 2020lse -c -o`
-- Specify specify radius and number of control light curves: `./download.py 2020lse -c --radius 34 --num_controls 16 -o`
-- Specify control light curve coordinates `./download.py 2020lse -c --ctrl_coords /path/to/control_coordinates.txt -o`
+- Specify radius and number of control light curves: `./download.py 2020lse -c --radius 34 --num_controls 16 -o`
 - Change the center location of the control light curve circle pattern: `./download.py 2020lse -c --closebright 10:41:02.290,-27:05:00.52 -o`
+- Specify control light curve coordinates `./download.py 2020lse -c --ctrl_coords /path/to/control_coordinates_table.txt -o`
 
 ### `convert.py`
 
@@ -178,31 +187,21 @@ Arguments will override default config file settings if specified.
 
 ### `clean.py`
 
-**WIP**
-<details>
-<summary>uncert_est section (settings for true uncertainties estimation)</summary>
+All cleaned light curve files will be storied in the directory specified by the `output` field in `config.ini`.
 
-#### `uncert_est` section (settings for true uncertainties estimation in `clean.py`)
+**WIP**
+
+#### True uncertainties estimation: `uncert_est` config section in `config.ini`
 
 - `temp_x2_max_value`: A temporary, very high chi-square cut value used to eliminate the most egregious outliers from the data. This is an initial step in uncertainty estimation to ensure grossly incorrect data points are removed.
 
-</details>
-
-<details>
-<summary>uncert_cut section (settings for uncertainty cut)</summary>
-
-#### `uncert_cut` section (settings for the uncertainty cut in `clean.py`)
+#### Uncertainty cut: `uncert_cut` config section in `config.ini`
 
 - `max_value`: The maximum allowable value for the uncertainties (`duJy` column). Measurements with uncertainties above this threshold will be flagged.
 
 - `flag`: The flag value *in hex* assigned to measurements that exceed the maximum allowable uncertainty.
 
-</details>
-
-<details>
-<summary>x2_cut section (settings for chi-square cut)</summary>
-
-#### `x2_cut` section (settings for the chi-square cut in `clean.py`)
+#### PSF chi-square cut: `x2_cut` config section in `config.ini`
 
 - `max_value`: The maximum allowable value for the PSF chi-squares (`chi/N` column). Measurements with a chi-square above this threshold will be flagged.
 
@@ -220,12 +219,7 @@ We additionally calculate contamination and loss for a range of possible chi-squ
 
 - `use_pre_mjd0_lc`: If set to `True`, we use the pre-MJD0 light curve to calculate contamination and loss. If set to `False` *(recommended)*, we instead use the control light curves.
 
-</details>
-
-<details>
-<summary>controls_cut section (settings for control light curve cut)</summary>
-
-#### `controls_cut` section (settings for the control light curve cut in `clean.py`)
+#### Control light curve cut: `controls_cut` config section in `config.ini`
 
 - `bad_flag`: The flag value *in hex* assigned to measurements identified as bad. 
 
@@ -249,12 +243,7 @@ We perform a $3\sigma$-clipped average on each epoch across control light curves
 
     - `Ngood_flag`: The flag value *in hex* assigned to epochs with the number of good control measurements falling below `Ngood_min`.
 
-</details>
-
-<details>
-<summary>Custom cuts</summary>
-
-#### Custom cuts section (additional static cuts that can be applied to any column of the light curve in `clean.py`)
+#### Additional static cuts: custom cuts config section in `config.ini`
 
 Custom cuts run during cleaning allow you to define additional filtering criteria based on specific column values. We provide an example template for specifying custom cuts below. 
 
@@ -276,12 +265,7 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 
 - `flag`: The flag value *in hex* assigned to measurements that do not meet the defined criteria. Flag values of `0x1000000` and above are available for use in custom cuts.
 
-</details>
-
-<details>
-<summary>averaging section (settings for averaging and the bad day cut)</summary>
-
-#### `averaging` section (settings for averaging light curves and applying the bad day cut)
+#### Averaging light curves and the bad day cut: `averaging` config section in `config.ini`
 
 For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on the unflagged measurements in each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
 
@@ -301,9 +285,67 @@ The following criteria are used on the calculated statistics of each bin, *not t
 
 - `Ngood_min`: The threshold of good measurements for a bin. 
 
-</details>
-
 #### Arguments
+Arguments will override default config file settings if specified.
+- First provide TNS name(s) of the object(s) to download. 
+- `--sninfo_file`: Specifies the SN info file name. 
+    - Type: str
+    - Default: `None` (i.e., the `sninfo_filename` field in `config.ini`)
+    - Usage: `--sninfo_file sninfo.txt`
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+- `-o`, `--overwrite`: If specified, existing files with the same name will be overwritten.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-o` or `--overwrite`
+- `--filters`: Specifies a comma-separated list of filters to clean.
+    - Type: str
+    - Default: `None` (i.e., the `filters` field in `config.ini`)
+    - Usage: `--filters c,o`
+- `--mjd0`: The start date of the SN in MJD.
+    - Type: float
+    - Default: `None` (i.e., reference the SN info file or query TNS)
+    - Usage: `--mjd0 58800.0`
+- `-n`, `--num_controls`: The number of control light curves to clean per SN.
+    - Type: int
+    - Default: `None` (i.e., the `num_controls` field in `config.ini`)
+    - Usage: `-n 5` or `--num_controls 5`
+- `-t`, `--template_correction`: If specified, apply automatic ATLAS template change correction.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-t` or `--template_correction`
+- `-e`, `--uncert_est`: If specified, apply true uncertainty estimation.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-e` or `--uncert_est`
+- `-u`, `--uncert_cut`: If specified, apply uncertainty cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-u` or `--uncert_cut`
+- `-x`, `--x2_cut`: If specified, apply chi-square cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-x` or `--x2_cut`
+- `-c`, `--controls_cut`: If specified, apply control light curve cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-c` or `--controls_cut`
+- `-g`, `--averaging`: If specified, average light curves and cut bad days.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-g` or `--averaging`
+- `-m`, `--mjd_bin_size`: Specifies the MJD bin size in days for averaging.
+    - Type: float
+    - Default: `None` (i.e., the `mjd_bin_size` field in `config.ini`)
+    - Usage: `-m 1.0` or `--mjd_bin_size 1.0`
+- `--custom_cuts`: If specified, scan the config file for custom cuts.
+    - Type: bool
+    - Default: `False`
+    - Usage: `--custom_cuts`
+
+#### Filename scheme
 **WIP**
 
 #### Example commands
