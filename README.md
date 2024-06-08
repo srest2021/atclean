@@ -185,7 +185,7 @@ Custom cuts run during cleaning allow you to define additional filtering criteri
     flag: 0x1000000
 ```
 
-Note that the section title of the cut (in the above example, `[example_cut]`) must end in `_cut` in order to be properly parsed by `clean.py`.)
+Note that the section title of the cut (in the above example, `[example_cut]`) must end in `_cut` in order to be properly parsed by `clean.py`.
 
 - `column`: The name of the column in the data that the custom cut will be applied to.
 
@@ -193,7 +193,7 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 
 - `min_value`: The minimum allowable value for the specified column. Measurements with values falling below this threshold will be flagged. This parameter can be set to `None` if no lower limit is required.
 
-- `flag`: The flag value assigned to measurements that do not meet the defined criteria. Flag values of `0x1000000` and above are available for use in custom cuts.
+- `flag`: The flag value *in hex* assigned to measurements that do not meet the defined criteria. Flag values of `0x1000000` and above are available for use in custom cuts.
 
 </details>
 
@@ -202,6 +202,22 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 
 #### `averaging` section (settings for averaging light curves and applying the bad day cut)
 
+For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
 
+- `bad_flag`: The flag value *in hex* assigned to measurements identified as bad.
+
+- `ixclip_flag`: The flag value *in hex* assigned to bins where one or more measurements have been clipped during the $3\sigma$-clipped average.
+
+- `smallnum_flag`: The flag value *in hex* assigned to bins with 2 or less measurements in a bin.
+
+- `mjd_bin_size`: The bin size in days.
+
+The following criteria are used on the calculated statistics of each bin, *not the statistics of the individual measurements,* to identify measurements in that bin as "bad". Measurements violating *all* of the following thresholds will be flagged as "bad".
+
+- `x2_max`: The chi-square threshold for a bin. 
+
+- `Nclip_max`: The threshold of clipped measurements for a bin.
+
+- `Ngood_min`: The threshold of good measurements for a bin. 
 
 </details>
