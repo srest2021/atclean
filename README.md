@@ -6,8 +6,8 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 
 ## Table of Contents
 
-- [Python Scripts](#python-scripts)
-    - [Setup in `config.ini`](#setup-in-configini)
+<!-- - [Python Scripts](#python-scripts)
+    - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
     - [`convert.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
@@ -16,10 +16,10 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 
 - [Jupyter Notebooks](#jupyter-notebooks)
     - [`clean.ipynb`](#cleanipynb) (**WIP**): An in-depth walkthrough of our cleaning and binning process for a single SN and its control light curves. 
-    - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb): A standalone walkthrough of our ATLAS template change correction.
+    - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (**WIP**): A standalone walkthrough of our ATLAS template change correction.
     - [`simdetec_analysis.ipynb`](#simdetec_analysisipynb) (**WIP**): Part of our pre-SN outburst detection analysis. An in-depth walkthrough analysis of the generated SimDetecTables and efficiencies for a given SN and its control light curves.
 
-- [Dependencies](#dependencies)
+- [Dependencies](#dependencies) -->
 
 ## Python Scripts
 
@@ -27,10 +27,9 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 
 Open the `config.ini` file, which contains configuration for input/output directory paths, `convert.py`, `download.py`, and `clean.py`. The following toggles describe each field section by section. Bolded fields denote fields that we urge the user to change before attempting to use the scripts.
 
-<details>
-<summary>dir section</summary>
+Note that these configurations may also be overridden by command line arguments.
 
-#### `dir` section (input/output directory paths)
+#### Input/output directory paths: `dir` config section
 - `raw_input`: This parameter sets the path to the directory containing raw TESS or other non-ATLAS light curves that are not in ATClean-readable format. These files are typically in their original downloaded format and need to be processed or converted by `convert.py` before they can be used by the ATClean software.
 
 - **`atclean_input`**: This parameter specifies the path to the directory where light curves that are in ATClean-readable format are stored. These files have either been directly downloaded from the ATLAS server by `download.py` or converted from the raw format by `convert.py`.
@@ -39,31 +38,7 @@ Open the `config.ini` file, which contains configuration for input/output direct
 
 - `sninfo_filename`: This parameter provides the name of the SN info file located inside the output directory. This space-separated `.txt` file contains essential information about SNe, including the TNS name and optionally the RA, Dec, and MJD0 (MJD at which the transient begins). This file may be provided manually with the correct column names (`tnsname`, `ra`, `dec`, and `mjd0`, with blank fields denoted by `NaN`) or generated and updated automatically if TNS credentials are provided.
 
-</details>
-
-<details>
-<summary>convert section</summary>
-
-#### `convert` section (settings for `convert.py`)
-
-- `mjd_column_name`: The name of the column in the raw input data that contains MJD values.
-
-- `flux_column_name`: The name of the column in the raw input data that contains flux values.
-
-- `uncertainty_column_name`: The name of the column in the raw input data that contains flux error or uncertainty values.
-
-- `chisquare_column_name` (optional, can be set to `None`): The name of the column in the raw input data that contains chi-square values.
-
-- `filter_column_name` (optional, can be set to `None` for one filter): The name of the column in the raw input data that contains filter values.
-
-- `filters`: A comma-separated list of filters as they appear in the filter column. If only one filter is used, provide a short identifier for that filter to be used in the filenames (for example, `tess` for TESS light curves). This parameter helps in distinguishing data from different filters or surveys.
-
-</details>
-
-<details>
-<summary>credentials section (for TNS API and ATLAS server)</summary>
-
-#### `credentials` section (for TNS API and ATLAS server)
+#### Credentials for TNS API and ATLAS server: `credentials` config section
 
 ATLAS credentials:
 
@@ -81,12 +56,30 @@ TNS credentials (these are optional, but if not provided, the user must provide 
 
 To set up a TNS bot and get an API key, login to TNS, then navigate [here](https://www.wis-tns.org/bots) and click on "Add bot".
 
-</details>
+### `download.py`
 
-<details>
-<summary>download section</summary>
+This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). To download light curves from the ATLAS server, make sure to add your ATLAS username and password to the `credentials` section in `config.ini`. 
 
-#### `download` section (settings for `download.py`)
+This script allows the user to download a single SN or a batch of SNe, as well as their optional control light curves. 
+- To download control light curves, use the `-c` argument.
+- To specify the number of control light curves to download, verify that the `num_controls` field in `config.ini` is set to the correct number, or use the `--num_controls` argument. 
+- To specify the radius in arcseconds of the circle pattern of control light curves from the center location, verify that the `radius` field in `config.ini` is set to the correct number, or use the `--radius` argument. 
+
+We additionally allow the user to change the center location of the control light curve circle pattern. By default, we use the SN location. However, this location can be changed via the `--closebright` argument. 
+
+We allow the user to either specify certain RA and Dec coordinates, or to query the TNS API and automatically retrieve and save the coordinates. 
+- To manually specify RA, Dec, and MJD0 for a single SN, use the `--coords` and `--mjd0` arguments. 
+- To manually specify RA, Dec, and MJD0 for one or more SNe, you must provide a SN info file in the output directory. 
+    - The file must be space-separated and include at least the following columns: `tnsname`, `ra`, `dec`, and `mjd0`. Any blank or unknown fields should be denoted by `NaN`. 
+    - If TNS credentials are provided, the script will query TNS for any blank or unknown fields and update the SN info file with the missing information.
+- To automatically retrieve RA, Dec, and MJD0 from TNS, simply provide your credentials in `config.ini`. The SN info file will be automatically generated and maintained inside the output directory. 
+
+Lastly, we give users the chance to either specify the control light curve coordinates through a control coordinates table, or have them calculated automatically as a circle pattern.
+- To specify all control light curve coordinates, you must provide a control coordinates file name using the `--ctrl_coords` argument.  
+    - The file must be space-separated and include at least the following columns: `ra` and `dec`.
+- To automatically calculate the control light curve coordinates, simply do not use the `--ctrl_coords` argument.
+
+#### `download` config section in `config.ini`
 
 - `flux2mag_sigmalimit`: The sigma limit used when converting flux to magnitude. Magnitudes are set as limits when their uncertainties are `NaN`.
 
@@ -96,8 +89,96 @@ To set up a TNS bot and get an API key, login to TNS, then navigate [here](https
 
 - `closebright_min_dist`: The minimum distance in arcseconds from the SN location to a control light curve location. This distance is used when the center of the circle pattern is set to a nearby bright object, and helps avoid any control locations landing on top of or too close to the SN.
 
-</details>
+#### Arguments
+Arguments will override default config file settings if specified.
+- First provide TNS name(s) of the object(s) to download. 
+- `--sninfo_file`: Specifies the SN info file name. 
+    - Type: str
+    - Default: `None` (i.e., the `sninfo_filename` field in `config.ini`)
+    - Usage: `--sninfo_file sninfo.txt`
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+- `-l`, `--lookbacktime`: Sets the lookback time in days. 
+    - Type: int
+    - Default: `None` (i.e., look back as far as possible)
+    - Usage: `-l 100` or `--lookbacktime 100`
+- `--max_mjd`: Specifies the maximum MJD to download data up to.
+    - Type: float
+    - Default: `None`
+    - Usage: `--max_mjd 59500.0`
+- `-o`, `--overwrite`: If specified, existing files with the same name will be overwritten.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-o` or `--overwrite`
+- `--coords`: comma-separated RA and Dec of the SN light curve to download.
+    - Type: str
+    - Default: `None` (i.e., reference the SN info file or query TNS)
+    - Usage: `--coords 10.684,41.269`
+- `--mjd0`: The start date of the SN in MJD.
+    - Type: float
+    - Default: `None` (i.e., reference the SN info file or query TNS)
+    - Usage: `--mjd0 58800.0`
+- `-c`, `--controls`: If specified, control light curves will be downloaded in addition to the SN light curve.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-c` or `--controls`
+- `-n`, `--num_controls`: The number of control light curves to download per SN.
+    - Type: int
+    - Default: `None` (i.e., the `num_controls` field in `config.ini`)
+    - Usage: `-n 5` or `--num_controls 5`
+- `-r`, `--radius`: The radius of the control light curve circle pattern around the center location (by default the SN location), in arcseconds.
+    - Type: float
+    - Default: `None`
+    - Usage: `-r 20.0` or `--radius 20.0`
+- `--ctrl_coords`: Specifies the file name of the control coordinates table.
+    - Type: str
+    - Default: `None` (i.e., calculate the coordinates of each control light curve)
+    - Usage: `--ctrl_coords ctrl_coords.txt`
+- `--closebright`: Comma-separated RA and Dec of a nearby bright object interfering with the SN light curve. This object becomes the center of the control light curve circle pattern.
+    - Type: str
+    - Default: `None` (i.e., use the SN location as the center of the circle pattern)
+    - Usage: `--closebright 10.684,41.269`
 
+#### Example commands
+- Download a single SN: `./download.py 2020lse -o`
+- Download a batch of SNe: `./download.py 2020lse 2019vxm 2023ixf -o`
+- Specify coordinates and MJD0: `./download.py 2020lse --coords 10:41:02.190,-27:05:00.42 --mjd0 58985.264 -o`
+- Specify SN info table: `./download.py 2020lse 2019vxm 2023ixf --sninfo_file my_custom_SN_info.txt -o`
+- Download only the last 10 days of data: `./download.py 2020lse -l 10 -o`
+- Download control light curves: `./download.py 2020lse -c -o`
+- Specify specify radius and number of control light curves: `./download.py 2020lse -c --radius 34 --num_controls 16 -o`
+- Specify control light curve coordinates `./download.py 2020lse -c --ctrl_coords /path/to/control_coordinates.txt -o`
+- Change the center location of the control light curve circle pattern: `./download.py 2020lse -c --closebright 10:41:02.290,-27:05:00.52 -o`
+
+### `convert.py`
+
+**WIP**
+
+#### `convert` config section in `config.ini`
+
+- `mjd_column_name`: The name of the column in the raw input data that contains MJD values.
+
+- `flux_column_name`: The name of the column in the raw input data that contains flux values.
+
+- `uncertainty_column_name`: The name of the column in the raw input data that contains flux error or uncertainty values.
+
+- `chisquare_column_name` (optional, can be set to `None`): The name of the column in the raw input data that contains chi-square values.
+
+- `filter_column_name` (optional, can be set to `None` for one filter): The name of the column in the raw input data that contains filter values.
+
+- `filters`: A comma-separated list of filters as they appear in the filter column. If only one filter is used, provide a short identifier for that filter to be used in the filenames (for example, `tess` for TESS light curves). This parameter helps in distinguishing data from different filters or surveys.
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+### `clean.py`
+
+**WIP**
 <details>
 <summary>uncert_est section (settings for true uncertainties estimation)</summary>
 
@@ -222,32 +303,6 @@ The following criteria are used on the calculated statistics of each bin, *not t
 
 </details>
 
-### `download.py`
-
-This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN).
-
-**WIP**
-
-#### Arguments
-**WIP**
-
-#### Example commands
-**WIP**
-
-### `convert.py`
-
-**WIP**
-
-#### Arguments
-**WIP**
-
-#### Example commands
-**WIP**
-
-### `clean.py`
-
-**WIP**
-
 #### Arguments
 **WIP**
 
@@ -258,6 +313,9 @@ This script allows you to download ATLAS light curve(s) using [ATLAS's REST API]
 
 **WIP**
 
+#### Configuration file: `simulation_settings.json`
+**WIP**
+
 #### Arguments
 **WIP**
 
@@ -266,6 +324,9 @@ This script allows you to download ATLAS light curve(s) using [ATLAS's REST API]
 
 ### `generate_detec_tables.py`
 
+**WIP**
+
+#### Configuration file: `detection_settings.json`
 **WIP**
 
 #### Arguments
