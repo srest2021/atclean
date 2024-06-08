@@ -202,13 +202,13 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 
 #### `averaging` section (settings for averaging light curves and applying the bad day cut)
 
-For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
+For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on the unflagged measurements in each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
 
-- `bad_flag`: The flag value *in hex* assigned to measurements identified as bad.
+- `bad_flag`: The flag value *in hex* assigned to measurements identified as "bad".
 
 - `ixclip_flag`: The flag value *in hex* assigned to bins where one or more measurements have been clipped during the $3\sigma$-clipped average.
 
-- `smallnum_flag`: The flag value *in hex* assigned to bins with 2 or less measurements in a bin.
+- `smallnum_flag`: The flag value *in hex* assigned to bins with 2 or less unflagged measurements in a bin. 
 
 - `mjd_bin_size`: The bin size in days.
 
@@ -221,3 +221,88 @@ The following criteria are used on the calculated statistics of each bin, *not t
 - `Ngood_min`: The threshold of good measurements for a bin. 
 
 </details>
+
+### `download.py`
+
+This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN).
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+### `convert.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+### `clean.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+### `generate_sim_tables.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+### `generate_detec_tables.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+**WIP**
+
+## Jupyter Notebooks
+
+### `clean.ipynb`
+**WIP**
+
+### `atlas_lc_template_correction.ipynb`
+**WIP**
+
+### `simdetec_analysis.ipynb`
+**WIP**
+
+## Dependencies
+- Python 3.11.6 or higher
+- typing
+- os
+- sys
+- requests
+- argparse
+- configparser
+- math
+- pandas
+- numpy
+- getpass
+- astropy
+- abc
+- re
+- time
+- json
+- io
+- copy
+- itertools
+- scipy
