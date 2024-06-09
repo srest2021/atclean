@@ -193,9 +193,13 @@ All cleaned light curve files will be storied in the directory specified by the 
 
 #### True uncertainties estimation: `uncert_est` config section in `config.ini`
 
+We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section. To read more about how we calculate the true uncertainties, please refer to Section 3.1.2 of our paper (link at the top of this documentation).
+
 - `temp_x2_max_value`: A temporary, very high chi-square cut value used to eliminate the most egregious outliers from the data. This is an initial step in uncertainty estimation to ensure grossly incorrect data points are removed.
 
 #### Uncertainty cut: `uncert_cut` config section in `config.ini`
+
+The uncertainty cut flags any measurements with $\delta \mu \text{Jy}$ > `max_value` (currently set to a default value of 160, or the the typical uncertainty of bright stars just below the saturation limit). 
 
 - `max_value`: The maximum allowable value for the uncertainties (`duJy` column). Measurements with uncertainties above this threshold will be flagged.
 
@@ -203,11 +207,13 @@ All cleaned light curve files will be storied in the directory specified by the 
 
 #### PSF chi-square cut: `x2_cut` config section in `config.ini`
 
+The PSF chi-square cut flags any measurements with $\chi^2_\text{PSF}$ > `max_value`.
+
 - `max_value`: The maximum allowable value for the PSF chi-squares (`chi/N` column). Measurements with a chi-square above this threshold will be flagged.
 
 - `flag`: The flag value *in hex* assigned to measurements that exceed the maximum allowable chi-square.
 
-We additionally calculate contamination and loss for a range of possible chi-square cuts in order to examine the effectiveness of the chosen cut:
+We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to analyze the effectiveness of a given PSF chi-square cut for the target SN, with $|\frac{\text{flux}}{\text{dflux}}|$ as the deciding factor of what constitutes a good measurement vs. a bad measurement. We calculate contamination and loss for a range of possible chi-square cuts in order to examine the relative effectiveness of the chosen cut:
 
 - `stn_bound`: $|\frac{\text{flux}}{\text{dflux}}|$ bound that determines a "good" measurement vs. "bad" measurement.
 
@@ -219,13 +225,23 @@ We additionally calculate contamination and loss for a range of possible chi-squ
 
 - `use_pre_mjd0_lc`: If set to `True`, we use the pre-MJD0 light curve to calculate contamination and loss. If set to `False` *(recommended)*, we instead use the control light curves.
 
+To read more about how we calculate contamination and loss, please refer to Section 3.1.3 of our paper (link at the top of this documentation).
+
+<strong>Warning:</strong> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and change `max_value` if needed.
+
 #### Control light curve cut: `controls_cut` config section in `config.ini`
+
+The control light curve cut uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. 
+
+Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
+
+We perform a $3\sigma$-clipped average on each epoch across control light curves. Then, based on the calculated statistics of each epoch, we either flag that epoch as "bad" or "questionable" across the SN and control light curves, or leave it unflagged.
 
 - `bad_flag`: The flag value *in hex* assigned to measurements identified as bad. 
 
 - `questionable_flag`: The flag value *in hex* assigned to measurements identified as questionable.
 
-We perform a $3\sigma$-clipped average on each epoch across control light curves. The following criteria are used on the calculated statistics of each epoch, *not the statistics of the individual measurements,* to identify SN measurements in that epoch as "bad" or "questionable". Measurements violating *all* of the following thresholds will be flagged as "bad".
+The following criteria are used on the calculated statistics of each epoch, *not the statistics of the individual measurements,* to identify SN measurements in that epoch as "bad" or "questionable". Measurements violating *all* of the following thresholds will be flagged as "bad".
 
 - `x2_max`: The chi-square threshold for an epoch.
 
@@ -242,6 +258,8 @@ We perform a $3\sigma$-clipped average on each epoch across control light curves
 - `Ngood_min`: The threshold of good control measurements for an epoch. 
 
     - `Ngood_flag`: The flag value *in hex* assigned to epochs with the number of good control measurements falling below `Ngood_min`.
+
+To read more about how we determine which epochs are "bad" or "questionable", please refer to Section 3.1.4 of our paper (link at the top of this documentation).
 
 #### Additional static cuts: custom cuts config section in `config.ini`
 
@@ -267,7 +285,7 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 
 #### Averaging light curves and the bad day cut: `averaging` config section in `config.ini`
 
-For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on the unflagged measurements in each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
+Our goal with the averaging procedure is to identify and cut out bad days. For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on the unflagged measurements in each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
 
 - `bad_flag`: The flag value *in hex* assigned to measurements identified as "bad".
 
@@ -284,6 +302,8 @@ The following criteria are used on the calculated statistics of each bin, *not t
 - `Nclip_max`: The threshold of clipped measurements for a bin.
 
 - `Ngood_min`: The threshold of good measurements for a bin. 
+
+To read more about how we determine which bins are "bad", please refer to Section 3.3 of our paper (link at the top of this documentation).
 
 #### Arguments
 Arguments will override default config file settings if specified.
