@@ -2,13 +2,12 @@
 
 from abc import ABC, abstractmethod
 import itertools
-import math
 import os
 import random
 import argparse, re
 from copy import deepcopy
 import sys
-from typing import Dict, List, Self, Tuple
+from typing import Dict, List, Self
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -408,9 +407,10 @@ class SimDetecTable(SimTable):
         return efficiency
 
 
-class SimDetecTables(SimTables):
+class SimDetecTables:
     def __init__(self, peak_appmags: List, model_name: str, sigma_kerns: List):
-        SimTables.__init__(self, peak_appmags, model_name)
+        self.peak_appmags = [round(peak_appmag, 2) for peak_appmag in peak_appmags]
+        self.model_name = model_name
         self.sigma_kerns: List = sigma_kerns
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 

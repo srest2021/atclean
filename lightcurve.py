@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Dict, Type, Any
+from typing import Dict, Any
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -1700,7 +1700,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         :param sim: The Simulation to add.
         :param peak_appmag: The desired peak apparent magnitude of the Simulation to add.
-        :param cur_sigma_kern: The current kernel size of the rolling sum.
+        :param cur_sigma_kern: The current sigma of the rolling sum.
         :param flag: The flag value by which to filter out any flagged bins.
         :param remove_old: Remove any old simulations before adding the simulated flux.
         """
