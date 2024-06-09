@@ -187,15 +187,17 @@ Arguments will override default config file settings if specified.
 
 ### `clean.py`
 
-All cleaned light curve files will be storied in the directory specified by the `output` field in `config.ini`.
+This script allows you to run a series of customized cuts and binning on ATClean-readable files located in directory specified by the  `atclean_input` field in `config.ini`. All cleaned and/or binned light curve files will be storied in the directory specified by the `output` field in `config.ini`.
 
-**WIP**
+Configuration for each cut, as well as an option to add custom cuts for other columns, is located in `config.ini`. Arguments are used to determine which cuts are actually applied.
 
 #### True uncertainties estimation: `uncert_est` config section in `config.ini`
 
-We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section. To read more about how we calculate the true uncertainties, please refer to Section 3.1.2 of our paper (link at the top of this documentation).
+We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section.
 
 - `temp_x2_max_value`: A temporary, very high chi-square cut value used to eliminate the most egregious outliers from the data. This is an initial step in uncertainty estimation to ensure grossly incorrect data points are removed.
+
+To read more about how we calculate the true uncertainties, please refer to Section 3.1.2 of our paper (link at the top of this documentation).
 
 #### Uncertainty cut: `uncert_cut` config section in `config.ini`
 
@@ -358,7 +360,7 @@ Arguments will override default config file settings if specified.
     - Usage: `-g` or `--averaging`
 - `-m`, `--mjd_bin_size`: Specifies the MJD bin size in days for averaging.
     - Type: float
-    - Default: `None` (i.e., the `mjd_bin_size` field in `config.ini`)
+    - Default: `None` (i.e., the `mjd_bin_size` field in `config.ini` if needed)
     - Usage: `-m 1.0` or `--mjd_bin_size 1.0`
 - `--custom_cuts`: If specified, scan the config file for custom cuts.
     - Type: bool
@@ -366,10 +368,24 @@ Arguments will override default config file settings if specified.
     - Usage: `--custom_cuts`
 
 #### Filename scheme
-**WIP**
+- All cleaned files will be storied in the directory specified by the `output` field in `config.ini`.
+- We denote the "cleaned" status of a non-binned file by adding a "clean" suffix to the original filename.
+    - SN filenames: `[ATCLEAN_INPUT]/[TNSNAME]/[TNSNAME].[FILTER].clean.lc.txt`
+        - Examples: `/path/to/atclean_input/2020lse/2020lse.c.clean.lc.txt` and `/path/to/atclean_input/2020lse/2020lse.o.clean.lc.txt`
+    - Control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].clean.lc.txt`
+        - Examples: `/path/to/atclean_input/2020lse/controls/2020lse_i001.c.clean.lc.txt` and `/path/to/atclean_input/2020lse/controls/2020lse_i001.o.clean.lc.txt`
+- We denote binned light curves by adding the MJD bin size to the original filename.
+    - SN filenames: `[ATCLEAN_INPUT]/[TNSNAME]/[TNSNAME].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
+        - Examples: `/path/to/atclean_input/2020lse/2020lse.c.1.00days.lc.txt` and `/path/to/atclean_input/2020lse/2020lse.o.1.00days.lc.txt`
+    - Control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
+        - Examples: `/path/to/atclean_input/2020lse/controls/2020lse_i001.c.1.00days.lc.txt` and `/path/to/atclean_input/2020lse/controls/2020lse_i001.o.1.00days.lc.txt`
 
 #### Example commands
-**WIP**
+- Apply the uncertainty cut to a single SN and its control light curves: `./clean.py 2020lse -u -o`
+- Specify the number of control light curves to clean (can be 0): `./clean.py 2020lse -u --num_controls 5 -o`
+- Apply all custom cuts listed in `config.ini`: `./clean.py 2020lse --custom_cuts -o`
+- Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`: `./clean.py 2020lse -u -e -x -c --custom_cuts -o`
+- Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`, then bin the light curves and apply the bad day cut: `./clean.py 2020lse -u -e -x -c -g --custom_cuts -o`
 
 ### `generate_sim_tables.py`
 
