@@ -6,7 +6,7 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 
 ## Table of Contents
 
-<!-- - [Python Scripts](#python-scripts)
+- [Python Scripts](#python-scripts)
     - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
     - [`convert.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve into an ATClean-readable format, so that it may be run through any of the following scripts.
@@ -19,7 +19,7 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
     - [`atlas_lc_template_correction.ipynb`](#atlas_lc_template_correctionipynb) (**WIP**): A standalone walkthrough of our ATLAS template change correction.
     - [`simdetec_analysis.ipynb`](#simdetec_analysisipynb) (**WIP**): Part of our pre-SN outburst detection analysis. An in-depth walkthrough analysis of the generated SimDetecTables and efficiencies for a given SN and its control light curves.
 
-- [Dependencies](#dependencies) -->
+- [Dependencies](#dependencies)
 
 ## Python Scripts
 
@@ -375,9 +375,9 @@ Arguments will override default config file settings if specified.
     - Control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].clean.lc.txt`
         - Examples: `/path/to/atclean_input/2020lse/controls/2020lse_i001.c.clean.lc.txt` and `/path/to/atclean_input/2020lse/controls/2020lse_i001.o.clean.lc.txt`
 - We denote binned light curves by adding the MJD bin size to the original filename.
-    - SN filenames: `[ATCLEAN_INPUT]/[TNSNAME]/[TNSNAME].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
+    - Binned SN filenames: `[ATCLEAN_INPUT]/[TNSNAME]/[TNSNAME].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
         - Examples: `/path/to/atclean_input/2020lse/2020lse.c.1.00days.lc.txt` and `/path/to/atclean_input/2020lse/2020lse.o.1.00days.lc.txt`
-    - Control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
+    - Binned control filenames: `[ATCLEAN_INPUT]/[TNSNAME]/controls/[TNSNAME]_i[CONTROL_INDEX].[FILTER].[MJD_BIN_SIZE]days.lc.txt`
         - Examples: `/path/to/atclean_input/2020lse/controls/2020lse_i001.c.1.00days.lc.txt` and `/path/to/atclean_input/2020lse/controls/2020lse_i001.o.1.00days.lc.txt`
 
 #### Example commands

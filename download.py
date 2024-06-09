@@ -21,6 +21,19 @@ from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from lightcurve import Coordinates, SnInfoTable, FullLightCurve
 
+CTRL_COORDINATES_COLNAMES = [
+    "tnsname",
+    "control_index",
+    "ra",
+    "dec",
+    "ra_offset",
+    "dec_offset",
+    "radius_arcsec",
+    "n_detec",
+    "n_detec_c",
+    "n_detec_o",
+]
+
 """
 UTILITY
 """
@@ -71,6 +84,10 @@ class ControlCoordinatesTable:
 
         self.num_controls = len(self.t)
         self.t["control_index"] = range(1, self.num_controls + 1)
+
+        for colname in CTRL_COORDINATES_COLNAMES:
+            if not colname in self.t.columns:
+                self.t[colname] = np.full(len(self.t), np.nan)
 
         with pd.option_context("display.float_format", "{:,.8f}".format):
             print(
@@ -297,7 +314,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="comma-separated RA and Dec of SN light curve to download",
     )
     parser.add_argument(
-        "--mjd0", type=str, default=None, help="transient start date in MJD"
+        "--mjd0", type=float, default=None, help="transient start date in MJD"
     )
 
     # for control light curves
@@ -326,7 +343,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--ctrl_coords",
         type=str,
         default=None,
-        help="file name of text file in atclean_input containing table of control light curve coordinates",
+        help="file name of text file containing table of control light curve coordinates",
     )
     # for downloading single SN with control light curves only
     parser.add_argument(

@@ -18,7 +18,7 @@ SIM_TABLE_REQUIRED_COLUMNS = ["model_name", "filename"]
 
 # print iterations progress
 # from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
-def printProgressBar(
+def print_progress_bar(
     iteration,
     total,
     prefix="",

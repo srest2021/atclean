@@ -116,9 +116,13 @@ def get_filename(
 
 def query_tns(tnsname, api_key, tns_id, bot_name):
     if tns_id == "None" or bot_name == "None":
-        raise RuntimeError(
-            "ERROR: Cannot query TNS without TNS ID and bot name. Please specify these parameters in settings.ini."
+        # raise RuntimeError(
+        #     "ERROR: Cannot query TNS without TNS ID and bot name. Please specify these parameters in settings.ini."
+        # )
+        print(
+            "WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
         )
+        return None
 
     try:
         url = "https://www.wis-tns.org/api/get/object"
@@ -561,6 +565,9 @@ class Supernova:
         if self.coords.is_empty() or self.mjd0 is None:
             print(f"\nQuerying TNS for {self.tnsname} data...")
             json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
+            if json_data is None:
+                print(f"Skipping...")
+                return
 
             if self.coords.is_empty():
                 self.coords = get_tns_coords_from_json(json_data)
@@ -1386,6 +1393,9 @@ class FullLightCurve:
         if self.coords.is_empty() or self.mjd0 is None or np.isnan(self.mjd0):
             print("Querying TNS for RA, Dec, and discovery date...")
             json_data = query_tns(tnsname, api_key, tns_id, bot_name)
+            if json_data is None:
+                print(f"Skipping...")
+                return
 
             if self.coords.is_empty():
                 self.coords = Coordinates(

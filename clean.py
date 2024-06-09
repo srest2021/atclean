@@ -841,7 +841,11 @@ def parse_config_cuts(args, config):
 
     if args.averaging:
         params = {
-            "mjd_bin_size": float(config["averaging"]["mjd_bin_size"]),
+            "mjd_bin_size": (
+                float(config["averaging"]["mjd_bin_size"])
+                if args.mjd_bin_size is None
+                else args.args.mjd_bin_size
+            ),
             "x2_max": float(config["averaging"]["x2_max"]),
             "Nclip_max": int(config["averaging"]["Nclip_max"]),
             "Ngood_min": int(config["averaging"]["Ngood_min"]),
