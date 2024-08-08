@@ -442,7 +442,7 @@ class DownloadLoop:
                     end="",
                 )
                 if args.closebright:
-                    print(f'with radius of {self.ctrl_coords.radius}" from center')
+                    print(f' with radius of {self.ctrl_coords.radius}" from center')
         elif args.ctrl_coords or args.closebright or args.num_controls or args.radius:
             raise RuntimeError(
                 "ERROR: Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
@@ -546,17 +546,18 @@ class DownloadLoop:
         if args.controls:
             # download control light curves
             for i in range(1, len(self.ctrl_coords.t)):
-                print(f"\nControl light curve {i}")
-                self.lcs[i] = FullLightCurve(
-                    i,
+                control_index = self.ctrl_coords.t.loc[i,'control_index']
+                print(f"\nControl light curve {control_index}")
+                self.lcs[control_index] = FullLightCurve(
+                    control_index,
                     self.ctrl_coords.t.loc[i, "ra"],
                     self.ctrl_coords.t.loc[i, "dec"],
                 )
-                self.lcs[i].download(
+                self.lcs[control_index].download(
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
                 )
-                self.lcs[i].save(self.input_dir, tnsname, overwrite=args.overwrite)
-                self.ctrl_coords.update_row(i, self.lcs[i])
+                self.lcs[control_index].save(self.input_dir, tnsname, overwrite=args.overwrite)
+                self.ctrl_coords.update_row(control_index, self.lcs[control_index])
 
             # save control coordinates table
             self.ctrl_coords.save(self.input_dir, tnsname=tnsname)
