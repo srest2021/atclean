@@ -716,7 +716,7 @@ class CleanLoop:
                 self.output_dir, tnsname, cut_list, num_controls=num_controls
             )
 
-            if mjd0 is None and cut_list.get("x2_cut").params["use_pre_MJD0_lc"]:
+            if mjd0 is None and cut_list.get("x2_cut").params["use_pre_mjd0_lc"]:
                 _, sninfo_row = self.sninfo.get_row(tnsname)
                 if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
                     # get MJD0 from SN info table
