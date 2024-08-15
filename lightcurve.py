@@ -741,6 +741,7 @@ class Supernova:
         duJy = np.full((self.num_controls, len_mjd), np.nan)
         Mask = np.full((self.num_controls, len_mjd), 0, dtype=np.int32)
 
+        i = 1
         for control_index in self.get_control_indices():
             if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(
                 self.lcs[0].t["MJD"], self.lcs[control_index].t["MJD"]
@@ -749,11 +750,13 @@ class Supernova:
                     f"ERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds()."
                 )
             else:
-                uJy[control_index - 1, :] = self.lcs[control_index].t["uJy"]
-                duJy[control_index - 1, :] = self.lcs[control_index].t[
+                uJy[i - 1, :] = self.lcs[control_index].t["uJy"]
+                duJy[i - 1, :] = self.lcs[control_index].t[
                     self.lcs[control_index].dflux_colname
                 ]
-                Mask[control_index - 1, :] = self.lcs[control_index].t["Mask"]
+                Mask[i - 1, :] = self.lcs[control_index].t["Mask"]
+
+            i += 1
 
         c2_param2columnmapping = self.lcs[0].intializecols4statparams(
             prefix="c2_", format4outvals="{:.2f}", skipparams=["converged", "i"]
@@ -898,7 +901,7 @@ class Supernova:
                     self.num_controls += 1
                 except:
                     print(
-                        f"Could not load {control_index} control light curve; skipping..."
+                        f"Could not load control light curve #{control_index}; skipping..."
                     )
                     del self.lcs[control_index]
         print(
@@ -907,7 +910,8 @@ class Supernova:
 
     def get_all_indices(self):
         if not self.all_indices:
-            self.all_indices = list(self.lcs.keys()).sort()
+            self.all_indices = list(self.lcs.keys())
+            self.all_indices.sort()
         return self.all_indices
 
     def get_control_indices(self):
@@ -982,7 +986,7 @@ class AveragedSupernova(Supernova):
                     self.num_controls += 1
                 except:
                     print(
-                        f"Could not load {control_index} control light curve; skipping..."
+                        f"Could not load control light curve #{control_index}; skipping..."
                     )
                     del self.avg_lcs[control_index]
         print("Success")
@@ -1000,7 +1004,8 @@ class AveragedSupernova(Supernova):
 
     def get_all_indices(self):
         if not self.all_indices:
-            self.all_indices = list(self.lcs.keys()).sort()
+            self.all_indices = list(self.lcs.keys())
+            self.all_indices.sort()
         return self.all_indices
 
     def get_control_indices(self):
@@ -1129,7 +1134,7 @@ class LightCurve(pdastrostatsclass):
         if self.control_index == 0:
             print(f"Now averaging SN light curve...")
         else:
-            print(f"Now averaging control light curve {self.control_index:03d}...")
+            print(f"Now averaging control light curve {self.control_index}...")
 
         mjd = int(np.amin(self.t["MJD"]))
         mjd_max = int(np.amax(self.t["MJD"])) + 1
