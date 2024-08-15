@@ -437,7 +437,6 @@ class CleanLoop:
 
     def apply_template_correction(self):
         print(f"\nApplying ATLAS template change correction:")
-        # TODO
         # TODO: add_template_correction_section
 
     def check_uncert_est(self, cut: Cut, apply_function: Callable):

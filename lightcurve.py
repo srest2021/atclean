@@ -546,12 +546,15 @@ class Supernova:
         filt="o",
     ):
         self.tnsname = tnsname
-        self.num_controls = 0
         self.coords: Coordinates = Coordinates(ra, dec)
         self.mjd0 = mjd0
         self.filt = filt
 
         self.lcs: Dict[int, LightCurve] = {}
+
+        self.num_controls = 0
+        self.all_indices = None
+        self.control_indices = None
 
     def get(self, control_index=0):
         try:
@@ -589,7 +592,7 @@ class Supernova:
 
         sn_sorted_mjd = self.lcs[0].t["MJD"].to_numpy()
 
-        for control_index in range(1, self.num_controls + 1):
+        for control_index in self.get_control_indices():
             # sort by MJD
             self.lcs[control_index].t.sort_values(
                 by=["MJD"], ignore_index=True, inplace=True
@@ -641,7 +644,7 @@ class Supernova:
                 'Adding blank "Mask" columns, replacing infs with NaNs, and calculating flux/dflux...'
             )
 
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             # add blank 'Mask' column
             self.lcs[control_index].t["Mask"] = 0
             # remove rows with duJy=0 or uJy=NaN
@@ -658,7 +661,7 @@ class Supernova:
             raise RuntimeError(f"ERROR: Cannot directly apply the following cut: {cut}")
 
         sn_percent_cut = None
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             percent_cut = self.lcs[control_index].apply_cut(
                 cut.column, cut.flag, min_value=cut.min_value, max_value=cut.max_value
             )
@@ -674,10 +677,10 @@ class Supernova:
         stats = pd.DataFrame(
             columns=["control_index", "median_dflux", "stdev", "sigma_extra"]
         )
-        stats["control_index"] = list(range(1, self.num_controls + 1))
+        stats["control_index"] = self.get_control_indices()
         stats.set_index("control_index", inplace=True)
 
-        for control_index in range(1, self.num_controls + 1):
+        for control_index in self.get_control_indices():
             dflux_clean_ix = self.lcs[control_index].ix_unmasked(
                 "Mask", maskval=cut.params["uncert_cut_flag"]
             )
@@ -715,7 +718,7 @@ class Supernova:
         return stats
 
     def add_noise_to_dflux(self, sigma_extra):
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.lcs[control_index].add_noise_to_dflux(sigma_extra)
 
     def get_all_controls(self):
@@ -738,7 +741,7 @@ class Supernova:
         duJy = np.full((self.num_controls, len_mjd), np.nan)
         Mask = np.full((self.num_controls, len_mjd), 0, dtype=np.int32)
 
-        for control_index in range(1, self.num_controls + 1):
+        for control_index in self.get_control_indices():
             if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(
                 self.lcs[0].t["MJD"], self.lcs[control_index].t["MJD"]
             ):
@@ -797,7 +800,7 @@ class Supernova:
             ),
         )
         flags_to_copy = np.bitwise_and(self.lcs[0].t["Mask"], flags_arr)
-        for control_index in range(1, self.num_controls + 1):
+        for control_index in self.get_control_indices():
             self.lcs[control_index].copy_flags(flags_to_copy)
 
         # self.drop_extra_columns()
@@ -848,7 +851,7 @@ class Supernova:
             tnsname=self.tnsname, mjd0=self.mjd0, filt=self.filt, mjdbinsize=mjdbinsize
         )
         avg_sn.num_controls = self.num_controls
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             avg_sn.set_avg_lc(
                 self.lcs[control_index].average(
                     cut,
@@ -873,7 +876,7 @@ class Supernova:
         return avg_sn, percent_cut
 
     def drop_extra_columns(self):
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.lcs[control_index].drop_extra_columns()
 
     def load(self, input_dir, control_index=0):
@@ -884,21 +887,42 @@ class Supernova:
 
     def load_all(self, input_dir, num_controls=0):
         self.lcs = {}
-        self.num_controls = num_controls
-        print(
-            f"\nLoading SN light curve and {self.num_controls} control light curves..."
-        )
+        self.num_controls = 0
+
+        print(f"\nLoading SN light curve and {num_controls} control light curves...")
         self.load(input_dir)
         if num_controls > 0:
             for control_index in range(1, num_controls + 1):
-                self.load(input_dir, control_index=control_index)
-        print("Success")
+                try:
+                    self.load(input_dir, control_index=control_index)
+                    self.num_controls += 1
+                except:
+                    print(
+                        f"Could not load {control_index} control light curve; skipping..."
+                    )
+                    del self.lcs[control_index]
+        print(
+            f"Successfully loaded SN light curve and {self.num_controls} control light curves"
+        )
+
+    def get_all_indices(self):
+        if not self.all_indices:
+            self.all_indices = list(self.lcs.keys()).sort()
+        return self.all_indices
+
+    def get_control_indices(self):
+        if not self.control_indices:
+            self.control_indices = list(self.lcs.keys())
+            if 0 in self.control_indices:
+                self.control_indices.remove(0)
+            self.control_indices.sort()
+        return self.control_indices
 
     def save_all(self, output_dir, overwrite=False, cleaned=True):
         print(
             f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...'
         )
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.lcs[control_index].drop_extra_columns()
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
@@ -946,26 +970,46 @@ class AveragedSupernova(Supernova):
 
     def load_all(self, input_dir, num_controls=0):
         self.avg_lcs = {}
-        self.num_controls = num_controls
+        self.num_controls = 0
         print(
-            f"\nLoading averaged SN light curve and {self.num_controls} averaged control light curves..."
+            f"\nLoading averaged SN light curve and {num_controls} averaged control light curves..."
         )
         self.load(input_dir)
         if num_controls > 0:
             for control_index in range(1, num_controls + 1):
-                self.load(input_dir, control_index=control_index)
+                try:
+                    self.load(input_dir, control_index=control_index)
+                    self.num_controls += 1
+                except:
+                    print(
+                        f"Could not load {control_index} control light curve; skipping..."
+                    )
+                    del self.avg_lcs[control_index]
         print("Success")
 
     def save_all(self, output_dir, overwrite=False):
         print(
             f"\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves..."
         )
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.avg_lcs[control_index].drop_extra_columns()
             self.avg_lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
         print("Success")
+
+    def get_all_indices(self):
+        if not self.all_indices:
+            self.all_indices = list(self.lcs.keys()).sort()
+        return self.all_indices
+
+    def get_control_indices(self):
+        if not self.control_indices:
+            self.control_indices = list(self.lcs.keys())
+            if 0 in self.control_indices:
+                self.control_indices.remove(0)
+            self.control_indices.sort()
+        return self.control_indices
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -1528,15 +1572,15 @@ class SimDetecSupernova(AveragedSupernova):
         self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
 
     def apply_rolling_sums(self, sigma_kern: float, flag=0x800000):
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
 
     def remove_rolling_sums(self):
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.avg_lcs[control_index].remove_rolling_sum()
 
     def remove_simulations(self):
-        for control_index in range(self.num_controls + 1):
+        for control_index in self.get_all_indices():
             self.avg_lcs[control_index].remove_simulations()
 
     def load(self, input_dir, control_index=0):

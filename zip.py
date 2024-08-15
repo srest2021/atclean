@@ -2,7 +2,7 @@
 """
 @author: Sofia Rest
 
-Zip all converted/download/cleaned light curves of one or more SNe into a single or multiple files.
+Zip all converted/download/cleaned light curves of one or more SNe into a single file or multiple files.
 """
 
 import argparse

@@ -104,9 +104,9 @@ class ControlCoordinatesTable:
 
         # update corresponding row in table with n_detec, n_detec_o, and n_detec_c counts
         total_len, o_len, c_len = full_control_lc.get_filt_lens()
-        self.t[index, "n_detec"] = total_len
-        self.t[index, "n_detec_o"] = o_len
-        self.t[index, "n_detec_c"] = c_len
+        self.t.loc[index, "n_detec"] = total_len
+        self.t.loc[index, "n_detec_o"] = o_len
+        self.t.loc[index, "n_detec_c"] = c_len
 
     def add_row(
         self,
@@ -546,7 +546,7 @@ class DownloadLoop:
         if args.controls:
             # download control light curves
             for i in range(1, len(self.ctrl_coords.t)):
-                control_index = self.ctrl_coords.t.loc[i,'control_index']
+                control_index = self.ctrl_coords.t.loc[i, "control_index"]
                 print(f"\nControl light curve {control_index}")
                 self.lcs[control_index] = FullLightCurve(
                     control_index,
@@ -556,7 +556,9 @@ class DownloadLoop:
                 self.lcs[control_index].download(
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
                 )
-                self.lcs[control_index].save(self.input_dir, tnsname, overwrite=args.overwrite)
+                self.lcs[control_index].save(
+                    self.input_dir, tnsname, overwrite=args.overwrite
+                )
                 self.ctrl_coords.update_row(control_index, self.lcs[control_index])
 
             # save control coordinates table
