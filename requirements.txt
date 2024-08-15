@@ -1,0 +1,8 @@
+requests
+argparse
+configparser
+pandas
+numpy
+getpass
+astropy
+scipy
