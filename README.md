@@ -23,6 +23,10 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 
 ## Python Scripts
 
+### Install dependencies
+
+View [Dependencies](#dependencies) for a comprehensive list of dependencies. Run `./install_dependencies.sh` to install Python dependencies using `pip`.
+
 ### Setup in `config.ini`
 
 Open the `config.ini` file, which contains configuration for input/output directory paths, `convert.py`, `download.py`, and `clean.py`. The following toggles describe each field section by section. Bolded fields denote fields that we urge the user to change before attempting to use the scripts.
