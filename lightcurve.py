@@ -882,26 +882,26 @@ class Supernova:
         for control_index in self.get_all_indices():
             self.lcs[control_index].drop_extra_columns()
 
-    def load(self, input_dir, control_index=0):
+    def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
             control_index=control_index, filt=self.filt
         )
-        self.lcs[control_index].load_lc(input_dir, self.tnsname)
+        self.lcs[control_index].load_lc(input_dir, self.tnsname, cleaned=cleaned)
 
-    def load_all(self, input_dir, num_controls=0):
+    def load_all(self, input_dir, num_controls=0, cleaned=False):
         self.lcs = {}
         self.num_controls = 0
 
         print(f"\nLoading SN light curve and {num_controls} control light curves...")
-        self.load(input_dir)
+        self.load(input_dir, cleaned=cleaned)
         if num_controls > 0:
             for control_index in range(1, num_controls + 1):
                 try:
-                    self.load(input_dir, control_index=control_index)
+                    self.load(input_dir, control_index=control_index, cleaned=cleaned)
                     self.num_controls += 1
                 except:
                     print(
-                        f"Could not load control light curve #{control_index}; skipping..."
+                        f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.lcs[control_index]
         print(
@@ -986,10 +986,12 @@ class AveragedSupernova(Supernova):
                     self.num_controls += 1
                 except:
                     print(
-                        f"Could not load control light curve #{control_index}; skipping..."
+                        f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.avg_lcs[control_index]
-        print("Success")
+        print(
+            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves"
+        )
 
     def save_all(self, output_dir, overwrite=False):
         print(
@@ -1004,13 +1006,13 @@ class AveragedSupernova(Supernova):
 
     def get_all_indices(self):
         if not self.all_indices:
-            self.all_indices = list(self.lcs.keys())
+            self.all_indices = list(self.avg_lcs.keys())
             self.all_indices.sort()
         return self.all_indices
 
     def get_control_indices(self):
         if not self.control_indices:
-            self.control_indices = list(self.lcs.keys())
+            self.control_indices = list(self.avg_lcs.keys())
             if 0 in self.control_indices:
                 self.control_indices.remove(0)
             self.control_indices.sort()
@@ -1030,6 +1032,12 @@ class LightCurve(pdastrostatsclass):
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
+
+    def get_preMJD0_indices(self, mjd0: float):
+        return self.ix_inrange(colnames='MJD', uplim=mjd0, exclude_uplim=True)
+    
+    def get_postMJD0_indices(self, mjd0: float):
+        return self.ix_inrange(colnames='MJD', lowlim=mjd0)
 
     def remove_invalid_rows(self, verbose=False):
         dflux_zero_ix = self.ix_equal(colnames=["duJy"], val=0)

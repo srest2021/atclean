@@ -6,3 +6,4 @@ numpy
 getpass
 astropy
 scipy
+matplotlib
