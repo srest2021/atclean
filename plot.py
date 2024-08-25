@@ -613,8 +613,88 @@ class Plot:
     ):
         pass
 
-    def plot_uncert_est(self, lc: LightCurve):
-        pass
+    def plot_uncert_est(
+        self,
+        lc: LightCurve,
+        tnsname: str,
+        lims: PlotLimits,
+        save: bool = False,
+        filename: str = "uncert_est",
+    ):
+        if not "duJy_new" in lc.t.columns:
+            raise RuntimeError(
+                'ERROR: Cannot plot true uncertainties estimation due to missing "duJy_new" column'
+            )
+        
+        fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        fig.set_figwidth(7)
+        fig.set_figheight(5)
+
+        ax1.set_title(
+            f"SN {tnsname} {lc.filt}-band flux\nbefore true uncertainties estimation"
+        )
+        ax1.minorticks_on()
+        ax1.tick_params(direction="in", which="both")
+        ax1.get_xaxis().set_ticks([])
+        ax1.set_ylabel(r"Flux ($\mu$Jy)")
+        ax1.axhline(linewidth=1, color="k")
+
+        ax2.set_title(f"after true uncertainties estimation")
+        ax2.minorticks_on()
+        ax2.tick_params(direction="in", which="both")
+        ax2.set_ylabel(r"Flux ($\mu$Jy)")
+        ax2.set_xlabel("MJD")
+        ax2.axhline(linewidth=1, color="k")
+
+        ax1.errorbar(
+            lc.t["MJD"],
+            lc.t["uJy"],
+            yerr=lc.t["duJy"],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[lc.filt],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+        )
+        ax1.scatter(
+            lc.t["MJD"],
+            lc.t["uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[lc.filt],
+            marker="o",
+            alpha=0.5,
+        )
+
+        ax2.errorbar(
+            lc.t["MJD"],
+            lc.t["uJy"],
+            yerr=lc.t["duJy_new"],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[lc.filt],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+        )
+        ax2.scatter(
+            lc.t["MJD"],
+            lc.t["uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[lc.filt],
+            marker="o",
+            alpha=0.5,
+        )
+
+        ax1.set_xlim(lims.xlower, lims.xupper)
+        ax1.set_ylim(lims.ylower, lims.yupper)
+        ax2.set_xlim(lims.xlower, lims.xupper)
+        ax2.set_ylim(lims.ylower, lims.yupper)
+
+        if save:
+            self.save_plot(filename)
 
     def plot_template_correction(self, lc: LightCurve):
         pass
