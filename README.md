@@ -449,3 +449,4 @@ Arguments will override default config file settings if specified.
 - copy
 - itertools
 - scipy
+- matplotlib
