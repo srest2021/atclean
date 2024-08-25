@@ -1039,11 +1039,11 @@ class LightCurve(pdastrostatsclass):
     def get_postMJD0_indices(self, mjd0: float):
         return self.ix_inrange(colnames="MJD", lowlim=mjd0)
 
-    def get_good_indices(self, cut: Cut):
-        return self.ix_unmasked("Mask", maskval=cut.flag)
+    def get_good_indices(self, flag:int):
+        return self.ix_unmasked("Mask", maskval=flag)
 
-    def get_bad_indices(self, cut: Cut):
-        return self.ix_masked("Mask", maskval=cut.flag)
+    def get_bad_indices(self, flag:int):
+        return self.ix_masked("Mask", maskval=flag)
 
     def remove_invalid_rows(self, verbose=False):
         dflux_zero_ix = self.ix_equal(colnames=["duJy"], val=0)

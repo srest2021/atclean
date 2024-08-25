@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.gridspec as gridspec
 from lightcurve import LightCurve, AveragedLightCurve, Supernova, AveragedSupernova
-from clean import Cut, LimCutsTable
+from clean import Cut, CutList, LimCutsTable
 
 # plotting styles
 plt.rc("axes", titlesize=17)
@@ -247,13 +247,10 @@ class Plot:
         if save:
             self.save_plot(filename)
 
-    def plot_averaged_SN(self, sn: AveragedSupernova):
-        pass
-
     def plot_cut(
         self,
         lc: LightCurve,
-        cut: Cut,
+        flag: int,
         lims: PlotLimits,
         title: str | None = None,
         save_filename: str = None,
@@ -262,7 +259,7 @@ class Plot:
         fig.set_figwidth(7)
         fig.set_figheight(5)
 
-        fig.suptitle(f"{title} (flag {hex(cut.flag)})")
+        fig.suptitle(f"{title} (flag {hex(flag)})")
 
         ax1.minorticks_on()
         ax1.tick_params(direction="in", which="both")
@@ -276,8 +273,8 @@ class Plot:
         ax1.set_xlabel("MJD")
         ax2.axhline(linewidth=1, color="k")
 
-        good_ix = lc.get_good_indices(cut)
-        bad_ix = lc.get_bad_indices(cut)
+        good_ix = lc.get_good_indices(flag)
+        bad_ix = lc.get_bad_indices(flag)
 
         ax1.errorbar(
             lc.t.loc[good_ix, "MJD"],
@@ -361,6 +358,12 @@ class Plot:
 
         if not save_filename is None:
             self.save_plot(save_filename)
+
+    def plot_cleaned_lc(self, lc: LightCurve, cut_list: CutList, lims: PlotLimits, save: bool = False):
+        pass
+
+    def plot_averaged_SN(self, sn: AveragedSupernova):
+        pass
 
     def plot_limcuts(
         self,
@@ -483,3 +486,5 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
+
+    # TODO
