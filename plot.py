@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 from typing import List
 from download import load_config
 from pdastro import AorB
@@ -57,8 +58,16 @@ class PlotLimits:
         self.ylower = ylower
         self.yupper = yupper
 
-    def calc_lims(self, lc: LightCurve, indices: List[int] = None) -> List[int]:
-        pass
+    def calc_lims(self, lc: LightCurve = None, indices: List[int] = None):
+        if lc is None:
+            print("No light curve provided; skipping plot limits calculation...")
+            return
+
+        print(
+            f'Calculating plot limits using light curve{" and given indices" if not indices is None else ""}...'
+        )
+
+        # TODO
 
     def get_xlims(self):
         return [self.xlower, self.xupper]
@@ -66,17 +75,46 @@ class PlotLimits:
     def get_ylims(self):
         return [self.ylower, self.yupper]
 
+    def is_empty(self):
+        return (
+            self.xlower is None
+            and self.xupper is None
+            and self.ylower is None
+            and self.yupper is None
+        )
+
     def __str__(self):
         return f"Plot limits: x-axis [{self.xlower}, {self.xupper}], y-axis [{self.ylower}, {self.yupper}]"
 
 
 class Plot:
-    def __init__(self):
-        pass
+    def __init__(self, output_dir: str = None):
+        self.output_dir = output_dir
 
-    def get_lims(self, lc: LightCurve, indices: List[int] = None) -> PlotLimits:
-        lims = PlotLimits()
-        lims.calc_lims(lc, indices=indices)
+    def save_plot(self, filename):
+        filename = f"{self.output_dir}/{filename}.png"
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        print(f"Saving plot: {filename}")
+        plt.savefig(filename, dpi=200)
+
+    def get_lims(
+        self,
+        lc: LightCurve = None,
+        indices: List[int] = None,
+        xlower: float = None,
+        xupper: float = None,
+        ylower: float = None,
+        yupper: float = None,
+    ) -> PlotLimits:
+        lims = PlotLimits(
+            xlower=xlower,
+            xupper=xupper,
+            ylower=ylower,
+            yupper=yupper,
+        )
+        if lims.is_empty():
+            lims.calc_lims(lc=lc, indices=indices)
         return lims
 
     def plot_SN(
@@ -85,6 +123,8 @@ class Plot:
         lims: PlotLimits,
         plot_controls: bool = True,
         plot_template_changes: bool = True,
+        save: bool = False,
+        filename: str = "original",
     ):
         fig, ax1 = plt.subplots(1, constrained_layout=True)
         fig.set_figwidth(7)
@@ -134,15 +174,15 @@ class Plot:
                 if not label is None:
                     label = None
 
-        lc = sn.lcs[0]
-        preMJD0_ix = lc.get_preMJD0_indices(sn.mjd0)
-        postMJD0_ix = lc.get_postMJD0_indices(sn.mjd0)
+        sn_lc = sn.lcs[0]
+        preMJD0_ix = sn_lc.get_preMJD0_indices(sn.mjd0)
+        postMJD0_ix = sn_lc.get_postMJD0_indices(sn.mjd0)
 
         # plot pre-MJD0 SN light curve
         plt.errorbar(
-            lc.t.loc[preMJD0_ix, "MJD"],
-            lc.t.loc[preMJD0_ix, "uJy"],
-            yerr=lc.t.loc[preMJD0_ix, lc.dflux_colname],
+            sn_lc.t.loc[preMJD0_ix, "MJD"],
+            sn_lc.t.loc[preMJD0_ix, "uJy"],
+            yerr=sn_lc.t.loc[preMJD0_ix, sn_lc.dflux_colname],
             fmt="none",
             ecolor="magenta",
             elinewidth=1,
@@ -152,8 +192,8 @@ class Plot:
             zorder=10,
         )
         plt.scatter(
-            lc.t.loc[preMJD0_ix, "MJD"],
-            lc.t.loc[preMJD0_ix, "uJy"],
+            sn_lc.t.loc[preMJD0_ix, "MJD"],
+            sn_lc.t.loc[preMJD0_ix, "uJy"],
             s=marker_size,
             lw=marker_edgewidth,
             color="magenta",
@@ -165,9 +205,9 @@ class Plot:
 
         # plot post-MJD0 SN light curve
         plt.errorbar(
-            lc.t.loc[postMJD0_ix, "MJD"],
-            lc.t.loc[postMJD0_ix, "uJy"],
-            yerr=lc.t.loc[postMJD0_ix, lc.dflux_colname],
+            sn_lc.t.loc[postMJD0_ix, "MJD"],
+            sn_lc.t.loc[postMJD0_ix, "uJy"],
+            yerr=sn_lc.t.loc[postMJD0_ix, sn_lc.dflux_colname],
             fmt="none",
             ecolor="lime",
             elinewidth=1,
@@ -177,8 +217,8 @@ class Plot:
             zorder=10,
         )
         plt.scatter(
-            lc.t.loc[postMJD0_ix, "MJD"],
-            lc.t.loc[postMJD0_ix, "uJy"],
+            sn_lc.t.loc[postMJD0_ix, "MJD"],
+            sn_lc.t.loc[postMJD0_ix, "uJy"],
             s=marker_size,
             lw=marker_edgewidth,
             color="lime",
@@ -189,18 +229,138 @@ class Plot:
         )
 
         if plot_template_changes:
-            pass
-            # TODO
+            ax1.axvline(
+                x=TEMPLATE_CHANGE_1_MJD,
+                color="k",
+                linestyle="dotted",
+                label="ATLAS template change",
+                zorder=100,
+            )
+            ax1.axvline(
+                x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100
+            )
 
         ax1.set_xlim(lims.xlower, lims.xupper)
         ax1.set_ylim(lims.ylower, lims.yupper)
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
 
+        if save:
+            self.save_plot(filename)
+
     def plot_averaged_SN(self, sn: AveragedSupernova):
         pass
 
-    def plot_cut(self, lc: LightCurve, cut: Cut, title: str | None = None):
-        pass
+    def plot_cut(
+        self,
+        lc: LightCurve,
+        cut: Cut,
+        lims: PlotLimits,
+        title: str | None = None,
+        save_filename: str = None,
+    ):
+        fig, (ax2, ax1) = plt.subplots(2, constrained_layout=True)
+        fig.set_figwidth(7)
+        fig.set_figheight(5)
+
+        fig.suptitle(f"{title} (flag {hex(cut.flag)})")
+
+        ax1.minorticks_on()
+        ax1.tick_params(direction="in", which="both")
+        ax2.get_xaxis().set_ticks([])
+        ax1.set_ylabel(r"Flux ($\mu$Jy)")
+        ax1.axhline(linewidth=1, color="k")
+
+        ax2.minorticks_on()
+        ax2.tick_params(direction="in", which="both")
+        ax2.set_ylabel(r"Flux ($\mu$Jy)")
+        ax1.set_xlabel("MJD")
+        ax2.axhline(linewidth=1, color="k")
+
+        good_ix = lc.get_good_indices(cut)
+        bad_ix = lc.get_bad_indices(cut)
+
+        ax1.errorbar(
+            lc.t.loc[good_ix, "MJD"],
+            lc.t.loc[good_ix, "uJy"],
+            yerr=lc.t.loc[good_ix, lc.dflux_colname],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[lc.filt],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+        )
+        ax1.scatter(
+            lc.t.loc[good_ix, "MJD"],
+            lc.t.loc[good_ix, "uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[lc.filt],
+            marker="o",
+            alpha=0.5,
+            label="Kept measurements",
+        )
+
+        ax2.errorbar(
+            lc.t.loc[good_ix, "MJD"],
+            lc.t.loc[good_ix, "uJy"],
+            yerr=lc.t.loc[good_ix, lc.dflux_colname],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[lc.filt],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=5,
+        )
+        ax2.scatter(
+            lc.t.loc[good_ix, "MJD"],
+            lc.t.loc[good_ix, "uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[lc.filt],
+            marker="o",
+            alpha=0.5,
+            label="Kept measurements",
+            zorder=5,
+        )
+
+        ax2.errorbar(
+            lc.t.loc[bad_ix, "MJD"],
+            lc.t.loc[bad_ix, "uJy"],
+            yerr=lc.t.loc[bad_ix, lc.dflux_colname],
+            fmt="none",
+            ecolor=SN_FLAGGED_FLUX_COLOR,
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLAGGED_FLUX_COLOR,
+            alpha=0.5,
+            zorder=10,
+        )
+        ax2.scatter(
+            lc.t.loc[bad_ix, "MJD"],
+            lc.t.loc[bad_ix, "uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLAGGED_FLUX_COLOR,
+            facecolors="none",
+            edgecolors=SN_FLAGGED_FLUX_COLOR,
+            marker="o",
+            alpha=0.5,
+            label="Cut measurements",
+            zorder=10,
+        )
+
+        ax1.set_xlim(lims.xlower, lims.xupper)
+        ax1.set_ylim(lims.ylower, lims.yupper)
+        ax2.set_xlim(lims.xlower, lims.xupper)
+        ax2.set_ylim(lims.ylower, lims.yupper)
+
+        ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
+        ax2.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
+
+        if not save_filename is None:
+            self.save_plot(save_filename)
 
     def plot_limcuts(
         self,
