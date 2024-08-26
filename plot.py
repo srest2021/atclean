@@ -70,9 +70,9 @@ class PlotLimits:
             print("No light curve provided; skipping plot limits calculation...")
             return
 
-        print(
-            f'Calculating plot limits using light curve{" and given indices" if not indices is None else ""}...'
-        )
+        # print(
+        #     f'Calculating plot limits using light curve{" and given indices" if not indices is None else ""}...'
+        # )
 
         # TODO
 
@@ -378,7 +378,7 @@ class Plot:
         flag: int,
         lims: PlotLimits,
         plot_controls: bool = True,
-        plot_flagged: bool = True,
+        plot_flagged: bool = False,
         save: bool = False,
         filename: str = "cleaned",
     ):
@@ -502,7 +502,7 @@ class Plot:
         flag: int,
         lims: PlotLimits,
         plot_controls: bool = True,
-        plot_flagged: bool = True,
+        plot_flagged: bool = False,
         save: bool = False,
         filename: str = "averaged",
     ):

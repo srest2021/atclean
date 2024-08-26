@@ -455,6 +455,15 @@ class CutList:
             return None
         return self.list[name]
 
+    def remove(self, names: str | List[str]):
+        if isinstance(names, str):
+            if self.has(name):
+                del self.list[names]
+        else:
+            for name in names:
+                if self.has(name):
+                    del self.list[name]
+
     def has(self, name: str):
         return name in self.list
 
@@ -504,13 +513,19 @@ class CutList:
         return mask
 
     def get_previous_flags(self, current_cut_name: str):
-        skip_names: List = [
-            "uncert_est",
-            "badday_cut",
-            "controls_cut",
-            "x2_cut",
-            "uncert_cut",
-        ]
+        skip_names: List = (
+            [
+                "uncert_est",
+                "badday_cut",
+            ]
+            + list(self.get_custom_cuts().values())
+            + [
+                "controls_cut",
+                "x2_cut",
+                "uncert_cut",
+            ]
+        )
+
         try:
             current_cut_index = skip_names.index(current_cut_name)
         except Exception as e:

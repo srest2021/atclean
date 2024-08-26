@@ -478,12 +478,10 @@ class CleanLoop:
         if plot:
             self.p.plot_cut(
                 self.sn.lcs[0],
-                self.cut_list.get("x2_cut").flag,
+                cut.flag,
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(
-                        self.cut_list.get("x2_cut").flag
-                    ),
+                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
                 title="Chi-square cut",
             )
@@ -549,12 +547,10 @@ class CleanLoop:
         if plot:
             self.p.plot_cut(
                 self.sn.lcs[0],
-                self.cut_list.get("controls_cut").flag,
+                cut.flag,
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(
-                        self.cut_list.get("controls_cut").flag
-                    ),
+                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
                 title="Control light curve cut",
             )
@@ -568,29 +564,38 @@ class CleanLoop:
         )
         print("Success")
 
-        if plot:
-            self.p.plot_cut(
-                self.avg_sn.avg_lcs[0],
-                self.cut_list.get("badday_cut").flag,
-                self.p.get_lims(
-                    lc=self.avg_sn.avg_lcs[0],
-                    indices=self.avg_sn.avg_lcs[0].get_good_indices(
-                        self.cut_list.get("badday_cut").flag
-                    ),
-                ),
-                title="Bad day cut",
-            )
-
         print(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}"
         )
         self.f.add_badday_cut_section(percent_cut)
+
+        if plot:
+            lims = self.p.get_lims(
+                lc=self.avg_sn.avg_lcs[0],
+                indices=self.avg_sn.avg_lcs[0].get_good_indices(cut.flag),
+            )
+
+            self.p.plot_cut(
+                self.avg_sn.avg_lcs[0],
+                cut.flag,
+                lims,
+                title="Bad day cut",
+            )
+
+            self.p.plot_averaged_SN(
+                self.avg_sn, cut.flag, lims, plot_controls=True, plot_flagged=False
+            )
 
     def apply_custom_cut(self, name, cut: Cut, plot: bool = False):
         cut = self.cut_list.get(name)
         print(f"\nApplying custom cut ({cut})...")
         percent_cut = self.sn.apply_cut(cut)
         print("Success")
+
+        print(
+            f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
+        )
+        self.f.add_custom_cut_section(name, cut, percent_cut)
 
         if plot:
             self.p.plot_cut(
@@ -602,11 +607,6 @@ class CleanLoop:
                 ),
                 title=f"Custom cut {name}",
             )
-
-        print(
-            f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
-        )
-        self.f.add_custom_cut_section(name, cut, percent_cut)
 
     def clean_lcs(
         self,
@@ -631,8 +631,8 @@ class CleanLoop:
         print()
         self.sn.prep_for_cleaning(verbose=True)
 
-        # initialize PDF of diagnostic plots
         if plot:
+            # initialize PDF of diagnostic plots
             self.p = PlotPdf(f"{self.output_dir}/{tnsname}", tnsname, filt=filt)
             self.p.plot_SN(
                 self.sn,
@@ -673,16 +673,24 @@ class CleanLoop:
         for name, cut in custom_cuts.items():
             self.apply_custom_cut(name, cut, plot=plot)
 
-        # if plot:
-        #     temp_cut_list = CutList()
-        #     temp_cut_list.add(uncert_cut, 'uncert_cut')
-        #     temp_cut_list.add(x2_cut, 'x2_cut')
-        #     temp_cut_list.add(controls_cut, 'controls_cut')
+        # plot the cleaned light curves so far
+        previous_flags = self.cut_list.get_previous_flags("badday_cut")
+        if plot:
+            lims = self.p.get_lims(
+                lc=self.sn.lcs[0],
+                indices=self.sn.lcs[0].get_good_indices(previous_flags),
+            )
+            self.p.plot_cut(
+                self.sn.lcs[0], previous_flags, lims, title="All previous cuts"
+            )
+            self.p.plot_cleaned_SN(
+                self.sn, previous_flags, lims, plot_controls=True, plot_flagged=False
+            )
 
         # bad day cut (averaging)
         self.apply_badday_cut(
             self.cut_list.get("badday_cut"),
-            previous_flags=self.cut_list.get_previous_flags("badday_cut"),
+            previous_flags=previous_flags,
             plot=plot,
         )
 
@@ -701,9 +709,11 @@ class CleanLoop:
             # save chi-square cut table
             self.x2_cut_info.save()
 
+        # save the SN info table
         self.sninfo.save()
 
         if plot:
+            # save the PDF of diagnostic plots
             self.p.save_pdf()
 
     def loop(

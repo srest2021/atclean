@@ -327,6 +327,10 @@ Arguments will override default config file settings if specified.
     - Type: bool
     - Default: `False`
     - Usage: `-o` or `--overwrite`
+- `-p`, `--plot`: If specified, a summary PDF file of diagnostic plots will be saved.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-p` or `--plot`
 - `--filters`: Specifies a comma-separated list of filters to clean.
     - Type: str
     - Default: `None` (i.e., the `filters` field in `config.ini`)
