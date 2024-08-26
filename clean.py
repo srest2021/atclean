@@ -6,7 +6,9 @@ import pandas as pd
 import numpy as np
 from copy import deepcopy
 from lightcurve import (
+    DEFAULT_CUT_NAMES,
     Cut,
+    CutList,
     LimCutsTable,
     SnInfoTable,
     Supernova,
@@ -16,12 +18,11 @@ from lightcurve import (
     query_tns,
 )
 from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
+from plot import PlotLimits, PlotPdf
 
 """
 UTILITY
 """
-
-DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 
 def hexstring_to_int(hexstring):
@@ -202,96 +203,6 @@ class OutputReadMe:
         self.f.close()
 
 
-class CutList:
-    def __init__(self):
-        self.list: Dict[str, Type[Cut]] = {}
-
-    def add(self, cut: Cut, name: str):
-        if name in self.list:
-            raise RuntimeError(f"ERROR: cut by the name {name} already exists.")
-        self.list[name] = cut
-
-    def get(self, name: str):
-        if not name in self.list:
-            return None
-        return self.list[name]
-
-    def has(self, name: str):
-        return name in self.list
-
-    def can_apply_directly(self, name: str):
-        return self.list[name].can_apply_directly()
-
-    def check_for_flag_duplicates(self):
-        if len(self.list) < 1:
-            return
-
-        unique_flags = set()
-        duplicate_flags = []
-
-        for name, cut in self.list.items():
-            if name == "uncert_est":
-                continue
-
-            flags = [cut.flag]
-            if cut.params:
-                for key in cut.params:
-                    if key.endswith("_flag"):
-                        flags.append(cut.params[key])
-
-            for flag in flags:
-                if flag in unique_flags:
-                    if not flag is None:
-                        duplicate_flags.append(flag)
-                elif not flag is None:
-                    unique_flags.add(flag)
-
-        return len(duplicate_flags) > 0, duplicate_flags
-
-    def get_custom_cuts(self):
-        custom_cuts = {}
-
-        for name in self.list:
-            if not name in DEFAULT_CUT_NAMES and name != "uncert_est":
-                custom_cuts[name] = self.list[name]
-
-        return custom_cuts
-
-    def get_all_flags(self):
-        mask = 0
-        for name in self.list:
-            if name != "uncert_est":
-                mask = mask | self.list[name].flag
-        return mask
-
-    def get_previous_flags(self, current_cut_name: str):
-        skip_names: List = [
-            "uncert_est",
-            "badday_cut",
-            "controls_cut",
-            "x2_cut",
-            "uncert_cut",
-        ]
-        try:
-            current_cut_index = skip_names.index(current_cut_name)
-        except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Cannot get previous flags for a custom cut: {str(e)}"
-            )
-        skip_names = skip_names[: current_cut_index + 1]
-        mask = 0
-        for name in self.list:
-            if not name in skip_names:
-                mask = mask | self.list[name].flag
-        return mask
-
-    def __str__(self):
-        output = ""
-        for name in self.list:
-            output += f"\n{name}: " + self.list[name].__str__()
-        return output
-
-
 class UncertEstTable:
     def __init__(self, directory, filename=None):
         if filename is None:
@@ -421,6 +332,7 @@ class CleanLoop:
         self.avg_sn: AveragedSupernova = None
         self.cut_list: CutList = None
         self.f: OutputReadMe = None
+        self.p: PlotPdf = None
 
         self.credentials: Dict[str, str] = credentials
         self.input_dir: str = input_dir
@@ -439,7 +351,7 @@ class CleanLoop:
         print(f"\nApplying ATLAS template change correction:")
         # TODO: add_template_correction_section
 
-    def check_uncert_est(self, cut: Cut, apply_function: Callable):
+    def check_uncert_est(self, cut: Cut, apply_function: Callable, plot: bool = False):
         print(f"\nChecking true uncertainties estimation:")
 
         stats = self.sn.get_uncert_est_stats(cut)
@@ -468,6 +380,18 @@ class CleanLoop:
                 print(
                     'The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column'
                 )
+
+                if plot:
+                    self.p.plot_uncert_est(
+                        self.sn.lcs[0],
+                        self.sn.tnsname,
+                        self.p.get_lims(
+                            lc=self.sn.lcs[0],
+                            indices=self.sn.lcs[0].get_good_indices(
+                                self.cut_list.get("uncert_cut").flag
+                            ),
+                        ),
+                    )
         else:
             print("True uncertainties estimation not needed; skipping procedure...")
 
@@ -491,7 +415,7 @@ class CleanLoop:
         }
         return apply, uncert_est_info_row
 
-    def apply_uncert_cut(self, cut: Cut):
+    def apply_uncert_cut(self, cut: Cut, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying uncertainty cut ({cut}):")
@@ -502,7 +426,18 @@ class CleanLoop:
         )
         self.f.add_uncert_cut_section(cut, percent_cut)
 
-    def apply_x2_cut(self, cut: Cut):
+        if plot:
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
+                ),
+                title="Uncertainty cut",
+            )
+
+    def apply_x2_cut(self, cut: Cut, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying chi-square cut ({cut}):")
@@ -540,6 +475,19 @@ class CleanLoop:
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
 
+        if plot:
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                self.cut_list.get("x2_cut").flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(
+                        self.cut_list.get("x2_cut").flag
+                    ),
+                ),
+                title="Chi-square cut",
+            )
+
         self.f.add_x2_cut_section(
             cut, data["Pcontamination"], data["Ploss"], percent_cut
         )
@@ -555,7 +503,7 @@ class CleanLoop:
         }
         return x2_info_row
 
-    def apply_controls_cut(self, cut: Cut, previous_flags):
+    def apply_controls_cut(self, cut: Cut, previous_flags: int, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying control light curve cut ({cut}):")
@@ -598,7 +546,20 @@ class CleanLoop:
             percent_cut,
         )
 
-    def apply_badday_cut(self, cut: Cut, previous_flags):
+        if plot:
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                self.cut_list.get("controls_cut").flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(
+                        self.cut_list.get("controls_cut").flag
+                    ),
+                ),
+                title="Control light curve cut",
+            )
+
+    def apply_badday_cut(self, cut: Cut, previous_flags, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying bad day cut (averaging) ({cut}):")
@@ -606,16 +567,42 @@ class CleanLoop:
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
         print("Success")
+
+        if plot:
+            self.p.plot_cut(
+                self.avg_sn.avg_lcs[0],
+                self.cut_list.get("badday_cut").flag,
+                self.p.get_lims(
+                    lc=self.avg_sn.avg_lcs[0],
+                    indices=self.avg_sn.avg_lcs[0].get_good_indices(
+                        self.cut_list.get("badday_cut").flag
+                    ),
+                ),
+                title="Bad day cut",
+            )
+
         print(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}"
         )
         self.f.add_badday_cut_section(percent_cut)
 
-    def apply_custom_cut(self, name, cut: Cut):
+    def apply_custom_cut(self, name, cut: Cut, plot: bool = False):
         cut = self.cut_list.get(name)
         print(f"\nApplying custom cut ({cut})...")
         percent_cut = self.sn.apply_cut(cut)
         print("Success")
+
+        if plot:
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
+                ),
+                title=f"Custom cut {name}",
+            )
+
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -623,12 +610,13 @@ class CleanLoop:
 
     def clean_lcs(
         self,
-        tnsname,
+        tnsname: str,
         mjd0,
-        filt,
+        filt: str,
         apply_uncert_est_function: Callable,
-        num_controls=0,
-        apply_template_correction=False,
+        num_controls: int = 0,
+        apply_template_correction: bool = False,
+        plot: bool = False,
     ):
         print(f"\n\tFILTER: {filt}")
 
@@ -639,24 +627,37 @@ class CleanLoop:
         except Exception as e:
             raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
 
+        # prepare the light curves for cleaning
         print()
         self.sn.prep_for_cleaning(verbose=True)
+
+        # initialize PDF of diagnostic plots
+        if plot:
+            self.p = PlotPdf(f"{self.output_dir}/{tnsname}", tnsname, filt=filt)
+            self.p.plot_SN(
+                self.sn,
+                self.p.get_lims(lc=self.sn.lcs[0]),
+                plot_controls=True,
+                plot_template_changes=True,
+            )
 
         # template correction
         if apply_template_correction:
             self.apply_template_correction()
 
         # uncertainty cut
-        self.apply_uncert_cut(self.cut_list.get("uncert_cut"))
+        self.apply_uncert_cut(self.cut_list.get("uncert_cut"), plot=plot)
 
         # true uncertainties estimation
         _, uncert_est_info_row = self.check_uncert_est(
-            self.cut_list.get("uncert_est"), apply_function=apply_uncert_est_function
+            self.cut_list.get("uncert_est"),
+            apply_function=apply_uncert_est_function,
+            plot=plot,
         )
         self.uncert_est_info.add_row(uncert_est_info_row)
 
         # chi-square cut
-        x2_info_row = self.apply_x2_cut(self.cut_list.get("x2_cut"))
+        x2_info_row = self.apply_x2_cut(self.cut_list.get("x2_cut"), plot=plot)
         if self.cut_list.has("x2_cut"):
             self.x2_cut_info.add_row(x2_info_row)
 
@@ -664,17 +665,25 @@ class CleanLoop:
         self.apply_controls_cut(
             self.cut_list.get("controls_cut"),
             previous_flags=self.cut_list.get_previous_flags("controls_cut"),
+            plot=plot,
         )
 
         # custom cuts
         custom_cuts = self.cut_list.get_custom_cuts()
         for name, cut in custom_cuts.items():
-            self.apply_custom_cut(name, cut)
+            self.apply_custom_cut(name, cut, plot=plot)
+
+        # if plot:
+        #     temp_cut_list = CutList()
+        #     temp_cut_list.add(uncert_cut, 'uncert_cut')
+        #     temp_cut_list.add(x2_cut, 'x2_cut')
+        #     temp_cut_list.add(controls_cut, 'controls_cut')
 
         # bad day cut (averaging)
         self.apply_badday_cut(
             self.cut_list.get("badday_cut"),
             previous_flags=self.cut_list.get_previous_flags("badday_cut"),
+            plot=plot,
         )
 
         # save cleaned SN and control light curves
@@ -694,15 +703,19 @@ class CleanLoop:
 
         self.sninfo.save()
 
+        if plot:
+            self.p.save_pdf()
+
     def loop(
         self,
-        tnsnames,
+        tnsnames: List[str],
         apply_uncert_est_function: Callable,
-        num_controls=0,
+        num_controls: int = 0,
         mjd0=None,
-        filters=["o", "c"],
+        filters: List[str] = ["o", "c"],
         cut_list: CutList = None,
-        apply_template_correction=False,
+        apply_template_correction: bool = False,
+        plot: bool = False,
     ):
         self.cut_list = cut_list
 
@@ -715,7 +728,9 @@ class CleanLoop:
                 self.output_dir, tnsname, cut_list, num_controls=num_controls
             )
 
-            if mjd0 is None and cut_list.get("x2_cut").params["use_pre_mjd0_lc"]:
+            if mjd0 is None and (
+                plot or cut_list.get("x2_cut").params["use_pre_mjd0_lc"]
+            ):
                 _, sninfo_row = self.sninfo.get_row(tnsname)
                 if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
                     # get MJD0 from SN info table
@@ -753,6 +768,7 @@ class CleanLoop:
                     apply_uncert_est_function,
                     num_controls=num_controls,
                     apply_template_correction=apply_template_correction,
+                    plot=plot,
                 )
 
 
@@ -921,6 +937,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         default=None,
         help="comma-separated list of filters to clean",
     )
+    parser.add_argument(
+        "-p",
+        "--plot",
+        default=False,
+        action="store_true",
+        help="store a summary PDF file of diagnostic plots",
+    )
 
     # cleaning a single SN and/or controls
     parser.add_argument(
@@ -1020,6 +1043,7 @@ if __name__ == "__main__":
     print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
     print(f"Overwrite existing files: {args.overwrite}")
+    print(f"Save PDF of diagnostic plots: {args.plot}")
     filters = parse_config_filters(args, config)
     print(f"Filters: {filters}")
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
@@ -1058,4 +1082,5 @@ if __name__ == "__main__":
         mjd0=args.mjd0,
         filters=filters,
         apply_template_correction=args.template_correction,
+        plot=args.plot,
     )

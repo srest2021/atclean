@@ -7,6 +7,7 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
 ## Table of Contents
 
 - [Python Scripts](#python-scripts)
+    - [Install dependencies](#install-dependencies): Install the necessary dependencies.
     - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
     - [`convert.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve into an ATClean-readable format, so that it may be run through any of the following scripts.

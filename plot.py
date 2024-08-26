@@ -10,8 +10,15 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.gridspec as gridspec
-from lightcurve import LightCurve, AveragedLightCurve, Supernova, AveragedSupernova
-from clean import Cut, CutList, LimCutsTable
+from lightcurve import (
+    CutList,
+    LimCutsTable,
+    Cut,
+    LightCurve,
+    AveragedLightCurve,
+    Supernova,
+    AveragedSupernova,
+)
 
 # plotting styles
 plt.rc("axes", titlesize=17)
@@ -247,6 +254,8 @@ class Plot:
         if save:
             self.save_plot(filename)
 
+        return fig
+
     def plot_cut(
         self,
         lc: LightCurve,
@@ -259,6 +268,8 @@ class Plot:
         fig.set_figwidth(7)
         fig.set_figheight(5)
 
+        if not title:
+            title = "Cut"
         fig.suptitle(f"{title} (flag {hex(flag)})")
 
         ax1.minorticks_on()
@@ -358,6 +369,8 @@ class Plot:
 
         if not save_filename is None:
             self.save_plot(save_filename)
+
+        return fig
 
     def plot_cleaned_SN(
         self,
@@ -481,6 +494,8 @@ class Plot:
         if save:
             self.save_plot(filename)
 
+        return fig
+
     def plot_averaged_SN(
         self,
         avg_sn: AveragedSupernova,
@@ -603,6 +618,8 @@ class Plot:
         if save:
             self.save_plot(filename)
 
+        return fig
+
     def plot_limcuts(
         self,
         limcuts: LimCutsTable,
@@ -625,7 +642,7 @@ class Plot:
             raise RuntimeError(
                 'ERROR: Cannot plot true uncertainties estimation due to missing "duJy_new" column'
             )
-        
+
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
         fig.set_figwidth(7)
         fig.set_figheight(5)
@@ -696,6 +713,8 @@ class Plot:
         if save:
             self.save_plot(filename)
 
+        return fig
+
     def plot_template_correction(self, lc: LightCurve):
         pass
 
@@ -703,15 +722,106 @@ class Plot:
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
         Plot.__init__(self)
-        filename = f"{output_dir}/{tnsname}_plots.{filt}.pdf"
+        filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
         self.pdf = PdfPages(filename)
 
     def save_pdf(self):
         print("\nSaving PDF of plots...\n")
         self.pdf.close()
 
-    def save_fig(self, figure: Figure):
-        self.pdf.savefig(figure)
+    def plot_SN(
+        self,
+        sn: Supernova,
+        lims: PlotLimits,
+        plot_controls: bool = True,
+        plot_template_changes: bool = True,
+        save: bool = False,
+        filename: str = "original",
+    ):
+        print(
+            f'Plotting original SN{" and control light curves" if plot_controls else ""}...'
+        )
+        fig = super().plot_SN(
+            sn, lims, plot_controls, plot_template_changes, save, filename
+        )
+        self.pdf.savefig(fig)
+
+    def plot_cut(
+        self,
+        lc: LightCurve,
+        flag: int,
+        lims: PlotLimits,
+        title: str | None = None,
+        save_filename: str = None,
+    ):
+        print(f"Plotting cut for flag {hex(flag)}...")
+        fig = super().plot_cut(lc, flag, lims, title, save_filename)
+        self.pdf.savefig(fig)
+
+    def plot_cleaned_SN(
+        self,
+        sn: Supernova,
+        flag: int,
+        lims: PlotLimits,
+        plot_controls: bool = True,
+        plot_flagged: bool = True,
+        save: bool = False,
+        filename: str = "cleaned",
+    ):
+        print(
+            f'Plotting cleaned SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}...'
+        )
+        fig = super().plot_cleaned_SN(
+            sn, flag, lims, plot_controls, plot_flagged, save, filename
+        )
+        self.pdf.savefig(fig)
+
+    def plot_averaged_SN(
+        self,
+        avg_sn: AveragedSupernova,
+        flag: int,
+        lims: PlotLimits,
+        plot_controls: bool = True,
+        plot_flagged: bool = True,
+        save: bool = False,
+        filename: str = "averaged",
+    ):
+        print(
+            f'Plotting averaged SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}...'
+        )
+        fig = super().plot_averaged_SN(
+            avg_sn, flag, lims, plot_controls, plot_flagged, save, filename
+        )
+        self.pdf.savefig(fig)
+
+    def plot_limcuts(
+        self,
+        limcuts: LimCutsTable,
+        cut: Cut,
+        cut_start: int,
+        cut_stop: int,
+        use_preSN_lc=False,
+    ):
+        print("Plotting LimCutsTable...")
+        fig = super().plot_limcuts(limcuts, cut, cut_start, cut_stop, use_preSN_lc)
+        self.pdf.savefig(fig)
+
+    def plot_uncert_est(
+        self,
+        lc: LightCurve,
+        tnsname: str,
+        lims: PlotLimits,
+        save: bool = False,
+        filename: str = "uncert_est",
+    ):
+        print("Plotting true uncertainties estimation...")
+        fig = super().plot_uncert_est(lc, tnsname, lims, save, filename)
+        self.pdf.savefig(fig)
+
+    def plot_template_correction(self, lc: LightCurve):
+        print("Plotting ATLAS template chanages correction...")
+        fig = super().plot_template_correction(lc)
+        self.pdf.savefig(fig)
 
 
 # define command line arguments

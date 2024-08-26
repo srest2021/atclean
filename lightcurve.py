@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, List, Type
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -22,6 +22,8 @@ REQUIRED_COLUMN_NAMES = ["MJD", "uJy", "duJy"]
 REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
 
 ATLAS_FILTERS = ["c", "o"]
+
+DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 """
 UTILITY
@@ -439,6 +441,96 @@ class Cut:
         return output
 
 
+class CutList:
+    def __init__(self):
+        self.list: Dict[str, Type[Cut]] = {}
+
+    def add(self, cut: Cut, name: str):
+        if name in self.list:
+            raise RuntimeError(f"ERROR: cut by the name {name} already exists.")
+        self.list[name] = cut
+
+    def get(self, name: str):
+        if not name in self.list:
+            return None
+        return self.list[name]
+
+    def has(self, name: str):
+        return name in self.list
+
+    def can_apply_directly(self, name: str):
+        return self.list[name].can_apply_directly()
+
+    def check_for_flag_duplicates(self):
+        if len(self.list) < 1:
+            return
+
+        unique_flags = set()
+        duplicate_flags = []
+
+        for name, cut in self.list.items():
+            if name == "uncert_est":
+                continue
+
+            flags = [cut.flag]
+            if cut.params:
+                for key in cut.params:
+                    if key.endswith("_flag"):
+                        flags.append(cut.params[key])
+
+            for flag in flags:
+                if flag in unique_flags:
+                    if not flag is None:
+                        duplicate_flags.append(flag)
+                elif not flag is None:
+                    unique_flags.add(flag)
+
+        return len(duplicate_flags) > 0, duplicate_flags
+
+    def get_custom_cuts(self) -> Dict[str, Cut]:
+        custom_cuts = {}
+
+        for name in self.list:
+            if not name in DEFAULT_CUT_NAMES and name != "uncert_est":
+                custom_cuts[name] = self.list[name]
+
+        return custom_cuts
+
+    def get_all_flags(self):
+        mask = 0
+        for name in self.list:
+            if name != "uncert_est":
+                mask = mask | self.list[name].flag
+        return mask
+
+    def get_previous_flags(self, current_cut_name: str):
+        skip_names: List = [
+            "uncert_est",
+            "badday_cut",
+            "controls_cut",
+            "x2_cut",
+            "uncert_cut",
+        ]
+        try:
+            current_cut_index = skip_names.index(current_cut_name)
+        except Exception as e:
+            raise RuntimeError(
+                f"ERROR: Cannot get previous flags for a custom cut: {str(e)}"
+            )
+        skip_names = skip_names[: current_cut_index + 1]
+        mask = 0
+        for name in self.list:
+            if not name in skip_names:
+                mask = mask | self.list[name].flag
+        return mask
+
+    def __str__(self):
+        output = ""
+        for name in self.list:
+            output += f"\n{name}: " + self.list[name].__str__()
+        return output
+
+
 class LimCutsTable:
     def __init__(self, lc: pdastrostatsclass, stn_bound, indices=None):
         self.t = None
@@ -781,7 +873,7 @@ class Supernova:
                 pda4MJD.statparams, c2_param2columnmapping, destindex=index
             )
 
-    def apply_controls_cut(self, cut: Cut, previous_flags):
+    def apply_controls_cut(self, cut: Cut, previous_flags: int):
         self.calculate_control_stats(previous_flags)
         self.lcs[0].t["c2_abs_stn"] = (
             self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
@@ -1039,10 +1131,10 @@ class LightCurve(pdastrostatsclass):
     def get_postMJD0_indices(self, mjd0: float):
         return self.ix_inrange(colnames="MJD", lowlim=mjd0)
 
-    def get_good_indices(self, flag:int):
+    def get_good_indices(self, flag: int):
         return self.ix_unmasked("Mask", maskval=flag)
 
-    def get_bad_indices(self, flag:int):
+    def get_bad_indices(self, flag: int):
         return self.ix_masked("Mask", maskval=flag)
 
     def remove_invalid_rows(self, verbose=False):
