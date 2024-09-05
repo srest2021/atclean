@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Dict, Type, Callable, List
+from typing import Callable, List
 import sys, argparse
 import pandas as pd
 import numpy as np
@@ -13,12 +13,15 @@ from lightcurve import (
     SnInfoTable,
     Supernova,
     AveragedSupernova,
-    get_tns_coords_from_json,
-    get_tns_mjd0_from_json,
-    query_tns,
+    get_mjd0,
 )
-from download import load_config, make_dir_if_not_exists, parse_comma_separated_string
-from plot import PlotLimits, PlotPdf
+from download import (
+    Credentials,
+    load_config,
+    make_dir_if_not_exists,
+    parse_comma_separated_string,
+)
+from plot import PlotPdf
 
 """
 UTILITY
@@ -334,7 +337,13 @@ class CleanLoop:
         self.f: OutputReadMe = None
         self.p: PlotPdf = None
 
-        self.credentials: Dict[str, str] = credentials
+        self.credentials: Credentials = Credentials(
+            credentials["atlas_username"],
+            credentials["atlas_password"],
+            credentials["tns_api_key"],
+            credentials["tns_id"],
+            credentials["tns_bot_name"],
+        )
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
         self.flux2mag_sigmalimit: float = flux2mag_sigmalimit
@@ -741,28 +750,8 @@ class CleanLoop:
             if mjd0 is None and (
                 plot or cut_list.get("x2_cut").params["use_pre_mjd0_lc"]
             ):
-                _, sninfo_row = self.sninfo.get_row(tnsname)
-                if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
-                    # get MJD0 from SN info table
-                    print(
-                        f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...'
-                    )
-                    mjd0 = float(sninfo_row["mjd0"])
-                    if not isinstance(mjd0, (int, float)):
-                        raise RuntimeError(f"ERROR: Invalid MJD0: {mjd0}")
-                    else:
-                        print("Success")
-                else:
-                    # get MJD0 from TNS
-                    print(f"\nQuerying TNS for SN {tnsname} discovery date...")
-                    json_data = query_tns(
-                        tnsname,
-                        self.credentials["tns_api_key"],
-                        self.credentials["tns_id"],
-                        self.credentials["tns_bot_name"],
-                    )
-                    mjd0 = get_tns_mjd0_from_json(json_data)
-                    coords = get_tns_coords_from_json(json_data)
+                mjd0, coords = get_mjd0(tnsname, self.sninfo, self.credentials)
+                if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
                     print("Success")

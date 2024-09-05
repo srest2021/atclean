@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Type
+from typing import Dict, Any, List, Tuple, Type
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
 from collections import OrderedDict
+from download import Credentials
 from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
@@ -403,6 +404,31 @@ class SnInfoTable:
     def __str__(self):
         return self.t.to_string()
 
+def get_mjd0(
+    tnsname: str, sninfo: SnInfoTable, credentials: Credentials
+) -> Tuple[float, Coordinates|None]:
+    _, sninfo_row = sninfo.get_row(tnsname)
+    if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
+        # get MJD0 from SN info table
+        print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
+        mjd0 = float(sninfo_row["mjd0"])
+        if not isinstance(mjd0, (int, float)):
+            raise RuntimeError(f"ERROR: Invalid MJD0: {mjd0}")
+        else:
+            print("Success")
+            return mjd0, None
+    else:
+        # get MJD0 from TNS
+        print(f"\nQuerying TNS for SN {tnsname} discovery date...")
+        json_data = query_tns(
+            tnsname,
+            credentials.tns_api_key,
+            credentials.tns_id,
+            credentials.tns_bot_name,
+        )
+        mjd0 = get_tns_mjd0_from_json(json_data)
+        coords = get_tns_coords_from_json(json_data)
+        return mjd0, coords
 
 class Cut:
     def __init__(
@@ -1002,7 +1028,9 @@ class Supernova:
         print(f"\nLoading SN light curve and {num_controls} control light curves...")
         self.load(input_dir, cleaned=cleaned)
         if num_controls > 0:
-            for control_index in range(1, num_controls + 1):
+            # keep iterating over control indices until we successfully load num_controls light curves
+            control_index = 1
+            while self.num_controls < num_controls: #for control_index in range(1, num_controls + 1):
                 try:
                     self.load(input_dir, control_index=control_index, cleaned=cleaned)
                     self.num_controls += 1
@@ -1011,8 +1039,9 @@ class Supernova:
                         f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.lcs[control_index]
+                control_index += 1
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves"
+            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_all_controls()})"
         )
 
     def get_all_indices(self):
