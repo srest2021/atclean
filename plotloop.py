@@ -2,7 +2,7 @@ import argparse
 from typing import Dict, List
 
 from clean import parse_config_cuts, parse_config_filters
-from download import load_config, make_dir_if_not_exists
+from download import Credentials, load_config, make_dir_if_not_exists
 from lightcurve import (
     AveragedSupernova,
     CutList,
@@ -19,18 +19,18 @@ from plot import PlotPdf
 class PlotLoop:
     def __init__(
         self,
-        input_dir,
-        output_dir,
-        credentials,
-        sninfo_filename=None,
-        overwrite=False,
+        input_dir: str,
+        output_dir: str,
+        credentials: Credentials,
+        sninfo_filename: str = None,
+        overwrite: bool = False,
     ):
         self.sn: Supernova = None
         self.avg_sn: AveragedSupernova = None
         self.cut_list: CutList = None
         self.p: PlotPdf = None
 
-        self.credentials: Dict[str, str] = credentials
+        self.credentials: Credentials = credentials
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
         self.overwrite: bool = overwrite
@@ -38,6 +38,10 @@ class PlotLoop:
         self.sninfo: SnInfoTable = SnInfoTable(
             self.output_dir, filename=sninfo_filename
         )
+
+    def plot_lcs(self, tnsname: str, mjd0: float, filt: str, num_controls: int = 0):
+        # TODO
+        pass
 
     def loop(
         self,
@@ -55,7 +59,7 @@ class PlotLoop:
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
 
-            if mjd0 is None and cut_list.get("x2_cut").params["use_pre_mjd0_lc"]:
+            if mjd0 is None:
                 mjd0, coords = get_mjd0(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
@@ -64,7 +68,13 @@ class PlotLoop:
             else:
                 print(f"\nSetting MJD0 to {mjd0}")
 
-        # TODO
+            for filt in filters:
+                self.plot_lcs(
+                    tnsname,
+                    mjd0,
+                    filt,
+                    num_controls=num_controls,
+                )
 
 
 # define command line arguments
@@ -194,13 +204,21 @@ if __name__ == "__main__":
     )
     print(f"Number of control light curves to load and plot: {num_controls}")
 
+    # TODO: fix
     cut_list = parse_config_cuts(args, config)
 
     print()
+    credentials = Credentials(
+        config["credentials"]["atlas_username"],
+        config["credentials"]["atlas_password"],
+        config["credentials"]["tns_api_key"],
+        config["credentials"]["tns_id"],
+        config["credentials"]["tns_bot_name"],
+    )
     plotloop = PlotLoop(
         input_dir,
         output_dir,
-        config["credentials"],
+        credentials,
         sninfo_filename=sninfo_filename,
         overwrite=args.overwrite,
     )

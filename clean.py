@@ -324,12 +324,12 @@ class ChiSquareCutTable:
 class CleanLoop:
     def __init__(
         self,
-        input_dir,
-        output_dir,
-        credentials,
-        sninfo_filename=None,
-        flux2mag_sigmalimit=3.0,
-        overwrite=False,
+        input_dir: str,
+        output_dir: str,
+        credentials: Credentials,
+        sninfo_filename: str = None,
+        flux2mag_sigmalimit: float = 3.0,
+        overwrite: bool = False,
     ):
         self.sn: Supernova = None
         self.avg_sn: AveragedSupernova = None
@@ -337,13 +337,7 @@ class CleanLoop:
         self.f: OutputReadMe = None
         self.p: PlotPdf = None
 
-        self.credentials: Credentials = Credentials(
-            credentials["atlas_username"],
-            credentials["atlas_password"],
-            credentials["tns_api_key"],
-            credentials["tns_id"],
-            credentials["tns_bot_name"],
-        )
+        self.credentials: Credentials = credentials
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
         self.flux2mag_sigmalimit: float = flux2mag_sigmalimit
@@ -1061,10 +1055,17 @@ if __name__ == "__main__":
     cut_list = parse_config_cuts(args, config)
 
     print()
+    credentials = Credentials(
+        config["credentials"]["atlas_username"],
+        config["credentials"]["atlas_password"],
+        config["credentials"]["tns_api_key"],
+        config["credentials"]["tns_id"],
+        config["credentials"]["tns_bot_name"],
+    )
     clean = CleanLoop(
         input_dir,
         output_dir,
-        config["credentials"],
+        credentials,
         sninfo_filename=sninfo_filename,
         flux2mag_sigmalimit=flux2mag_sigmalimit,
         overwrite=args.overwrite,

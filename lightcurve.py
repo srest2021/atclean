@@ -404,9 +404,10 @@ class SnInfoTable:
     def __str__(self):
         return self.t.to_string()
 
+
 def get_mjd0(
     tnsname: str, sninfo: SnInfoTable, credentials: Credentials
-) -> Tuple[float, Coordinates|None]:
+) -> Tuple[float, Coordinates | None]:
     _, sninfo_row = sninfo.get_row(tnsname)
     if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
         # get MJD0 from SN info table
@@ -429,6 +430,7 @@ def get_mjd0(
         mjd0 = get_tns_mjd0_from_json(json_data)
         coords = get_tns_coords_from_json(json_data)
         return mjd0, coords
+
 
 class Cut:
     def __init__(
@@ -1030,7 +1032,9 @@ class Supernova:
         if num_controls > 0:
             # keep iterating over control indices until we successfully load num_controls light curves
             control_index = 1
-            while self.num_controls < num_controls: #for control_index in range(1, num_controls + 1):
+            while (
+                self.num_controls < num_controls
+            ):  # for control_index in range(1, num_controls + 1):
                 try:
                     self.load(input_dir, control_index=control_index, cleaned=cleaned)
                     self.num_controls += 1
