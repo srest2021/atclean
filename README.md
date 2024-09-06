@@ -12,6 +12,7 @@ View our paper [here](https://arxiv.org/abs/2405.03747) for details on our clean
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
     - [`convert.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
+    - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
     - [`generate_sim_tables.py`](#generate_sim_tablespy): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
     - [`generate_detec_tables.py`](#generate_detec_tablespy): Part of our pre-SN outburst detection analysis. For each row in each SimTable, add the simulation to a random control light curve and record its max FOM and MJD, then update the rows and save as SimDetecTables. Optionally calculate efficiencies using specified FOM detection limits.
 
@@ -391,6 +392,7 @@ Arguments will override default config file settings if specified.
 
 #### Example commands
 - Apply the uncertainty cut to a single SN and its control light curves: `./clean.py 2020lse -u -o`
+- <a id="example-command-plot"></a>Apply the uncertainty cut to a single SN and its control light curves, then generate a summary PDF file of diagnostic plots: `./clean.py 2020lse -u -o -p`
 - Specify the number of control light curves to clean (can be 0): `./clean.py 2020lse -u --num_controls 5 -o`
 - Apply all custom cuts listed in `config.ini`: `./clean.py 2020lse --custom_cuts -o`
 - Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`: `./clean.py 2020lse -u -e -x -c --custom_cuts -o`
@@ -399,6 +401,8 @@ Arguments will override default config file settings if specified.
 ### `plotloop.py`
 
 This script allows you to generate a summary PDF file of diagnostic plots based on existing cleaned and/or averaged light curves.
+
+To instead generate this summary PDF file while running the cleaning script, add `-p` to your command. An example is available [here](#example-command-plot).
 
 #### Arguments
 Arguments will override default config file settings if specified.
