@@ -1031,6 +1031,7 @@ class Supernova:
         self.load(input_dir, cleaned=cleaned)
         if num_controls > 0:
             # keep iterating over control indices until we successfully load num_controls light curves
+            # TODO: add check to see how many files are in this folder (or other check to avoid infinite loops)
             control_index = 1
             while (
                 self.num_controls < num_controls

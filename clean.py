@@ -637,6 +637,8 @@ class CleanLoop:
         if plot:
             # initialize PDF of diagnostic plots
             self.p = PlotPdf(f"{self.output_dir}/{tnsname}", tnsname, filt=filt)
+
+            # plot original SN light curve and control light curves
             self.p.plot_SN(
                 self.sn,
                 self.p.get_lims(lc=self.sn.lcs[0]),

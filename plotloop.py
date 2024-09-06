@@ -2,7 +2,12 @@ import argparse
 from typing import Dict, List
 
 from clean import parse_config_cuts, parse_config_filters
-from download import Credentials, load_config, make_dir_if_not_exists
+from download import (
+    Credentials,
+    load_config,
+    make_dir_if_not_exists,
+    parse_comma_separated_string,
+)
 from lightcurve import (
     AveragedSupernova,
     CutList,
@@ -39,9 +44,167 @@ class PlotLoop:
             self.output_dir, filename=sninfo_filename
         )
 
-    def plot_lcs(self, tnsname: str, mjd0: float, filt: str, num_controls: int = 0):
-        # TODO
-        pass
+    def load_sn(
+        self,
+        tnsname: str,
+        mjd0: float,
+        filt: str,
+        num_controls: int = 0,
+        cleaned: bool = False,
+    ):
+        self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
+        try:
+            self.sn.load_all(
+                self.output_dir, num_controls=num_controls, cleaned=cleaned
+            )
+        except Exception as e:
+            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+
+    def load_avg_sn(self, tnsname: str, mjd0: float, filt: str, mjdbinsize: float):
+        self.avg_sn = AveragedSupernova(
+            tnsname=tnsname,
+            mjd0=mjd0,
+            filt=filt,
+            mjdbinsize=mjdbinsize,
+        )
+        try:
+            self.avg_sn.load_all(output_dir, num_controls=num_controls)
+        except Exception as e:
+            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+
+    def plot_lcs(
+        self,
+        tnsname: str,
+        mjd0: float,
+        filt: str,
+        num_controls: int = 0,
+        plot_uncert_est: bool = False,
+    ):
+        print(f"\n\tFILTER: {filt}")
+
+        # load the cleaned SN and control light curves
+        self.load_sn(tnsname, mjd0, filt, num_controls=num_controls, cleaned=True)
+
+        if self.cut_list.has("badday_cut"):
+            # load averaged light curves
+            self.load_avg_sn(
+                tnsname,
+                mjd0,
+                filt,
+                self.cut_list.get("badday_cut").params["mjd_bin_size"],
+            )
+
+        # initialize PDF of diagnostic plots
+        self.p = PlotPdf(f"{self.output_dir}/{tnsname}", tnsname, filt=filt)
+
+        # plot original SN light curve and control light curves
+        self.p.plot_SN(
+            self.sn,
+            self.p.get_lims(lc=self.sn.lcs[0]),
+            plot_controls=True,
+            plot_template_changes=True,
+        )
+
+        uncert_cut = self.cut_list.get("uncert_cut")
+        if not uncert_cut is None:
+            # plot uncertainty cut
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                uncert_cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(uncert_cut.flag),
+                ),
+                title="Uncertainty cut",
+            )
+
+        if plot_uncert_est:
+            # plot true uncertainties estimation
+            self.p.plot_uncert_est(
+                self.sn.lcs[0],
+                self.sn.tnsname,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=(
+                        self.sn.lcs[0].get_good_indices(uncert_cut.flag)
+                        if not uncert_cut is None
+                        else None
+                    ),
+                ),
+            )
+
+        x2_cut = cut_list.get("x2_cut")
+        if not x2_cut is None:
+            # plot chi-square cut
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                x2_cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(x2_cut.flag),
+                ),
+                title="Chi-square cut",
+            )
+
+        controls_cut = cut_list.get("controls_cut")
+        if not controls_cut is None:
+            # plot control light curve cut
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                controls_cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(controls_cut.flag),
+                ),
+                title="Control light curve cut",
+            )
+
+        custom_cuts = self.cut_list.get_custom_cuts()
+        for name, cut in custom_cuts.items():
+            # plot custom cut
+            self.p.plot_cut(
+                self.sn.lcs[0],
+                cut.flag,
+                self.p.get_lims(
+                    lc=self.sn.lcs[0],
+                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
+                ),
+                title=f"Custom cut {name}",
+            )
+
+        # plot cleaned light curve using all previous cuts
+        previous_flags = self.cut_list.get_previous_flags("badday_cut")
+        lims = self.p.get_lims(
+            lc=self.sn.lcs[0],
+            indices=self.sn.lcs[0].get_good_indices(previous_flags),
+        )
+        self.p.plot_cut(self.sn.lcs[0], previous_flags, lims, title="All previous cuts")
+        self.p.plot_cleaned_SN(
+            self.sn, previous_flags, lims, plot_controls=True, plot_flagged=False
+        )
+
+        badday_cut = self.cut_list.get("badday_cut")
+        if not badday_cut is None:
+            lims = self.p.get_lims(
+                lc=self.avg_sn.avg_lcs[0],
+                indices=self.avg_sn.avg_lcs[0].get_good_indices(cut.flag),
+            )
+
+            # plot bad day cut
+            self.p.plot_cut(
+                self.avg_sn.avg_lcs[0],
+                cut.flag,
+                lims,
+                title="Bad day cut",
+            )
+
+            # plot averaged light curves
+            self.p.plot_averaged_SN(
+                self.avg_sn, cut.flag, lims, plot_controls=True, plot_flagged=False
+            )
+
+        # save the plots
+        self.p.save_pdf()
 
     def loop(
         self,
@@ -50,6 +213,7 @@ class PlotLoop:
         mjd0=None,
         filters: List[str] = ["o", "c"],
         cut_list: CutList = None,
+        plot_uncert_est: bool = False,
     ):
         self.cut_list = cut_list
 
@@ -74,6 +238,7 @@ class PlotLoop:
                     mjd0,
                     filt,
                     num_controls=num_controls,
+                    plot_uncert_est=plot_uncert_est,
                 )
 
 
@@ -101,7 +266,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     parser.add_argument(
         "--filters",
         type=str,
-        default=None,
+        default="c,o",
         help="comma-separated list of filters to plot",
     )
     parser.add_argument(
@@ -158,6 +323,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="plot averaged light curves and bad day cut",
     )
     parser.add_argument(
+        "-m",
+        "--mjd_bin_size",
+        type=float,
+        default=None,
+        help="MJD bin size in days for averaging",
+    )
+    parser.add_argument(
         "--custom_cuts",
         default=False,
         action="store_true",
@@ -170,8 +342,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
-
-    # TODO
 
     if len(args.tnsnames) < 1:
         raise RuntimeError("ERROR: Please specify at least one TNS name to plot.")
@@ -193,7 +363,7 @@ if __name__ == "__main__":
     print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
     print(f"Overwrite existing files: {args.overwrite}")
-    filters = parse_config_filters(args, config)
+    filters = parse_comma_separated_string(args.filters)
     print(f"Filters: {filters}")
     if args.mjd0:
         print(f"MJD0: {args.mjd0}")
@@ -204,7 +374,6 @@ if __name__ == "__main__":
     )
     print(f"Number of control light curves to load and plot: {num_controls}")
 
-    # TODO: fix
     cut_list = parse_config_cuts(args, config)
 
     print()
@@ -229,4 +398,5 @@ if __name__ == "__main__":
         num_controls=num_controls,
         mjd0=args.mjd0,
         filters=filters,
+        plot_uncert_est=args.uncert_est,
     )
