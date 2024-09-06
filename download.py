@@ -19,7 +19,7 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import Coordinates, SnInfoTable, FullLightCurve
+from lightcurve import Coordinates, Credentials, SnInfoTable, FullLightCurve
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -406,14 +406,18 @@ class DownloadLoop:
         self.sninfo = SnInfoTable(self.output_dir, filename=sninfo_filename)
 
         # ATLAS and TNS credentials
-        self.credentials = config["credentials"]
-        print(f'\nATLAS username: {self.credentials["atlas_username"]}')
-        if self.credentials["atlas_password"] == "None":
-            self.credentials["atlas_password"] = getpass(
-                prompt="Enter ATLAS password: "
-            )
-        print(f'TNS ID: {self.credentials["tns_id"]}')
-        print(f'TNS bot name: {self.credentials["tns_bot_name"]}')
+        self.credentials: Credentials = Credentials(
+            config["credentials"]["atlas_username"],
+            config["credentials"]["atlas_password"],
+            config["credentials"]["tns_api_key"],
+            config["credentials"]["tns_id"],
+            config["credentials"]["tns_bot_name"],
+        )
+        print(f"\nATLAS username: {self.credentials.atlas_username}")
+        if self.credentials.atlas_password == "None":
+            self.credentials.atlas_password = getpass(prompt="Enter ATLAS password: ")
+        print(f"TNS ID: {self.credentials.tns_id}")
+        print(f"TNS bot name: {self.credentials.tns_bot_name}")
 
         # control light curves
         self.controls = args.controls
@@ -453,8 +457,8 @@ class DownloadLoop:
         resp = requests.post(
             url=f"{baseurl}/api-token-auth/",
             data={
-                "username": self.credentials["atlas_username"],
-                "password": self.credentials["atlas_password"],
+                "username": self.credentials.atlas_username,
+                "password": self.credentials.atlas_password,
             },
         )
         if resp.status_code == 200:
@@ -500,9 +504,9 @@ class DownloadLoop:
         # try to query TNS for any missing data
         self.lcs[0].get_tns_data(
             tnsname,
-            self.credentials["tns_api_key"],
-            self.credentials["tns_id"],
-            self.credentials["tns_bot_name"],
+            self.credentials.tns_api_key,
+            self.credentials.tns_id,
+            self.credentials.tns_bot_name,
         )
 
         # add final RA, Dec, MJD0 to SN info table

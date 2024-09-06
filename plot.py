@@ -1,21 +1,14 @@
 #!/usr/bin/env python
 
-import argparse
 import os
 from typing import List
-from download import load_config
-from pdastro import AorB
 import matplotlib
-from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.gridspec as gridspec
 from lightcurve import (
-    CutList,
     LimCutsTable,
     Cut,
     LightCurve,
-    AveragedLightCurve,
     Supernova,
     AveragedSupernova,
 )
@@ -628,6 +621,7 @@ class Plot:
         cut_stop: int,
         use_preSN_lc=False,
     ):
+        # TODO
         pass
 
     def plot_uncert_est(
@@ -716,14 +710,15 @@ class Plot:
         return fig
 
     def plot_template_correction(self, lc: LightCurve):
+        # TODO
         pass
 
 
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
         Plot.__init__(self)
-        filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
-        self.pdf = PdfPages(filename)
+        self.filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
+        self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
         print("\nSaving PDF of plots...\n")
@@ -822,97 +817,3 @@ class PlotPdf(Plot):
         print("Plotting ATLAS template chanages correction...")
         fig = super().plot_template_correction(lc)
         self.pdf.savefig(fig)
-
-
-# define command line arguments
-def define_args(parser=None, usage=None, conflict_handler="resolve"):
-    if parser is None:
-        parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
-
-    parser.add_argument(
-        "tnsnames", nargs="+", help="TNS names of the transients to clean"
-    )
-    parser.add_argument(
-        "--config_file",
-        default="config.ini",
-        type=str,
-        help="file name of .ini file with settings for this class",
-    )
-    parser.add_argument(
-        "-o",
-        "--overwrite",
-        default=False,
-        action="store_true",
-        help="overwrite existing file with same file name",
-    )
-    parser.add_argument(
-        "--filters",
-        type=str,
-        default=None,
-        help="comma-separated list of filters to plot",
-    )
-    parser.add_argument(
-        "--num_controls",
-        type=int,
-        default=None,
-        help="number of control light curves to load and plot",
-    )
-
-    # possible cuts
-    parser.add_argument(
-        "-t",
-        "--template_correction",
-        default=False,
-        action="store_true",
-        help="plot ATLAS template change correction",
-    )
-    parser.add_argument(
-        "-e",
-        "--uncert_est",
-        default=False,
-        action="store_true",
-        help="plot true uncertainty estimation",
-    )
-    parser.add_argument(
-        "-u",
-        "--uncert_cut",
-        default=False,
-        action="store_true",
-        help="plot uncertainty cut",
-    )
-    parser.add_argument(
-        "-x",
-        "--x2_cut",
-        default=False,
-        action="store_true",
-        help="plot chi-square cut",
-    )
-    parser.add_argument(
-        "-c",
-        "--controls_cut",
-        default=False,
-        action="store_true",
-        help="plot control light curve cut",
-    )
-    parser.add_argument(
-        "-g",
-        "--averaging",
-        default=False,
-        action="store_true",
-        help="plot averaged light curves and bad day cut",
-    )
-    parser.add_argument(
-        "--custom_cuts",
-        default=False,
-        action="store_true",
-        help="scan config file for custom cuts and plot them",
-    )
-
-    return parser
-
-
-if __name__ == "__main__":
-    args = define_args().parse_args()
-    config = load_config(args.config_file)
-
-    # TODO

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Type
+from typing import Dict, Any, List, Tuple, Type
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -11,6 +11,7 @@ from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
 from copy import deepcopy
+from pathlib import Path
 
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20
@@ -44,6 +45,17 @@ def AorB(A, B):
 
 def not_AandB(A, B):
     return np.setxor1d(A, B)
+
+
+class Credentials:
+    def __init__(
+        self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
+    ):
+        self.atlas_username = atlas_username
+        self.atlas_password = atlas_password
+        self.tns_api_key = tns_api_key
+        self.tns_id = tns_id
+        self.tns_bot_name = tns_bot_name
 
 
 class RA:
@@ -402,6 +414,33 @@ class SnInfoTable:
 
     def __str__(self):
         return self.t.to_string()
+
+
+def get_mjd0(
+    tnsname: str, sninfo: SnInfoTable, credentials: Credentials
+) -> Tuple[float, Coordinates | None]:
+    _, sninfo_row = sninfo.get_row(tnsname)
+    if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
+        # get MJD0 from SN info table
+        print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
+        mjd0 = float(sninfo_row["mjd0"])
+        if not isinstance(mjd0, (int, float)):
+            raise RuntimeError(f"ERROR: Invalid MJD0: {mjd0}")
+        else:
+            print("Success")
+            return mjd0, None
+    else:
+        # get MJD0 from TNS
+        print(f"\nQuerying TNS for SN {tnsname} discovery date...")
+        json_data = query_tns(
+            tnsname,
+            credentials.tns_api_key,
+            credentials.tns_id,
+            credentials.tns_bot_name,
+        )
+        mjd0 = get_tns_mjd0_from_json(json_data)
+        coords = get_tns_coords_from_json(json_data)
+        return mjd0, coords
 
 
 class Cut:
@@ -989,6 +1028,11 @@ class Supernova:
         for control_index in self.get_all_indices():
             self.lcs[control_index].drop_extra_columns()
 
+    def count_files_in_dir(self, path):
+        directory_path = Path(path)
+        files = [f for f in directory_path.iterdir() if f.is_file()]
+        return len(files)
+
     def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
             control_index=control_index, filt=self.filt
@@ -1000,9 +1044,14 @@ class Supernova:
         self.num_controls = 0
 
         print(f"\nLoading SN light curve and {num_controls} control light curves...")
+
+        # load SN light curve
         self.load(input_dir, cleaned=cleaned)
+
         if num_controls > 0:
-            for control_index in range(1, num_controls + 1):
+            # keep iterating over control indices until we successfully load num_controls light curves
+            control_index = 1
+            while self.num_controls < num_controls:
                 try:
                     self.load(input_dir, control_index=control_index, cleaned=cleaned)
                     self.num_controls += 1
@@ -1011,8 +1060,10 @@ class Supernova:
                         f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.lcs[control_index]
+                control_index += 1
+
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves"
+            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_control_indices()})"
         )
 
     def get_all_indices(self):
@@ -1082,12 +1133,18 @@ class AveragedSupernova(Supernova):
     def load_all(self, input_dir, num_controls=0):
         self.avg_lcs = {}
         self.num_controls = 0
+
         print(
             f"\nLoading averaged SN light curve and {num_controls} averaged control light curves..."
         )
+
+        # load averaged SN light curve
         self.load(input_dir)
+
         if num_controls > 0:
-            for control_index in range(1, num_controls + 1):
+            # keep iterating over control indices until we successfully load num_controls averaged light curves
+            control_index = 1
+            while self.num_controls < num_controls:
                 try:
                     self.load(input_dir, control_index=control_index)
                     self.num_controls += 1
@@ -1096,6 +1153,8 @@ class AveragedSupernova(Supernova):
                         f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.avg_lcs[control_index]
+                control_index += 1
+
         print(
             f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves"
         )
