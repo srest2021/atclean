@@ -396,6 +396,63 @@ Arguments will override default config file settings if specified.
 - Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`: `./clean.py 2020lse -u -e -x -c --custom_cuts -o`
 - Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`, then bin the light curves and apply the bad day cut: `./clean.py 2020lse -u -e -x -c -g --custom_cuts -o`
 
+### `plotloop.py`
+
+This script allows you to generate a summary PDF file of diagnostic plots based on existing cleaned and/or averaged light curves.
+
+#### Arguments
+Arguments will override default config file settings if specified.
+- First provide TNS name(s) of the object(s) to download. 
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+- `-o`, `--overwrite`: If specified, existing PDF files with the same name will be overwritten.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-o` or `--overwrite`
+- `--filters`: Specifies a comma-separated list of filters to plot. Each filter gets its own PDF file.
+    - Type: str
+    - Default: `None` (i.e., the `filters` field in `config.ini`)
+    - Usage: `--filters c,o`
+- `-n`, `--num_controls`: The number of control light curves to load and plot per SN.
+    - Type: int
+    - Default: `None` (i.e., the `num_controls` field in `config.ini`)
+    - Usage: `-n 5` or `--num_controls 5`
+- `--mjd0`: The start date of the SN in MJD.
+    - Type: float
+    - Default: `None` (i.e., reference the SN info file or query TNS)
+    - Usage: `--mjd0 58800.0`
+- `-e`, `--uncert_est`: If specified, plot the true uncertainty estimation.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-e` or `--uncert_est`
+- `-u`, `--uncert_cut`: If specified, plot the uncertainty cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-u` or `--uncert_cut`
+- `-x`, `--x2_cut`: If specified, plot the chi-square cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-x` or `--x2_cut`
+- `-c`, `--controls_cut`: If specified, plot the control light curve cut.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-c` or `--controls_cut`
+- `-g`, `--averaging`: If specified, plot the bad day cut and the averaged light curves.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-g` or `--averaging`
+- `--custom_cuts`: If specified, scan the config file for custom cuts and plot them.
+    - Type: bool
+    - Default: `False`
+    - Usage: `--custom_cuts`
+
+#### Example commands
+- Generate default plots of SN 2019vxm and its control light curves: `./plotloop.py 2019vxm -o` 
+- Generate default plots of SN 2019vxm without its control light curves: `./plotloop.py 2019vxm -o --num_controls 0`
+- Generate defaults plots of SN 2019vxm and its control light curves, as well as plots of the true uncertainties estimation, the uncertainty cut, the chi-square cut, the control light curve cut, and the bad day cut: `./plotloop.py 2019vxm -o -e -u -x -c -g`
+
 ### `generate_sim_tables.py`
 
 **WIP**

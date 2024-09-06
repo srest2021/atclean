@@ -4,7 +4,7 @@ import argparse
 import os
 from typing import Dict, List
 
-from clean import parse_config_cuts
+from clean import parse_config_cuts, parse_config_filters
 from download import (
     Credentials,
     load_config,
@@ -275,7 +275,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     parser.add_argument(
         "--filters",
         type=str,
-        default="c,o",
+        default=None,
         help="comma-separated list of filters to plot",
     )
     parser.add_argument(
@@ -372,13 +372,13 @@ if __name__ == "__main__":
     print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
     print(f"Overwrite existing files: {args.overwrite}")
-    filters = parse_comma_separated_string(args.filters)
+    filters = parse_config_filters(args, config)
     print(f"Filters: {filters}")
     if args.mjd0:
         print(f"MJD0: {args.mjd0}")
     num_controls = (
         args.num_controls
-        if args.num_controls
+        if not args.num_controls is None
         else int(config["download"]["num_controls"])
     )
     print(f"Number of control light curves to load and plot: {num_controls}")

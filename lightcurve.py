@@ -11,6 +11,7 @@ from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
 from copy import deepcopy
+from pathlib import Path
 
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20
@@ -1027,6 +1028,11 @@ class Supernova:
         for control_index in self.get_all_indices():
             self.lcs[control_index].drop_extra_columns()
 
+    def count_files_in_dir(self, path):
+        directory_path = Path(path)
+        files = [f for f in directory_path.iterdir() if f.is_file()]
+        return len(files)
+
     def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
             control_index=control_index, filt=self.filt
@@ -1038,14 +1044,14 @@ class Supernova:
         self.num_controls = 0
 
         print(f"\nLoading SN light curve and {num_controls} control light curves...")
+
+        # load SN light curve
         self.load(input_dir, cleaned=cleaned)
+
         if num_controls > 0:
             # keep iterating over control indices until we successfully load num_controls light curves
-            # TODO: add check to see how many files are in this folder (or other check to avoid infinite loops)
             control_index = 1
-            while (
-                self.num_controls < num_controls
-            ):  # for control_index in range(1, num_controls + 1):
+            while self.num_controls < num_controls:
                 try:
                     self.load(input_dir, control_index=control_index, cleaned=cleaned)
                     self.num_controls += 1
@@ -1055,8 +1061,9 @@ class Supernova:
                     )
                     del self.lcs[control_index]
                 control_index += 1
+
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_all_controls()})"
+            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_control_indices()})"
         )
 
     def get_all_indices(self):
@@ -1126,12 +1133,18 @@ class AveragedSupernova(Supernova):
     def load_all(self, input_dir, num_controls=0):
         self.avg_lcs = {}
         self.num_controls = 0
+
         print(
             f"\nLoading averaged SN light curve and {num_controls} averaged control light curves..."
         )
+
+        # load averaged SN light curve
         self.load(input_dir)
+
         if num_controls > 0:
-            for control_index in range(1, num_controls + 1):
+            # keep iterating over control indices until we successfully load num_controls averaged light curves
+            control_index = 1
+            while self.num_controls < num_controls:
                 try:
                     self.load(input_dir, control_index=control_index)
                     self.num_controls += 1
@@ -1140,6 +1153,8 @@ class AveragedSupernova(Supernova):
                         f"Could not load control light curve {control_index}; skipping..."
                     )
                     del self.avg_lcs[control_index]
+                control_index += 1
+
         print(
             f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves"
         )
