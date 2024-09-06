@@ -19,7 +19,7 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import Coordinates, SnInfoTable, FullLightCurve
+from lightcurve import Coordinates, Credentials, SnInfoTable, FullLightCurve
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -58,17 +58,6 @@ def load_config(config_file):
             f"ERROR: Could not load config file at {config_file}: {str(e)}"
         )
     return cfg
-
-
-class Credentials:
-    def __init__(
-        self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
-    ):
-        self.atlas_username = atlas_username
-        self.atlas_password = atlas_password
-        self.tns_api_key = tns_api_key
-        self.tns_id = tns_id
-        self.tns_bot_name = tns_bot_name
 
 
 class ControlCoordinatesTable:

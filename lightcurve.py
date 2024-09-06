@@ -7,7 +7,6 @@ from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
 from collections import OrderedDict
-from download import Credentials
 from pdastro import pdastrostatsclass
 import numpy as np
 import pandas as pd
@@ -45,6 +44,17 @@ def AorB(A, B):
 
 def not_AandB(A, B):
     return np.setxor1d(A, B)
+
+
+class Credentials:
+    def __init__(
+        self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
+    ):
+        self.atlas_username = atlas_username
+        self.atlas_password = atlas_password
+        self.tns_api_key = tns_api_key
+        self.tns_id = tns_id
+        self.tns_bot_name = tns_bot_name
 
 
 class RA:

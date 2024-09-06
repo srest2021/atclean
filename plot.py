@@ -717,8 +717,8 @@ class Plot:
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
         Plot.__init__(self)
-        filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
-        self.pdf = PdfPages(filename)
+        self.filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
+        self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
         print("\nSaving PDF of plots...\n")

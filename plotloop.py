@@ -1,7 +1,10 @@
+#!/usr/bin/env python
+
 import argparse
+import os
 from typing import Dict, List
 
-from clean import parse_config_cuts, parse_config_filters
+from clean import parse_config_cuts
 from download import (
     Credentials,
     load_config,
@@ -14,9 +17,6 @@ from lightcurve import (
     SnInfoTable,
     Supernova,
     get_mjd0,
-    get_tns_coords_from_json,
-    get_tns_mjd0_from_json,
-    query_tns,
 )
 from plot import PlotPdf
 
@@ -187,24 +187,33 @@ class PlotLoop:
         if not badday_cut is None:
             lims = self.p.get_lims(
                 lc=self.avg_sn.avg_lcs[0],
-                indices=self.avg_sn.avg_lcs[0].get_good_indices(cut.flag),
+                indices=self.avg_sn.avg_lcs[0].get_good_indices(badday_cut.flag),
             )
 
             # plot bad day cut
             self.p.plot_cut(
                 self.avg_sn.avg_lcs[0],
-                cut.flag,
+                badday_cut.flag,
                 lims,
                 title="Bad day cut",
             )
 
             # plot averaged light curves
             self.p.plot_averaged_SN(
-                self.avg_sn, cut.flag, lims, plot_controls=True, plot_flagged=False
+                self.avg_sn,
+                badday_cut.flag,
+                lims,
+                plot_controls=True,
+                plot_flagged=False,
             )
 
         # save the plots
-        self.p.save_pdf()
+        if not self.overwrite and os.path.exists(self.p.filename):
+            print(
+                f"WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
+            )
+        else:
+            self.p.save_pdf()
 
     def loop(
         self,
@@ -280,13 +289,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     )
 
     # possible cuts
-    parser.add_argument(
-        "-t",
-        "--template_correction",
-        default=False,
-        action="store_true",
-        help="plot ATLAS template change correction",
-    )
+    # parser.add_argument(
+    #     "-t",
+    #     "--template_correction",
+    #     default=False,
+    #     action="store_true",
+    #     help="plot ATLAS template change correction",
+    # )
     parser.add_argument(
         "-e",
         "--uncert_est",
