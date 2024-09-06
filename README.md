@@ -402,7 +402,7 @@ Arguments will override default config file settings if specified.
 
 This script allows you to generate a summary PDF file of diagnostic plots based on existing cleaned and/or averaged light curves.
 
-To instead generate this summary PDF file while running the cleaning script, add `-p` to your command. An example is available [here](#example-command-plot).
+To instead generate this summary PDF file while running the cleaning script, add `-p` to your `clean.py` command. An example is available [here](#example-command-plot).
 
 #### Arguments
 Arguments will override default config file settings if specified.
