@@ -1049,7 +1049,7 @@ if __name__ == "__main__":
     # print(f'\nApplyin control light curve cut: {args.controls}')
     num_controls = (
         args.num_controls
-        if args.num_controls
+        if not args.num_controls is None
         else int(config["download"]["num_controls"])
     )
     print(f"Number of control light curves to clean: {num_controls}")
