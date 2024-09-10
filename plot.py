@@ -58,16 +58,20 @@ class PlotLimits:
         self.ylower = ylower
         self.yupper = yupper
 
-    def calc_lims(self, lc: LightCurve = None, indices: List[int] = None):
+    def calc_lims(self, lc: LightCurve | None = None, indices: List[int] | None = None):
         if lc is None:
             print("No light curve provided; skipping plot limits calculation...")
             return
 
-        # print(
-        #     f'Calculating plot limits using light curve{" and given indices" if not indices is None else ""}...'
-        # )
+        if indices is None:
+            indices = lc.getindices()
 
-        # TODO
+        flux_min = lc.t.loc[indices, "uJy"].min()
+        flux_max = lc.t.loc[indices, "uJy"].max()
+        offset = 0.05 * abs(flux_max - flux_min)
+
+        self.ylower = flux_min - offset
+        self.yupper = flux_max + offset
 
     def get_xlims(self):
         return [self.xlower, self.xupper]
@@ -102,19 +106,19 @@ class Plot:
         self,
         lc: LightCurve = None,
         indices: List[int] = None,
-        xlower: float = None,
-        xupper: float = None,
-        ylower: float = None,
-        yupper: float = None,
+        custom_lims: PlotLimits | None = None,
     ) -> PlotLimits:
-        lims = PlotLimits(
-            xlower=xlower,
-            xupper=xupper,
-            ylower=ylower,
-            yupper=yupper,
-        )
-        if lims.is_empty():
-            lims.calc_lims(lc=lc, indices=indices)
+        if custom_lims is not None:
+            lims = PlotLimits(
+                xlower=custom_lims.xlower,
+                xupper=custom_lims.xupper,
+                ylower=custom_lims.ylower,
+                yupper=custom_lims.yupper,
+            )
+        else:
+            lims = PlotLimits()
+
+        lims.calc_lims(lc=lc, indices=indices)
         return lims
 
     def plot_SN(
@@ -633,9 +637,10 @@ class Plot:
         filename: str = "uncert_est",
     ):
         if not "duJy_new" in lc.t.columns:
-            raise RuntimeError(
-                'ERROR: Cannot plot true uncertainties estimation due to missing "duJy_new" column'
+            print(
+                'WARNING: Cannot plot true uncertainties estimation due to missing "duJy_new" column; skipping...'
             )
+            return None
 
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
         fig.set_figwidth(7)
@@ -811,7 +816,8 @@ class PlotPdf(Plot):
     ):
         print("Plotting true uncertainties estimation...")
         fig = super().plot_uncert_est(lc, tnsname, lims, save, filename)
-        self.pdf.savefig(fig)
+        if not fig is None:
+            self.pdf.savefig(fig)
 
     def plot_template_correction(self, lc: LightCurve):
         print("Plotting ATLAS template chanages correction...")

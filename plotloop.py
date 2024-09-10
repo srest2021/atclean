@@ -18,7 +18,7 @@ from lightcurve import (
     Supernova,
     get_mjd0,
 )
-from plot import PlotPdf
+from plot import PlotLimits, PlotPdf
 
 
 class PlotLoop:
@@ -79,6 +79,7 @@ class PlotLoop:
         filt: str,
         num_controls: int = 0,
         plot_uncert_est: bool = False,
+        custom_lims: PlotLimits | None = None,
     ):
         print(f"\n\tFILTER: {filt}")
 
@@ -100,7 +101,7 @@ class PlotLoop:
         # plot original SN light curve and control light curves
         self.p.plot_SN(
             self.sn,
-            self.p.get_lims(lc=self.sn.lcs[0]),
+            self.p.get_lims(lc=self.sn.lcs[0], custom_lims=custom_lims),
             plot_controls=True,
             plot_template_changes=True,
         )
@@ -114,6 +115,7 @@ class PlotLoop:
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(uncert_cut.flag),
+                    custom_lims=custom_lims,
                 ),
                 title="Uncertainty cut",
             )
@@ -130,6 +132,7 @@ class PlotLoop:
                         if not uncert_cut is None
                         else None
                     ),
+                    custom_lims=custom_lims,
                 ),
             )
 
@@ -142,6 +145,7 @@ class PlotLoop:
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(x2_cut.flag),
+                    custom_lims=custom_lims,
                 ),
                 title="Chi-square cut",
             )
@@ -155,6 +159,7 @@ class PlotLoop:
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(controls_cut.flag),
+                    custom_lims=custom_lims,
                 ),
                 title="Control light curve cut",
             )
@@ -168,6 +173,7 @@ class PlotLoop:
                 self.p.get_lims(
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
+                    custom_lims=custom_lims,
                 ),
                 title=f"Custom cut {name}",
             )
@@ -177,6 +183,7 @@ class PlotLoop:
         lims = self.p.get_lims(
             lc=self.sn.lcs[0],
             indices=self.sn.lcs[0].get_good_indices(previous_flags),
+            custom_lims=custom_lims,
         )
         self.p.plot_cut(self.sn.lcs[0], previous_flags, lims, title="All previous cuts")
         self.p.plot_cleaned_SN(
@@ -188,6 +195,7 @@ class PlotLoop:
             lims = self.p.get_lims(
                 lc=self.avg_sn.avg_lcs[0],
                 indices=self.avg_sn.avg_lcs[0].get_good_indices(badday_cut.flag),
+                custom_lims=custom_lims,
             )
 
             # plot bad day cut
@@ -218,11 +226,12 @@ class PlotLoop:
     def loop(
         self,
         tnsnames: List[str],
+        cut_list: CutList,
         num_controls: int = 0,
         mjd0=None,
         filters: List[str] = ["o", "c"],
-        cut_list: CutList = None,
         plot_uncert_est: bool = False,
+        lims: PlotLimits | None = None,
     ):
         self.cut_list = cut_list
 
@@ -248,6 +257,7 @@ class PlotLoop:
                     filt,
                     num_controls=num_controls,
                     plot_uncert_est=plot_uncert_est,
+                    custom_lims=lims,
                 )
 
 
@@ -345,6 +355,32 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="scan config file for custom cuts and plot them",
     )
 
+    # x and y limits
+    parser.add_argument(
+        "--xlim_lower",
+        default=None,
+        type=float,
+        help="Lower x limit",
+    )
+    parser.add_argument(
+        "--xlim_upper",
+        default=None,
+        type=float,
+        help="Upper x limit",
+    )
+    parser.add_argument(
+        "--ylim_lower",
+        default=None,
+        type=float,
+        help="Lower y limit",
+    )
+    parser.add_argument(
+        "--ylim_upper",
+        default=None,
+        type=float,
+        help="Upper y limit",
+    )
+
     return parser
 
 
@@ -383,6 +419,15 @@ if __name__ == "__main__":
     )
     print(f"Number of control light curves to load and plot: {num_controls}")
 
+    lims = PlotLimits(
+        xlower=args.xlim_lower,
+        xupper=args.xlim_upper,
+        ylower=args.ylim_lower,
+        yupper=args.ylim_upper,
+    )
+    if not lims.is_empty():
+        print(lims)
+
     cut_list = parse_config_cuts(args, config)
 
     print()
@@ -403,9 +448,10 @@ if __name__ == "__main__":
 
     plotloop.loop(
         args.tnsnames,
-        cut_list=cut_list,
+        cut_list,
         num_controls=num_controls,
         mjd0=args.mjd0,
         filters=filters,
         plot_uncert_est=args.uncert_est,
+        lims=lims if not lims.is_empty() else None,
     )
