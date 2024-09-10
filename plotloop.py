@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from typing import Dict, List
 
 from clean import parse_config_cuts, parse_config_filters

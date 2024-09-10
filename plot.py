@@ -58,7 +58,9 @@ class PlotLimits:
         self.ylower = ylower
         self.yupper = yupper
 
-    def calc_lims(self, lc: LightCurve | None = None, indices: List[int] | None = None):
+    def calc_ylims(
+        self, lc: LightCurve | None = None, indices: List[int] | None = None
+    ):
         if lc is None:
             print("No light curve provided; skipping plot limits calculation...")
             return
@@ -70,8 +72,10 @@ class PlotLimits:
         flux_max = lc.t.loc[indices, "uJy"].max()
         offset = 0.05 * abs(flux_max - flux_min)
 
-        self.ylower = flux_min - offset
-        self.yupper = flux_max + offset
+        if self.ylower is None:
+            self.ylower = flux_min - offset
+        if self.yupper is None:
+            self.yupper = flux_max + offset
 
     def get_xlims(self):
         return [self.xlower, self.xupper]
@@ -118,7 +122,7 @@ class Plot:
         else:
             lims = PlotLimits()
 
-        lims.calc_lims(lc=lc, indices=indices)
+        lims.calc_ylims(lc=lc, indices=indices)
         return lims
 
     def plot_SN(
