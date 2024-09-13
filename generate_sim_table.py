@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+"""
+Generate a table of simulations for each peak apparent magnitude 
+using the parameters in simulation_settings.json.
+"""
+
 import itertools
 import json, argparse
 import sys
@@ -223,7 +228,7 @@ def parse_params(model_settings, time_param_name="peak_mjd"):
     return parsed_params
 
 
-def parse_info(model_settings, model_name):
+def parse_colname_info(model_settings, model_name):
     filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
     if (
         model_name != GAUSSIAN_MODEL_NAME
@@ -291,7 +296,7 @@ class SimTable(pdastrostatsclass):
 class SimTables:
     def __init__(self, peak_appmags: List, model_name: str):
         """
-        Initialize a SimTable.
+        Initialize a collection of SimTable.
 
         :param peak_appmags: List of possible peak apparent magnitudes.
         :param model_name: Name of the model to be used assigned in the config file.
@@ -386,7 +391,7 @@ if __name__ == "__main__":
     parsed_params = parse_params(
         model_settings, time_param_name=model_settings["time_parameter_name"]
     )
-    filename, mjd_colname, mag_colname, flux_colname = parse_info(
+    filename, mjd_colname, mag_colname, flux_colname = parse_colname_info(
         model_settings, args.model_name
     )
 
