@@ -414,7 +414,7 @@ class DownloadLoop:
             config["credentials"]["tns_bot_name"],
         )
         print(f"\nATLAS username: {self.credentials.atlas_username}")
-        if self.credentials.atlas_password == "None":
+        if self.credentials.atlas_password is None:
             self.credentials.atlas_password = getpass(prompt="Enter ATLAS password: ")
         print(f"TNS ID: {self.credentials.tns_id}")
         print(f"TNS bot name: {self.credentials.tns_bot_name}")

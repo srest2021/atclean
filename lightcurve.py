@@ -64,6 +64,7 @@ class Credentials:
                 "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
             )
 
+
 class RA:
     def __init__(self, string=None):
         self.angle = None
@@ -135,10 +136,7 @@ def get_filename(
 
 
 def query_tns(tnsname, api_key, tns_id, bot_name):
-    if tns_id == "None" or bot_name == "None":
-        # raise RuntimeError(
-        #     "ERROR: Cannot query TNS without TNS ID and bot name. Please specify these parameters in settings.ini."
-        # )
+    if tns_id is None or bot_name is None:
         print(
             "WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
         )
