@@ -51,12 +51,18 @@ class Credentials:
     def __init__(
         self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
     ):
-        self.atlas_username = atlas_username
-        self.atlas_password = atlas_password
-        self.tns_api_key = tns_api_key
-        self.tns_id = tns_id
-        self.tns_bot_name = tns_bot_name
+        self.atlas_username = None if atlas_username == "None" else atlas_username
+        self.atlas_password = None if atlas_password == "None" else atlas_password
+        self.tns_api_key = None if tns_api_key == "None" else tns_api_key
+        self.tns_id = None if tns_id == "None" else tns_id
+        self.tns_bot_name = None if tns_bot_name == "None" else tns_bot_name
 
+        tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
+        not_none_count = sum(param is not None for param in tns_params)
+        if 0 < not_none_count < 3:
+            raise RuntimeError(
+                "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
+            )
 
 class RA:
     def __init__(self, string=None):
