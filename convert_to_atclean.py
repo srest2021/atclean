@@ -12,15 +12,64 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
-from typing import List
+from configparser import ConfigParser
+from typing import Dict, List
 from download import load_config
 from lightcurve import LightCurve, SnInfoTable
+
+
+def parse_config_value(value: str | None):
+    # convert 'None' string to actual None
+    if value == "None":
+        return None
+    return value
+
+
+class PresetSettings:
+    def __init__(self, config: ConfigParser, preset: str):
+        if preset not in config["convert"]:
+            raise RuntimeError(f"ERROR: Preset '{preset}' not found in config file.")
+
+        config_preset_settings: Dict[str, str] = config["convert"][preset]
+
+        # required columns
+        self.mjd: str = config_preset_settings["mjd_column_name"]
+        self.flux: str = config_preset_settings["flux_column_name"]
+        self.uncertainty: str = config_preset_settings["uncertainty_column_name"]
+
+        # optional columns
+        self.chisquare: str | None = parse_config_value(
+            config_preset_settings["chisquare_column_name"]
+        )
+        self.filt: str | None = parse_config_value(
+            config_preset_settings["filter_column_name"]
+        )
+        self.mag: str | None = parse_config_value(
+            config_preset_settings["mag_column_name"]
+        )
+        self.dmag: str | None = parse_config_value(
+            config_preset_settings["dmag_column_name"]
+        )
+        self.ra: str | None = parse_config_value(
+            config_preset_settings["ra_column_name"]
+        )
+        self.dec: str | None = parse_config_value(
+            config_preset_settings["dec_column_name"]
+        )
+
+        # extra columns to copy
+        columns_to_copy = parse_config_value(config_preset_settings["columns_to_copy"])
+        self.columns_to_copy: List[str] = (
+            []
+            if columns_to_copy is None
+            else [col.strip() for col in columns_to_copy.split(",")]
+        )
 
 
 class ConvertLoop:
     def __init__(
         self,
-        preset_settings,
+        preset_settings: PresetSettings,
         filenames: List[str],
         control_indices: List[int],
         input_dir: str,
@@ -73,6 +122,12 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         default=[0],
         help="one or more ordered control indices corresponding to each file name in -f",
     )
+    parser.add_argument(
+        "--config_file",
+        default="config.ini",
+        type=str,
+        help="file name of .ini file with settings for this class",
+    )
 
 
 if __name__ == "__main__":
@@ -83,7 +138,7 @@ if __name__ == "__main__":
         raise RuntimeError(
             "ERROR: Please specify the preset name to load from the config file (ex. atlas, rubin, tess)"
         )
-    preset_settings = config["convert"][args.preset]
+    preset_settings = PresetSettings(config, args.preset)
 
     if len(args.filenames) < 1:
         raise RuntimeError(
@@ -91,7 +146,7 @@ if __name__ == "__main__":
         )
     if len(args.filenames) != len(args.control_indices):
         raise RuntimeError(
-            f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(args.files)}): {args.files}\n\tcontrol indices (len {len(args.control_indices)}): {args.control_indices}"
+            f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(args.filenames)}): {args.filenames}\n\tcontrol indices (len {len(args.control_indices)}): {args.control_indices}"
         )
 
     input_dir = config["dir"]["atclean_input"]
