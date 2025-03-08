@@ -12,10 +12,12 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
+import pandas as pd
 from configparser import ConfigParser
 from typing import Dict, List
 from download import load_config
-from lightcurve import LightCurve, SnInfoTable
+from lightcurve import LightCurve, Supernova, SnInfoTable, get_filename
+from pdastro import pdastrostatsclass
 
 
 def parse_config_value(value: str | None):
@@ -25,12 +27,13 @@ def parse_config_value(value: str | None):
     return value
 
 
-class PresetSettings:
+class PresetColumnNames:
     def __init__(self, config: ConfigParser, preset: str):
         if preset not in config["convert"]:
             raise RuntimeError(f"ERROR: Preset '{preset}' not found in config file.")
 
-        config_preset_settings: Dict[str, str] = config["convert"][preset]
+        self.preset = preset
+        config_preset_settings: Dict[str, str] = config["convert"][self.preset]
 
         # required columns
         self.mjd: str = config_preset_settings["mjd_column_name"]
@@ -65,26 +68,98 @@ class PresetSettings:
             else [col.strip() for col in columns_to_copy.split(",")]
         )
 
+    def __str__(self):
+        column_names = [
+            f"mjd column: {self.mjd}",
+            f"flux column: {self.flux}",
+            f"uncertainty column: {self.uncertainty}",
+            f"chi-square column: {self.chisquare}",
+            f"filter column: {self.filt}",
+            f"mag column: {self.mag}",
+            f"dmag column: {self.dmag}",
+            f"ra column: {self.ra}",
+            f"dec column: {self.dec}",
+            f"columns to copy: {', '.join(self.columns_to_copy)}",
+        ]
+        return "\n".join(column_names)
+
 
 class ConvertLoop:
     def __init__(
         self,
-        preset_settings: PresetSettings,
+        preset_colnames: PresetColumnNames,
         filenames: List[str],
         control_indices: List[int],
         input_dir: str,
         output_dir: str,
         sninfo_filename: str = None,
     ):
-        self.preset_settings = preset_settings
-        self.filenames = filenames
-        self.control_indices = control_indices
+        self.preset_colnames: PresetColumnNames = preset_colnames
 
-        self.input_dir = input_dir
-        self.output_dir = output_dir
+        if len(filenames) < 1:
+            raise RuntimeError(
+                "ERROR: Please provide at least one file name using the -f argument"
+            )
+        if len(filenames) != len(control_indices):
+            raise RuntimeError(
+                f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(args.filenames)}): {args.filenames}\n\tcontrol indices (len {len(args.control_indices)}): {args.control_indices}"
+            )
+        self.filenames: List[str] = filenames
+
+        for control_index in control_indices:
+            if not isinstance(control_index, int):  # check if the value is an integer
+                raise RuntimeError(
+                    f"ERROR: Control index '{control_index}' is not an integer"
+                )
+            if control_index < 0:  # check if the integer is negative
+                raise RuntimeError(
+                    f"ERROR: Control index '{control_index}' cannot be negative"
+                )
+        self.control_indices: List[int] = control_indices
+
+        self.input_dir: str = input_dir
+        self.output_dir: str = output_dir
         self.sninfo: SnInfoTable = SnInfoTable(
             self.output_dir, filename=sninfo_filename
         )
+
+    def loop(self, obj_name, ra, dec, mjd0):
+        # create ControlCoordinatesTable if needed
+
+        for i in range(len(self.filenames)):
+            old_filename = self.filenames[i]
+            control_index = self.control_indices[i]
+
+            # load table (.txt or .csv)
+            old_lc = pdastrostatsclass()
+            if old_filename.endswith(".csv"):
+                old_lc.t = pd.read_csv(old_filename)
+            else:
+                old_lc.load_spacesep(old_filename)
+
+            # move MJD, flux, and dflux columns to the front of the file
+
+            # get filters from filter column
+            # if no filter column, set filter to preset
+            filts: List[str] = [self.preset_colnames.preset]
+            if not self.preset_colnames.filt is None:
+                filts = old_lc.t[self.preset_colnames.filt].unique().tolist()
+
+            # handle ra and dec from args and columns
+
+            # add new row to ControlCoordinatesTable if control_index != 0
+
+            # add new row to SnInfoTable if control_index == 0
+
+            # for each filter, save a separate light curve
+            for filt in filts:
+                new_filename = get_filename(
+                    self.output_dir, obj_name, filt, control_index
+                )
+
+                # save file
+
+        # save ControlCoordinatesTable
 
 
 # define command line arguments
@@ -138,20 +213,13 @@ if __name__ == "__main__":
         raise RuntimeError(
             "ERROR: Please specify the preset name to load from the config file (ex. atlas, rubin, tess)"
         )
-    preset_settings = PresetSettings(config, args.preset)
-
-    if len(args.filenames) < 1:
-        raise RuntimeError(
-            "ERROR: Please provide at least one file name using the -f argument"
-        )
-    if len(args.filenames) != len(args.control_indices):
-        raise RuntimeError(
-            f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(args.filenames)}): {args.filenames}\n\tcontrol indices (len {len(args.control_indices)}): {args.control_indices}"
-        )
+    preset_colnames = PresetColumnNames(config, args.preset)
+    print(preset_colnames.__str__())
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
 
     convert = ConvertLoop(
-        preset_settings, args.filenames, args.control_indices, input_dir, output_dir
+        preset_colnames, args.filenames, args.control_indices, input_dir, output_dir
     )
+    convert.loop(args.obj_name, args.ra, args.dec, args.mjd0)
