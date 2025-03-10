@@ -65,29 +65,49 @@ class Credentials:
             )
 
 
-class RA:
+class BaseAngle(ABC):
     def __init__(self, string=None):
         self.angle = None
         if string:
             self.set_angle(string)
 
     def set_angle(self, string):
+        """Template method calling specific parsing."""
+        if self._is_nan(string):
+            self.angle = None
+            return
+
+        self.angle = self._parse_angle(string)
+
+    @staticmethod
+    def _is_nan(value):
+        """Check if a value is NaN, None, or an empty string."""
+        return (
+            value is None
+            or (isinstance(value, float) and np.isnan(value))
+            or (isinstance(value, str) and value.strip().lower() in ["nan", ""])
+        )
+
+    @abstractmethod
+    def _parse_angle(self, string):
+        """Abstract method to be implemented by subclasses to parse angles."""
+        pass
+
+
+class RA(BaseAngle):
+    def _parse_angle(self, string):
+        """Parse RA angle, using hours if ':' is present, degrees otherwise."""
         s = re.compile("\:")
         if isinstance(string, str) and s.search(string):
-            A = Angle(string, u.hour)
+            return Angle(string, u.hour)
         else:
-            A = Angle(string, u.degree)
-        self.angle: Angle = A
+            return Angle(string, u.degree)
 
 
-class Dec:
-    def __init__(self, string=None):
-        self.angle = None
-        if string:
-            self.set_angle(string)
-
-    def set_angle(self, string):
-        self.angle: Angle = Angle(string, u.degree)
+class Dec(BaseAngle):
+    def _parse_angle(self, string):
+        """Parse Dec angle, always using degrees."""
+        return Angle(string, u.degree)
 
 
 class Coordinates:
@@ -101,13 +121,38 @@ class Coordinates:
     def set_Dec(self, dec):
         self.dec = Dec(dec)
 
+    def _is_angle_missing(self, angle: BaseAngle) -> bool:
+        return angle.angle is None
+
     def is_empty(self) -> bool:
-        return self.ra.angle is None or self.dec.angle is None
+        # both RA and Dec missing
+        return self._is_angle_missing(self.ra) and self._is_angle_missing(self.dec)
+
+    def is_incomplete(self) -> bool:
+        # one or both of RA and Dec missing
+        return self._is_angle_missing(self.ra) or self._is_angle_missing(self.dec)
+
+    def is_ra_present(self) -> bool:
+        return not self._is_angle_missing(self.ra)
+
+    def is_dec_present(self) -> bool:
+        return not self._is_angle_missing(self.dec)
+
+    def ra_andor_dec_present(self) -> bool:
+        return not self._is_angle_missing(self.ra) or not self._is_angle_missing(
+            self.dec
+        )
 
     def __str__(self):
-        if self.is_empty():
+        output = []
+        if self.is_ra_present():
+            output.append(f"RA {self.ra.angle.degree:0.14f}")
+        if self.is_dec_present():
+            output.append(f"Dec {self.dec.angle.degree:0.14f}")
+
+        if len(output) < 1:
             raise RuntimeError(f"ERROR: Coordinates are empty and cannot be printed.")
-        return f"RA {self.ra.angle.degree:0.14f}, Dec {self.dec.angle.degree:0.14f}"
+        return ", ".join(output)
 
 
 def get_filename(
@@ -361,14 +406,14 @@ class SnInfoTable:
             if (
                 (overwrite or self.is_nan(self.t.loc[index, "ra"]))
                 and not coords is None
-                and not coords.is_empty()
+                and coords.is_ra_present()
             ):
                 self.t.loc[index, "ra"] = f"{coords.ra.angle.degree:0.14f}"
 
             if (
                 (overwrite or self.is_nan(self.t.loc[index, "dec"]))
                 and not coords is None
-                and not coords.is_empty()
+                and coords.is_dec_present()
             ):
                 self.t.loc[index, "dec"] = f"{coords.dec.angle.degree:0.14f}"
         except Exception as e:
@@ -382,9 +427,11 @@ class SnInfoTable:
 
         ra = np.nan
         dec = np.nan
-        if not coords is None and not coords.is_empty():
-            ra = f"{coords.ra.angle.degree:0.14f}"
-            dec = f"{coords.dec.angle.degree:0.14f}"
+        if not coords is None:
+            if coords.is_ra_present():
+                ra = f"{coords.ra.angle.degree:0.14f}"
+            if coords.is_dec_present():
+                dec = f"{coords.dec.angle.degree:0.14f}"
 
         row = {"tnsname": tnsname, "ra": ra, "dec": dec, "mjd0": mjd0}
         self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
@@ -715,14 +762,14 @@ class Supernova:
             )
 
     def get_tns_data(self, api_key, tns_id, bot_name):
-        if self.coords.is_empty() or self.mjd0 is None:
+        if self.coords.is_incomplete() or self.mjd0 is None:
             print(f"\nQuerying TNS for {self.tnsname} data...")
             json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
             if json_data is None:
                 print(f"Skipping...")
                 return
 
-            if self.coords.is_empty():
+            if self.coords.is_incomplete():
                 self.coords = get_tns_coords_from_json(json_data)
 
             if self.mjd0 is None:
@@ -1631,14 +1678,14 @@ class FullLightCurve:
         self.control_index = control_index
 
     def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
-        if self.coords.is_empty() or self.mjd0 is None or np.isnan(self.mjd0):
+        if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
             print("Querying TNS for RA, Dec, and discovery date...")
             json_data = query_tns(tnsname, api_key, tns_id, bot_name)
             if json_data is None:
                 print(f"Skipping...")
                 return
 
-            if self.coords.is_empty():
+            if self.coords.is_incomplete():
                 self.coords = Coordinates(
                     json_data["data"]["reply"]["ra"], json_data["data"]["reply"]["dec"]
                 )
