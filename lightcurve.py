@@ -22,8 +22,6 @@ REQUIRED_COLUMN_NAMES = ["MJD", "uJy", "duJy"]
 # required averaged light curve column names for the script to work
 REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
 
-ATLAS_FILTERS = ["c", "o"]
-
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 """
@@ -1776,6 +1774,8 @@ class FullLightCurve:
 
         if self.filts is None:
             self.get_filts()
+
+        # TODO: handle no filter column case
         for filt in self.filts:
             filename = get_filename(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
