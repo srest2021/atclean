@@ -1676,6 +1676,7 @@ class FullLightCurve:
         self.mjd0 = mjd0
         self.coords = Coordinates(ra, dec)
         self.control_index = control_index
+        self.filts = None
 
     def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
         if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
@@ -1737,11 +1738,19 @@ class FullLightCurve:
                 continue
         self.t = result
 
+    def get_filts(self):
+        # TODO: handle no filter column case
+        self.filts = self.t["F"].unique()
+
     def get_filt_lens(self):
+        if self.filts is None:
+            self.get_filts()
+
         total_len = len(self.t)
-        o_len = len(np.where(self.t["F"] == "o")[0])
-        c_len = len(np.where(self.t["F"] == "c")[0])
-        return total_len, o_len, c_len
+        filt_lens = {}
+        for filt in self.filts:
+            filt_lens[filt] = len(np.where(self.t["F"] == filt)[0])
+        return total_len, filt_lens
 
     # divide the light curve by filter and save into separate files
     def save(self, input_dir, tnsname, overwrite=False):
@@ -1765,7 +1774,9 @@ class FullLightCurve:
             )
             lc.t = lc.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
-        for filt in ATLAS_FILTERS:
+        if self.filts is None:
+            self.get_filts()
+        for filt in self.filts:
             filename = get_filename(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
             )

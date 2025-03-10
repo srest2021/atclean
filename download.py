@@ -102,11 +102,11 @@ class ControlCoordinatesTable:
             )
         index = ix[0]
 
-        # update corresponding row in table with n_detec, n_detec_o, and n_detec_c counts
-        total_len, o_len, c_len = full_control_lc.get_filt_lens()
+        # update corresponding row in table with total and filter counts
+        total_len, filt_lens = full_control_lc.get_filt_lens()
         self.t.loc[index, "n_detec"] = total_len
-        self.t.loc[index, "n_detec_o"] = o_len
-        self.t.loc[index, "n_detec_c"] = c_len
+        for filt in filt_lens:
+            self.t.loc[index, f"n_detec_{filt}"] = filt_lens[filt]
 
     def add_row(
         self,
@@ -117,8 +117,7 @@ class ControlCoordinatesTable:
         dec_offset=0,
         radius=0,
         n_detec=0,
-        n_detec_o=0,
-        n_detec_c=0,
+        filt_lens={},
     ):
         row = {
             "tnsname": tnsname,
@@ -137,9 +136,9 @@ class ControlCoordinatesTable:
             ),
             "radius_arcsec": radius.arcsecond if isinstance(radius, Angle) else radius,
             "n_detec": n_detec,
-            "n_detec_o": n_detec_o,
-            "n_detec_c": n_detec_c,
         }
+        for filt in filt_lens:
+            row[f"n_detec_{filt}"] = filt_lens[filt]
 
         self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
@@ -216,7 +215,7 @@ class ControlCoordinatesTable:
         )
 
         # add row for SN position
-        total_len, o_len, c_len = full_sn_lc.get_filt_lens()
+        total_len, filt_lens = full_sn_lc.get_filt_lens()
         if closebright:
             # circle pattern radius is distance between SN and bright object
             r = self.get_distance(full_sn_lc.coords, center_coords)
@@ -229,18 +228,12 @@ class ControlCoordinatesTable:
                 dec_offset=np.nan,
                 radius=r,
                 n_detec=total_len,
-                n_detec_o=o_len,
-                n_detec_c=c_len,
+                filt_lens=filt_lens,
             )
         else:
             r = Angle(self.radius, u.arcsec)
             self.add_row(
-                tnsname,
-                0,
-                full_sn_lc.coords,
-                n_detec=total_len,
-                n_detec_o=o_len,
-                n_detec_c=c_len,
+                tnsname, 0, full_sn_lc.coords, n_detec=total_len, filt_lens=filt_lens
             )
 
         # add row for each control light curve
