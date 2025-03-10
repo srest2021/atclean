@@ -24,6 +24,8 @@ REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
 
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
+ATLAS_FILTERS = ["o", "c"]
+
 """
 UTILITY
 """
@@ -1737,18 +1739,13 @@ class FullLightCurve:
         self.t = result
 
     def get_filts(self):
-        # TODO: handle no filter column case
         self.filts = self.t["F"].unique()
 
     def get_filt_lens(self):
-        if self.filts is None:
-            self.get_filts()
-
         total_len = len(self.t)
-        filt_lens = {}
-        for filt in self.filts:
-            filt_lens[filt] = len(np.where(self.t["F"] == filt)[0])
-        return total_len, filt_lens
+        o_len = len(np.where(self.t["F"] == "o")[0])
+        c_len = len(np.where(self.t["F"] == "c")[0])
+        return total_len, o_len, c_len
 
     # divide the light curve by filter and save into separate files
     def save(self, input_dir, tnsname, overwrite=False):
@@ -1772,11 +1769,7 @@ class FullLightCurve:
             )
             lc.t = lc.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
-        if self.filts is None:
-            self.get_filts()
-
-        # TODO: handle no filter column case
-        for filt in self.filts:
+        for filt in ATLAS_FILTERS:
             filename = get_filename(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
             )

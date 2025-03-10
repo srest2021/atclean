@@ -12,11 +12,21 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
+import numpy as np
 import pandas as pd
 from configparser import ConfigParser
 from typing import Dict, List
 from download import ControlCoordinatesTable, load_config
-from lightcurve import Coordinates, LightCurve, Supernova, SnInfoTable, get_filename
+from lightcurve import (
+    AorB,
+    ConvertLightCurve,
+    Coordinates,
+    FullLightCurve,
+    LightCurve,
+    Supernova,
+    SnInfoTable,
+    get_filename,
+)
 from pdastro import pdastrostatsclass
 
 
@@ -25,6 +35,13 @@ def parse_config_value(value: str | None):
     if value == "None":
         return None
     return value
+
+
+def check_single_value_column(df: pd.DataFrame, col_name: str, control_index: int):
+    if col_name and df[col_name].nunique() != 1:
+        raise RuntimeError(
+            f"ERROR: Different values found in {col_name} column (control index {control_index})"
+        )
 
 
 class PresetColumnNames:
@@ -84,6 +101,79 @@ class PresetColumnNames:
         return "\n".join(column_names)
 
 
+class ConvertLightCurve(LightCurve):
+    def __init__(
+        self,
+        obj_name: str,
+        t: pd.DataFrame,
+        preset_colnames: PresetColumnNames,
+        control_index: int = 0,
+    ):
+        LightCurve.__init__(self, control_index)
+        self.obj_name: str = obj_name
+        self.t: pd.DataFrame = t
+        self.preset_colnames: PresetColumnNames = preset_colnames
+
+    def _save_single_df(self, input_dir, overwrite=False):
+        filename = get_filename(
+            input_dir,
+            self.obj_name,
+            filt=self.preset_colnames.preset,
+            control_index=self.control_index,
+        )
+        self.save_lc_by_filename(filename, overwrite=overwrite)
+
+    def _save_dfs_by_filter(self, input_dir, filts, overwrite=False):
+        for filt in filts:
+            filename = get_filename(
+                input_dir,
+                self.obj_name,
+                filt=filt,
+                control_index=self.control_index,
+            )
+            indices = self.ix_equal(colnames=[self.preset_colnames.filt], val=filt)
+            print(f"Saving converted light curve with filter {filt}...")
+            self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+
+    # divide the light curve by filter and save into separate files
+    def save(self, input_dir, overwrite=False) -> tuple[int, Dict[str:int]]:
+        total_len = len(self.t)
+        filt_lens = {}
+        if (
+            self.preset_colnames.filt is None
+        ):  # if no filter column, set filter to preset
+            filts = [self.preset_colnames.preset]
+        else:  # get filters from filter column
+            filts = self.t[self.preset_colnames.filt].unique().tolist()
+            for filt in filts:
+                filt_lens[filt] = len(
+                    np.where(self.t[self.preset_colnames.filt] == filt)[0]
+                )
+
+        # sort data by mjd
+        self.t = self.t.sort_values(by=[self.preset_colnames.mjd], ignore_index=True)
+
+        # remove rows with duJy=0 or uJy=NaN
+        dflux_zero_ix = self.ix_equal(
+            colnames=[self.preset_colnames.uncertainty], val=0
+        )
+        flux_nan_ix = self.ix_is_null(colnames=[self.preset_colnames.flux])
+        if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
+            print(
+                f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
+            )
+            self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
+
+        # save
+        if self.preset_colnames.filt is None:
+            self._save_single_df(input_dir, overwrite=overwrite)
+        else:
+            # divide df by filter
+            self._save_dfs_by_filter(input_dir, filts, overwrite=overwrite)
+
+        return total_len, filt_lens
+
+
 class ConvertLoop:
     def __init__(
         self,
@@ -99,58 +189,38 @@ class ConvertLoop:
             self.output_dir, filename=sninfo_filename
         )
 
-    def load_raw_lc(self, filename: str) -> pdastrostatsclass:
-        lc = pdastrostatsclass()
+    def load_raw_t(self, filename: str) -> pd.DataFrame:
         if filename.endswith(".csv"):
-            lc.t = pd.read_csv(filename)
+            return pd.read_csv(filename)
         else:
-            lc.load_spacesep(filename)
-        return lc
+            lc_obj = pdastrostatsclass()
+            lc_obj.load_spacesep(filename)
+            return lc_obj.t
 
-    def move_required_cols_to_front(self, lc: pdastrostatsclass) -> pdastrostatsclass:
+    def move_required_cols_to_front(self, lc: pd.DataFrame) -> pdastrostatsclass:
         cols_to_front = [
             self.preset_colnames.mjd,
             self.preset_colnames.flux,
             self.preset_colnames.uncertainty,
         ]
-        lc.t = lc.t[
-            cols_to_front + [col for col in lc.t.columns if col not in cols_to_front]
+        return lc[
+            cols_to_front + [col for col in lc.columns if col not in cols_to_front]
         ]
-        return lc
 
-    def get_filts(self, lc: pdastrostatsclass) -> List[str]:
-        if (
-            self.preset_colnames.filt is None
-        ):  # if no filter column, set filter to preset
-            filts = [self.preset_colnames.preset]
-        else:  # get filters from filter column
-            filts = lc.t[self.preset_colnames.filt].unique().tolist()
-        return filts
-
-    def find_coords_in_lc(
+    def find_coords_in_t(
         self,
-        lc: pdastrostatsclass,
+        t: pd.DataFrame,
         control_index: int,
     ) -> Coordinates:
         coords = Coordinates()
-
-        if len(lc.t) > 0:
+        if len(t) > 0:
             # if RA and Dec columns present, get coords from there
-
             if not self.preset_colnames.ra is None:
-                if lc.t[self.preset_colnames.ra].nunique() != 1:
-                    raise RuntimeError(
-                        f"ERROR: Different RA values found in column of light curve (control index {control_index})"
-                    )
-                coords.set_RA(lc.t.loc[0, self.preset_colnames.ra])
-
+                check_single_value_column(t, self.preset_colnames.ra, control_index)
+                coords.set_RA(t.loc[0, self.preset_colnames.ra])
             if not self.preset_colnames.dec is None:
-                if lc.t[self.preset_colnames.dec].nunique() != 1:
-                    raise RuntimeError(
-                        f"ERROR: Different Dec values found in column of light curve (control index {control_index})"
-                    )
-                coords.set_Dec(lc.t.loc[0, self.preset_colnames.dec])
-
+                check_single_value_column(t, self.preset_colnames.ra, control_index)
+                coords.set_Dec(t.loc[0, self.preset_colnames.dec])
         return coords
 
     def loop(
@@ -172,13 +242,9 @@ class ConvertLoop:
             )
 
         for control_index in control_indices:
-            if not isinstance(control_index, int):  # check if the value is an integer
+            if not isinstance(control_index, int) or control_index < 0:
                 raise RuntimeError(
-                    f"ERROR: Control index '{control_index}' is not an integer"
-                )
-            if control_index < 0:  # check if the integer is negative
-                raise RuntimeError(
-                    f"ERROR: Control index '{control_index}' cannot be negative"
+                    f"Invalid control index: {control_index}. It must be a non-negative integer."
                 )
 
         # create ControlCoordinatesTable if any control light curves present
@@ -191,13 +257,10 @@ class ConvertLoop:
             control_index = control_indices[i]
 
             # load table (.txt or .csv)
-            old_lc = self.load_raw_lc(old_filename)
+            t = self.load_raw_t(old_filename)
 
             # move MJD, flux, and dflux columns to the front of the file
-            old_lc = self.move_required_cols_to_front(old_lc)
-
-            # get filters from filter column if possible
-            filts = self.get_filts(old_lc)
+            t = self.move_required_cols_to_front(t)
 
             # try to get coordinates
             if control_index == 0:
@@ -205,31 +268,37 @@ class ConvertLoop:
                 coords = Coordinates(ra, dec)
                 if coords.is_empty():
                     # try to get coordinates from lc
-                    coords = self.find_coords_in_lc(old_lc, control_index)
+                    coords = self.find_coords_in_t(t, control_index)
 
                 # add new row to SnInfoTable
                 self.sninfo.add_new_row(obj_name, coords=coords, mjd0=mjd0)
             else:
                 # try to get coordinates from lc
-                coords = self.find_coords_in_lc(old_lc, control_index)
+                coords = self.find_coords_in_t(t, control_index)
+
+            lc = ConvertLightCurve(
+                obj_name,
+                t,
+                self.preset_colnames,
+                control_index=control_index,
+            )
+            # for each filter, save a separate light curve
+            total_len, filt_lens = lc.save(self.input_dir, overwrite=True)
 
             # add new row to ControlCoordinatesTable
-            # TODO: fix n_detec_filt cols
             ctrl_coords.add_row(
                 obj_name,
                 control_index,
                 coords,
+                ra_offset=np.nan,
+                dec_offset=np.nan,
+                radius=np.nan,
+                total_len=total_len,
+                filt_lens=filt_lens,
             )
 
-            # for each filter, save a separate light curve
-            for filt in filts:
-                new_filename = get_filename(
-                    self.output_dir, obj_name, filt, control_index
-                )
-
-                # save file
-
         # save ControlCoordinatesTable
+        ctrl_coords.save(self.input_dir, tnsname=obj_name)
 
 
 # define command line arguments
