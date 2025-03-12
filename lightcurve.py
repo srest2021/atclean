@@ -1738,9 +1738,6 @@ class FullLightCurve:
                 continue
         self.t = result
 
-    def get_filts(self):
-        self.filts = self.t["F"].unique()
-
     def get_filt_lens(self):
         total_len = len(self.t)
         o_len = len(np.where(self.t["F"] == "o")[0])

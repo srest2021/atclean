@@ -12,6 +12,7 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
+from copy import deepcopy
 import numpy as np
 import pandas as pd
 from configparser import ConfigParser
@@ -35,13 +36,6 @@ def parse_config_value(value: str | None):
     if value == "None":
         return None
     return value
-
-
-def check_single_value_column(df: pd.DataFrame, col_name: str, control_index: int):
-    if col_name and df[col_name].nunique() != 1:
-        raise RuntimeError(
-            f"ERROR: Different values found in {col_name} column (control index {control_index})"
-        )
 
 
 class PresetColumnNames:
@@ -105,14 +99,58 @@ class ConvertLightCurve(LightCurve):
     def __init__(
         self,
         obj_name: str,
-        t: pd.DataFrame,
         preset_colnames: PresetColumnNames,
         control_index: int = 0,
     ):
         LightCurve.__init__(self, control_index)
         self.obj_name: str = obj_name
-        self.t: pd.DataFrame = t
         self.preset_colnames: PresetColumnNames = preset_colnames
+
+    def load_raw_t(self, filename: str):
+        if filename.endswith(".csv"):
+            self.t = pd.read_csv(filename)
+        else:
+            self.load_spacesep(filename)
+
+    def move_required_cols_to_front(self):
+        cols_to_front = [
+            self.preset_colnames.mjd,
+            self.preset_colnames.flux,
+            self.preset_colnames.uncertainty,
+        ]
+        self.t = self.t[
+            cols_to_front + [col for col in self.t.columns if col not in cols_to_front]
+        ]
+
+    def check_single_value_column(self, col_name: str):
+        if col_name and self.t[col_name].nunique() != 1:
+            raise RuntimeError(
+                f"ERROR: Different values found in {col_name} column (control index {self.control_index})"
+            )
+
+    def find_coords_in_t(self) -> Coordinates:
+        coords = Coordinates()
+        if len(self.t) > 0:
+            # if RA and Dec columns present, get coords from there
+            if not self.preset_colnames.ra is None:
+                self.check_single_value_column(self.preset_colnames.ra)
+                coords.set_RA(self.t.loc[0, self.preset_colnames.ra])
+            if not self.preset_colnames.dec is None:
+                self.check_single_value_column(self.preset_colnames.dec)
+                coords.set_Dec(self.t.loc[0, self.preset_colnames.dec])
+        return coords
+
+    def get_coords(self, arg_ra=None, arg_dec=None):
+        # try to get coordinates from lc columns
+        coords_from_t = self.find_coords_in_t()
+
+        if self.control_index == 0:
+            # try to get coordinates from command line
+            coords_from_cmd = Coordinates(arg_ra, arg_dec)
+            if not coords_from_cmd.is_empty():
+                return coords_from_cmd
+
+        return coords_from_t
 
     def _save_single_df(self, input_dir, overwrite=False):
         filename = get_filename(
@@ -189,49 +227,7 @@ class ConvertLoop:
             self.output_dir, filename=sninfo_filename
         )
 
-    def load_raw_t(self, filename: str) -> pd.DataFrame:
-        if filename.endswith(".csv"):
-            return pd.read_csv(filename)
-        else:
-            lc_obj = pdastrostatsclass()
-            lc_obj.load_spacesep(filename)
-            return lc_obj.t
-
-    def move_required_cols_to_front(self, lc: pd.DataFrame) -> pdastrostatsclass:
-        cols_to_front = [
-            self.preset_colnames.mjd,
-            self.preset_colnames.flux,
-            self.preset_colnames.uncertainty,
-        ]
-        return lc[
-            cols_to_front + [col for col in lc.columns if col not in cols_to_front]
-        ]
-
-    def find_coords_in_t(
-        self,
-        t: pd.DataFrame,
-        control_index: int,
-    ) -> Coordinates:
-        coords = Coordinates()
-        if len(t) > 0:
-            # if RA and Dec columns present, get coords from there
-            if not self.preset_colnames.ra is None:
-                check_single_value_column(t, self.preset_colnames.ra, control_index)
-                coords.set_RA(t.loc[0, self.preset_colnames.ra])
-            if not self.preset_colnames.dec is None:
-                check_single_value_column(t, self.preset_colnames.ra, control_index)
-                coords.set_Dec(t.loc[0, self.preset_colnames.dec])
-        return coords
-
-    def loop(
-        self,
-        obj_name: str,
-        filenames: List[str],
-        control_indices: List[int],
-        ra: str | None = None,
-        dec: str | None = None,
-        mjd0: float | None = None,
-    ):
+    def check_args(self, filenames, control_indices):
         if len(filenames) < 1:
             raise RuntimeError(
                 "ERROR: Please provide at least one file name using the -f argument"
@@ -247,6 +243,17 @@ class ConvertLoop:
                     f"Invalid control index: {control_index}. It must be a non-negative integer."
                 )
 
+    def loop(
+        self,
+        obj_name: str,
+        filenames: List[str],
+        control_indices: List[int],
+        ra: str | None = None,
+        dec: str | None = None,
+        mjd0: float | None = None,
+    ):
+        self.check_args(filenames, control_indices)
+
         # create ControlCoordinatesTable if any control light curves present
         if len(filenames) > 1:
             ctrl_coords = ControlCoordinatesTable()
@@ -256,32 +263,25 @@ class ConvertLoop:
             old_filename = filenames[i]
             control_index = control_indices[i]
 
-            # load table (.txt or .csv)
-            t = self.load_raw_t(old_filename)
-
-            # move MJD, flux, and dflux columns to the front of the file
-            t = self.move_required_cols_to_front(t)
-
-            # try to get coordinates
-            if control_index == 0:
-                # try to get coordinates from command line
-                coords = Coordinates(ra, dec)
-                if coords.is_empty():
-                    # try to get coordinates from lc
-                    coords = self.find_coords_in_t(t, control_index)
-
-                # add new row to SnInfoTable
-                self.sninfo.add_new_row(obj_name, coords=coords, mjd0=mjd0)
-            else:
-                # try to get coordinates from lc
-                coords = self.find_coords_in_t(t, control_index)
-
             lc = ConvertLightCurve(
                 obj_name,
-                t,
                 self.preset_colnames,
                 control_index=control_index,
             )
+            lc.load_raw_t(old_filename)
+
+            # load table (.txt or .csv)
+            lc.load_raw_t(old_filename)
+
+            # move MJD, flux, and dflux columns to the front of the file
+            lc.move_required_cols_to_front()
+
+            # try to get coordinates from either command line or ra/dec columns
+            coords = lc.get_coords(ra, dec)
+
+            # if not control lc, add new row to SnInfoTable
+            self.sninfo.add_new_row(obj_name, coords=coords, mjd0=mjd0)
+
             # for each filter, save a separate light curve
             total_len, filt_lens = lc.save(self.input_dir, overwrite=True)
 
@@ -299,6 +299,9 @@ class ConvertLoop:
 
         # save ControlCoordinatesTable
         ctrl_coords.save(self.input_dir, tnsname=obj_name)
+
+        # save SnInfoTable
+        self.sninfo.save()
 
 
 # define command line arguments
