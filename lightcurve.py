@@ -1751,9 +1751,11 @@ class FullLightCurve:
 
     def get_filt_lens(self):
         total_len = len(self.t)
-        o_len = len(np.where(self.t["F"] == "o")[0])
-        c_len = len(np.where(self.t["F"] == "c")[0])
-        return total_len, o_len, c_len
+        filt_lens = {
+            "o": len(np.where(self.t["F"] == "o")[0]),
+            "c": len(np.where(self.t["F"] == "c")[0]),
+        }
+        return total_len, filt_lens
 
     # divide the light curve by filter and save into separate files
     def save(self, input_dir, tnsname, overwrite=False):
