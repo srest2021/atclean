@@ -16,7 +16,7 @@ import sys
 import numpy as np
 import pandas as pd
 from configparser import ConfigParser
-from typing import Dict, List
+from typing import Dict, List, Set
 from download import ControlCoordinatesTable, load_config
 from lightcurve import (
     AorB,
@@ -80,6 +80,21 @@ class PresetColumnNames:
             if columns_to_copy is None
             else [col.strip() for col in columns_to_copy.split(",")]
         )
+
+    def get_all_columns_to_copy(self):
+        colset: Set[str] = {
+            self.mjd,
+            self.flux,
+            self.uncertainty,
+            self.chisquare,
+            self.filt,
+            self.mag,
+            self.dmag,
+            self.ra,
+            self.dec,
+        } | set(self.columns_to_copy)
+        colset.discard(None)
+        return list(colset)
 
     def __str__(self):
         column_names = [
@@ -193,7 +208,7 @@ class ConvertLightCurve(LightCurve):
             self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
     # divide the light curve by filter and save into separate files
-    def save(self, input_dir, overwrite=False):
+    def save(self, input_dir, all_columns_to_copy=None, overwrite=False):
         total_len = len(self.t)
         filt_lens = {}
         if (
@@ -220,6 +235,10 @@ class ConvertLightCurve(LightCurve):
                 f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
             )
             self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
+
+        # only keep necessary columns
+        if not all_columns_to_copy is None:
+            self.t = self.t[all_columns_to_copy]
 
         # save
         if self.preset_colnames.filt is None:
@@ -282,6 +301,9 @@ class ConvertLoop:
             ctrl_coords = ControlCoordinatesTable()
             ctrl_coords.num_controls = len(filenames)
 
+        all_columns_to_copy = self.preset_colnames.get_all_columns_to_copy()
+        print("\nKeeping these columns: ", all_columns_to_copy)
+
         for i in range(len(filenames)):
             old_filename = filenames[i]
             control_index = control_indices[i]
@@ -307,7 +329,11 @@ class ConvertLoop:
 
             # for each filter, save a separate light curve
             print()
-            total_len, filt_lens = lc.save(self.input_dir, overwrite=overwrite)
+            total_len, filt_lens = lc.save(
+                self.input_dir,
+                all_columns_to_copy=all_columns_to_copy,
+                overwrite=overwrite,
+            )
 
             if not ctrl_coords is None:
                 # add new row to ControlCoordinatesTable
@@ -400,6 +426,8 @@ if __name__ == "__main__":
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
+
+    print(f"\nConverting {args.obj_name} to ATClean-readable format")
 
     convert = ConvertLoop(preset_colnames, input_dir, output_dir)
     convert.loop(
