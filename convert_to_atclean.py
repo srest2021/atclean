@@ -12,7 +12,7 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
-from copy import deepcopy
+import sys
 import numpy as np
 import pandas as pd
 from configparser import ConfigParser
@@ -20,15 +20,11 @@ from typing import Dict, List
 from download import ControlCoordinatesTable, load_config
 from lightcurve import (
     AorB,
-    ConvertLightCurve,
     Coordinates,
-    FullLightCurve,
     LightCurve,
-    Supernova,
     SnInfoTable,
     get_filename,
 )
-from pdastro import pdastrostatsclass
 
 
 def parse_config_value(value: str | None):
@@ -40,12 +36,18 @@ def parse_config_value(value: str | None):
 
 class PresetColumnNames:
     def __init__(self, config: ConfigParser, preset: str):
-        if preset not in config["convert"]:
-            raise RuntimeError(f"ERROR: Preset '{preset}' not found in config file.")
-
         self.preset = preset
-        config_preset_settings: Dict[str, str] = config["convert"][self.preset]
 
+        try:
+            config_preset_settings: Dict[str, str] = config[f"convert.{preset}"]
+        except:
+            raise RuntimeError(
+                f"ERROR: Preset '{preset}' (field '{f'convert.{preset}'}') not found in config file."
+            )
+
+        self.parse_config_values(config_preset_settings)
+
+    def parse_config_values(self, config_preset_settings):
         # required columns
         self.mjd: str = config_preset_settings["mjd_column_name"]
         self.flux: str = config_preset_settings["flux_column_name"]
@@ -107,6 +109,9 @@ class ConvertLightCurve(LightCurve):
         self.preset_colnames: PresetColumnNames = preset_colnames
 
     def load_raw_t(self, filename: str):
+        print(
+            f"\n# Loading raw light curve (control index {self.control_index}) at {filename}..."
+        )
         if filename.endswith(".csv"):
             self.t = pd.read_csv(filename)
         else:
@@ -140,16 +145,25 @@ class ConvertLightCurve(LightCurve):
                 coords.set_Dec(self.t.loc[0, self.preset_colnames.dec])
         return coords
 
-    def get_coords(self, arg_ra=None, arg_dec=None):
+    def get_coords(self, arg_ra=None, arg_dec=None) -> Coordinates:
+        print("\nSearching for coordinates in command line or light curve...")
+
         # try to get coordinates from lc columns
         coords_from_t = self.find_coords_in_t()
+        if not coords_from_t.is_empty():
+            print(f"Found coordinates in light curve: {coords_from_t.__str__()}")
 
         if self.control_index == 0:
             # try to get coordinates from command line
             coords_from_cmd = Coordinates(arg_ra, arg_dec)
             if not coords_from_cmd.is_empty():
+                print(
+                    f"Using default coordinates from command line instead: {coords_from_cmd.__str__()}"
+                )
                 return coords_from_cmd
 
+        if coords_from_t.is_empty():
+            print(f"No coordinates found")
         return coords_from_t
 
     def _save_single_df(self, input_dir, overwrite=False):
@@ -158,6 +172,9 @@ class ConvertLightCurve(LightCurve):
             self.obj_name,
             filt=self.preset_colnames.preset,
             control_index=self.control_index,
+        )
+        print(
+            f"Saving converted light curve (control index {self.control_index}) with filter {self.preset_colnames.preset}..."
         )
         self.save_lc_by_filename(filename, overwrite=overwrite)
 
@@ -170,11 +187,13 @@ class ConvertLightCurve(LightCurve):
                 control_index=self.control_index,
             )
             indices = self.ix_equal(colnames=[self.preset_colnames.filt], val=filt)
-            print(f"Saving converted light curve with filter {filt}...")
+            print(
+                f"Saving converted light curve (control index {self.control_index}) with filter {filt}..."
+            )
             self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
     # divide the light curve by filter and save into separate files
-    def save(self, input_dir, overwrite=False) -> tuple[int, Dict[str:int]]:
+    def save(self, input_dir, overwrite=False):
         total_len = len(self.t)
         filt_lens = {}
         if (
@@ -223,6 +242,8 @@ class ConvertLoop:
         self.preset_colnames: PresetColumnNames = preset_colnames
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
+
+        print()
         self.sninfo: SnInfoTable = SnInfoTable(
             self.output_dir, filename=sninfo_filename
         )
@@ -251,10 +272,12 @@ class ConvertLoop:
         ra: str | None = None,
         dec: str | None = None,
         mjd0: float | None = None,
+        overwrite: bool = False,
     ):
         self.check_args(filenames, control_indices)
 
         # create ControlCoordinatesTable if any control light curves present
+        ctrl_coords = None
         if len(filenames) > 1:
             ctrl_coords = ControlCoordinatesTable()
             ctrl_coords.num_controls = len(filenames)
@@ -270,9 +293,6 @@ class ConvertLoop:
             )
             lc.load_raw_t(old_filename)
 
-            # load table (.txt or .csv)
-            lc.load_raw_t(old_filename)
-
             # move MJD, flux, and dflux columns to the front of the file
             lc.move_required_cols_to_front()
 
@@ -280,25 +300,32 @@ class ConvertLoop:
             coords = lc.get_coords(ra, dec)
 
             # if not control lc, add new row to SnInfoTable
-            self.sninfo.add_new_row(obj_name, coords=coords, mjd0=mjd0)
+            if control_index == 0:
+                self.sninfo.update_row(
+                    obj_name, coords=coords, mjd0=mjd0, overwrite=True
+                )
 
             # for each filter, save a separate light curve
-            total_len, filt_lens = lc.save(self.input_dir, overwrite=True)
+            print()
+            total_len, filt_lens = lc.save(self.input_dir, overwrite=overwrite)
 
-            # add new row to ControlCoordinatesTable
-            ctrl_coords.add_row(
-                obj_name,
-                control_index,
-                coords,
-                ra_offset=np.nan,
-                dec_offset=np.nan,
-                radius=np.nan,
-                total_len=total_len,
-                filt_lens=filt_lens,
-            )
+            if not ctrl_coords is None:
+                # add new row to ControlCoordinatesTable
+                ctrl_coords.add_row(
+                    obj_name,
+                    control_index,
+                    coords,
+                    ra_offset=np.nan,
+                    dec_offset=np.nan,
+                    radius=np.nan,
+                    n_detec=total_len,
+                    filt_lens=filt_lens,
+                )
 
-        # save ControlCoordinatesTable
-        ctrl_coords.save(self.input_dir, tnsname=obj_name)
+        if not ctrl_coords is None:
+            # save ControlCoordinatesTable
+            print()
+            ctrl_coords.save(self.input_dir, tnsname=obj_name)
 
         # save SnInfoTable
         self.sninfo.save()
@@ -314,7 +341,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "-p",
         "--preset",
         type=str,
-        default=None,
+        default="rubin",
         help="preset name from config file (ex. atlas, rubin, tess)",
     )
     parser.add_argument(
@@ -345,18 +372,31 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         type=str,
         help="file name of .ini file with settings for this class",
     )
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        default=False,
+        action="store_true",
+        help="overwrite existing file with same file name",
+    )
+
+    return parser
 
 
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
+    print("Success")
 
     if args.preset is None:
         raise RuntimeError(
             "ERROR: Please specify the preset name to load from the config file (ex. atlas, rubin, tess)"
         )
+
+    print("\nLoading preset column names from config.ini...")
     preset_colnames = PresetColumnNames(config, args.preset)
     print(preset_colnames.__str__())
+    print("Success")
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
@@ -369,4 +409,5 @@ if __name__ == "__main__":
         args.ra,
         args.dec,
         args.mjd0,
+        overwrite=args.overwrite,
     )

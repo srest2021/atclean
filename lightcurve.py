@@ -121,6 +121,16 @@ class Coordinates:
     def set_Dec(self, dec):
         self.dec = Dec(dec)
 
+    def get_RA_str(self):
+        if self._is_angle_missing(self.ra):
+            return np.nan
+        return f"{self.ra.angle.degree:0.14f}"
+
+    def get_Dec_str(self):
+        if self._is_angle_missing(self.dec):
+            return np.nan
+        return f"{self.dec.angle.degree:0.14f}"
+
     def _is_angle_missing(self, angle: BaseAngle) -> bool:
         return angle.angle is None
 
@@ -151,8 +161,9 @@ class Coordinates:
             output.append(f"Dec {self.dec.angle.degree:0.14f}")
 
         if len(output) < 1:
-            raise RuntimeError(f"ERROR: Coordinates are empty and cannot be printed.")
-        return ", ".join(output)
+            return f"WARNING: Coordinates are empty and cannot be printed."
+        else:
+            return ", ".join(output)
 
 
 def get_filename(

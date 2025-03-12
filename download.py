@@ -122,8 +122,8 @@ class ControlCoordinatesTable:
         row = {
             "tnsname": tnsname,
             "control_index": control_index,
-            "ra": f"{coords.ra.angle.degree:0.14f}",
-            "dec": f"{coords.dec.angle.degree:0.14f}",
+            "ra": coords.get_RA_str(),
+            "dec": coords.get_Dec_str(),
             "ra_offset": (
                 f"{ra_offset.degree:0.14f}"
                 if isinstance(ra_offset, Angle)
