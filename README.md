@@ -177,6 +177,8 @@ Arguments will override default config file settings if specified.
 
 #### `convert` config section in `config.ini`
 
+**WIP**
+<!-- 
 - `mjd_column_name`: The name of the column in the raw input data that contains MJD values.
 
 - `flux_column_name`: The name of the column in the raw input data that contains flux values.
@@ -187,7 +189,7 @@ Arguments will override default config file settings if specified.
 
 - `filter_column_name` (optional, can be set to `None` for one filter): The name of the column in the raw input data that contains filter values.
 
-- `filters`: A comma-separated list of filters as they appear in the filter column. If only one filter is used, provide a short identifier for that filter to be used in the filenames (for example, `tess` for TESS light curves). This parameter helps in distinguishing data from different filters or surveys.
+- `filters`: A comma-separated list of filters as they appear in the filter column. If only one filter is used, provide a short identifier for that filter to be used in the filenames (for example, `tess` for TESS light curves). This parameter helps in distinguishing data from different filters or surveys. -->
 
 #### Arguments
 **WIP**
