@@ -117,7 +117,7 @@ class ControlCoordinatesTable:
         dec_offset=0,
         radius=0,
         n_detec=0,
-        filt_lens={},
+        filt_lens=None,
     ):
         row = {
             "tnsname": tnsname,
@@ -137,8 +137,10 @@ class ControlCoordinatesTable:
             "radius_arcsec": radius.arcsecond if isinstance(radius, Angle) else radius,
             "n_detec": n_detec,
         }
-        for filt in filt_lens:
-            row[f"n_detec_{filt}"] = filt_lens[filt]
+
+        if not filt_lens is None:
+            for filt in filt_lens:
+                row[f"n_detec_{filt}"] = filt_lens[filt]
 
         self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 

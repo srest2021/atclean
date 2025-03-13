@@ -162,8 +162,7 @@ class Coordinates:
 
         if len(output) < 1:
             return f"WARNING: Coordinates are empty and cannot be printed."
-        else:
-            return ", ".join(output)
+        return ", ".join(output)
 
 
 def get_filename(
@@ -1699,12 +1698,12 @@ class FullLightCurve:
 
             if self.coords.is_incomplete():
                 self.coords = Coordinates(
-                    json_data["data"]["reply"]["ra"], json_data["data"]["reply"]["dec"]
+                    json_data["data"]["ra"], json_data["data"]["dec"]
                 )
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
 
             if self.mjd0 is None or np.isnan(self.mjd0):
-                disc_date = json_data["data"]["reply"]["discoverydate"]
+                disc_date = json_data["data"]["discoverydate"]
                 date = list(disc_date.partition(" "))[0]
                 time = list(disc_date.partition(" "))[2]
                 date_object = Time(date + "T" + time, format="isot", scale="utc")
