@@ -159,15 +159,13 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
         json_data = json.loads(response.text, object_pairs_hook=OrderedDict)
         return json_data
     except Exception as e:
-        print(json_data["data"]["reply"])
+        print(json_data["data"])
         raise RuntimeError("ERROR in query_tns(): " + str(e))
 
 
 def get_tns_coords_from_json(json_data):
     try:
-        coords = Coordinates(
-            json_data["data"]["reply"]["ra"], json_data["data"]["reply"]["dec"]
-        )
+        coords = Coordinates(json_data["data"]["ra"], json_data["data"]["dec"])
         return coords
     except Exception as e:
         raise RuntimeError(
@@ -177,7 +175,7 @@ def get_tns_coords_from_json(json_data):
 
 def get_tns_mjd0_from_json(json_data):
     try:
-        disc_date = json_data["data"]["reply"]["discoverydate"]
+        disc_date = json_data["data"]["discoverydate"]
         date = list(disc_date.partition(" "))[0]
         time = list(disc_date.partition(" "))[2]
         date_object = Time(date + "T" + time, format="isot", scale="utc")
@@ -1639,17 +1637,11 @@ class FullLightCurve:
                 return
 
             if self.coords.is_empty():
-                self.coords = Coordinates(
-                    json_data["data"]["reply"]["ra"], json_data["data"]["reply"]["dec"]
-                )
+                self.coords = get_tns_coords_from_json(json_data)
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
 
             if self.mjd0 is None or np.isnan(self.mjd0):
-                disc_date = json_data["data"]["reply"]["discoverydate"]
-                date = list(disc_date.partition(" "))[0]
-                time = list(disc_date.partition(" "))[2]
-                date_object = Time(date + "T" + time, format="isot", scale="utc")
-                self.mjd0 = date_object.mjd - DISC_DATE_BUFFER
+                self.mjd = get_tns_mjd0_from_json(json_data)
                 print(
                     f"Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}"
                 )
