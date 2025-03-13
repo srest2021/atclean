@@ -28,13 +28,18 @@ from lightcurve import (
 
 
 def parse_config_value(value: str | None):
-    # convert 'None' string to actual None
+    """Parse value from config file by converting 'None' to None."""
     if value == "None":
         return None
     return value
 
 
 class PresetColumnNames:
+    """
+    Class to handle loading and managing column names for light curve conversion
+    to ATClean-readable format, as defined in the config file.
+    """
+
     def __init__(self, config: ConfigParser, preset: str):
         self.preset = preset
 
@@ -48,6 +53,7 @@ class PresetColumnNames:
         self.parse_config_values(config_preset_settings)
 
     def parse_config_values(self, config_preset_settings):
+        """Parse required and optional column names from config."""
         # required columns
         self.mjd: str = config_preset_settings["mjd_column_name"]
         self.flux: str = config_preset_settings["flux_column_name"]
@@ -82,6 +88,7 @@ class PresetColumnNames:
         )
 
     def get_all_columns_to_copy(self):
+        """Return all columns that should be copied into the output light curve."""
         colset: Set[str] = {
             self.mjd,
             self.flux,
@@ -97,6 +104,7 @@ class PresetColumnNames:
         return list(colset)
 
     def __str__(self):
+        """Readable string representation of all column names."""
         column_names = [
             f"mjd column: {self.mjd}",
             f"flux column: {self.flux}",
@@ -113,6 +121,10 @@ class PresetColumnNames:
 
 
 class ConvertLightCurve(LightCurve):
+    """
+    Class to manage conversion of a single light curve file to ATClean-readable format.
+    """
+
     def __init__(
         self,
         obj_name: str,
@@ -124,6 +136,7 @@ class ConvertLightCurve(LightCurve):
         self.preset_colnames: PresetColumnNames = preset_colnames
 
     def load_raw_t(self, filename: str):
+        """Load raw light curve data from file (CSV or whitespace-separated)."""
         print(
             f"\n# Loading raw light curve (control index {self.control_index}) at {filename}..."
         )
@@ -133,6 +146,7 @@ class ConvertLightCurve(LightCurve):
             self.load_spacesep(filename)
 
     def move_required_cols_to_front(self):
+        """Reorder essential columns to the front (MJD, flux, uncertainty)."""
         cols_to_front = [
             self.preset_colnames.mjd,
             self.preset_colnames.flux,
@@ -143,12 +157,14 @@ class ConvertLightCurve(LightCurve):
         ]
 
     def check_single_value_column(self, col_name: str):
+        """Ensure a column contains only a single unique value (e.g., RA/Dec consistency check)."""
         if col_name and self.t[col_name].nunique() != 1:
             raise RuntimeError(
                 f"ERROR: Different values found in {col_name} column (control index {self.control_index})"
             )
 
     def find_coords_in_t(self) -> Coordinates:
+        """Extract RA/Dec from light curve columns, if present."""
         coords = Coordinates()
         if len(self.t) > 0:
             # if RA and Dec columns present, get coords from there
@@ -161,6 +177,7 @@ class ConvertLightCurve(LightCurve):
         return coords
 
     def get_coords(self, arg_ra=None, arg_dec=None) -> Coordinates:
+        """Determine coordinates from either command line arguments (only for control_index=0) or file columns."""
         print("\nSearching for coordinates in command line or light curve...")
 
         # try to get coordinates from lc columns
@@ -209,6 +226,10 @@ class ConvertLightCurve(LightCurve):
 
     # divide the light curve by filter and save into separate files
     def save(self, input_dir, all_columns_to_copy=None, overwrite=False):
+        """
+        Save processed light curve(s), optionally splitting by filter.
+        Also handles cleaning of bad data points (flux=NaN or uncertainty=0).
+        """
         total_len = len(self.t)
         filt_lens = {}
         if (
@@ -251,6 +272,10 @@ class ConvertLightCurve(LightCurve):
 
 
 class ConvertLoop:
+    """
+    Class to manage the overall conversion loop over multiple files.
+    """
+
     def __init__(
         self,
         preset_colnames: PresetColumnNames,
