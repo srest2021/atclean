@@ -135,12 +135,12 @@ class ConvertLightCurve(LightCurve):
     def __init__(
         self,
         obj_name: str,
-        preset_colnames: PresetColumnNames,
+        colnames: PresetColumnNames,
         control_index: int = 0,
     ):
         LightCurve.__init__(self, control_index)
         self.obj_name: str = obj_name
-        self.preset_colnames: PresetColumnNames = preset_colnames
+        self.colnames: PresetColumnNames = colnames
 
     def load_raw_t(self, filename: str):
         """Load raw light curve data from file (CSV or whitespace-separated)."""
@@ -155,9 +155,9 @@ class ConvertLightCurve(LightCurve):
     def move_required_cols_to_front(self):
         """Reorder essential columns to the front (MJD, flux, uncertainty)."""
         cols_to_front = [
-            self.preset_colnames.mjd,
-            self.preset_colnames.flux,
-            self.preset_colnames.uncertainty,
+            self.colnames.mjd,
+            self.colnames.flux,
+            self.colnames.uncertainty,
         ]
         self.t = self.t[
             cols_to_front + [col for col in self.t.columns if col not in cols_to_front]
@@ -175,12 +175,12 @@ class ConvertLightCurve(LightCurve):
         coords = Coordinates()
         if len(self.t) > 0:
             # if RA and Dec columns present, get coords from there
-            if not self.preset_colnames.ra is None:
-                self.check_single_value_column(self.preset_colnames.ra)
-                coords.set_RA(self.t.loc[0, self.preset_colnames.ra])
-            if not self.preset_colnames.dec is None:
-                self.check_single_value_column(self.preset_colnames.dec)
-                coords.set_Dec(self.t.loc[0, self.preset_colnames.dec])
+            if not self.colnames.ra is None:
+                self.check_single_value_column(self.colnames.ra)
+                coords.set_RA(self.t.loc[0, self.colnames.ra])
+            if not self.colnames.dec is None:
+                self.check_single_value_column(self.colnames.dec)
+                coords.set_Dec(self.t.loc[0, self.colnames.dec])
         return coords
 
     def get_coords(self, arg_ra=None, arg_dec=None) -> Coordinates:
@@ -209,11 +209,11 @@ class ConvertLightCurve(LightCurve):
         filename = get_filename(
             input_dir,
             self.obj_name,
-            filt=self.preset_colnames.preset,
+            filt=self.colnames.preset,
             control_index=self.control_index,
         )
         print(
-            f"Saving converted light curve (control index {self.control_index}) with filter {self.preset_colnames.preset}..."
+            f"Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
         )
         self.save_lc_by_filename(filename, overwrite=overwrite)
 
@@ -225,7 +225,7 @@ class ConvertLightCurve(LightCurve):
                 filt=filt,
                 control_index=self.control_index,
             )
-            indices = self.ix_equal(colnames=[self.preset_colnames.filt], val=filt)
+            indices = self.ix_equal(colnames=[self.colnames.filt], val=filt)
             print(
                 f"Saving converted light curve (control index {self.control_index}) with filter {filt}..."
             )
@@ -239,25 +239,19 @@ class ConvertLightCurve(LightCurve):
         """
         total_len = len(self.t)
         filt_lens = {}
-        if (
-            self.preset_colnames.filt is None
-        ):  # if no filter column, set filter to preset
-            filts = [self.preset_colnames.preset]
+        if self.colnames.filt is None:  # if no filter column, set filter to preset
+            filts = [self.colnames.preset]
         else:  # get filters from filter column
-            filts = self.t[self.preset_colnames.filt].unique().tolist()
+            filts = self.t[self.colnames.filt].unique().tolist()
             for filt in filts:
-                filt_lens[filt] = len(
-                    np.where(self.t[self.preset_colnames.filt] == filt)[0]
-                )
+                filt_lens[filt] = len(np.where(self.t[self.colnames.filt] == filt)[0])
 
         # sort data by mjd
-        self.t = self.t.sort_values(by=[self.preset_colnames.mjd], ignore_index=True)
+        self.t = self.t.sort_values(by=[self.colnames.mjd], ignore_index=True)
 
         # remove rows with duJy=0 or uJy=NaN
-        dflux_zero_ix = self.ix_equal(
-            colnames=[self.preset_colnames.uncertainty], val=0
-        )
-        flux_nan_ix = self.ix_is_null(colnames=[self.preset_colnames.flux])
+        dflux_zero_ix = self.ix_equal(colnames=[self.colnames.uncertainty], val=0)
+        flux_nan_ix = self.ix_is_null(colnames=[self.colnames.flux])
         if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
             print(
                 f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
@@ -269,7 +263,7 @@ class ConvertLightCurve(LightCurve):
             self.t = self.t[all_columns_to_copy]
 
         # save
-        if self.preset_colnames.filt is None:
+        if self.colnames.filt is None:
             self._save_single_df(input_dir, overwrite=overwrite)
         else:
             # divide df by filter
@@ -285,12 +279,12 @@ class ConvertLoop:
 
     def __init__(
         self,
-        preset_colnames: PresetColumnNames,
+        colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
         sninfo_filename: str = None,
     ):
-        self.preset_colnames: PresetColumnNames = preset_colnames
+        self.colnames: PresetColumnNames = colnames
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
 
@@ -329,7 +323,7 @@ class ConvertLoop:
     ):
         lc = ConvertLightCurve(
             obj_name,
-            self.preset_colnames,
+            self.colnames,
             control_index=control_index,
         )
         lc.load_raw_t(old_filename)
@@ -374,7 +368,7 @@ class ConvertLoop:
             ctrl_coords = ControlCoordinatesTable()
             ctrl_coords.num_controls = len(filenames)
 
-        all_columns_to_copy = self.preset_colnames.get_all_columns_to_copy()
+        all_columns_to_copy = self.colnames.get_all_columns_to_copy()
         print("\nKeeping these columns: ", all_columns_to_copy)
 
         for i in range(len(filenames)):
@@ -477,8 +471,8 @@ if __name__ == "__main__":
         )
 
     print("\nLoading preset column names from config.ini...")
-    preset_colnames = PresetColumnNames(config, args.preset)
-    print(preset_colnames.__str__())
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
     print("Success")
 
     input_dir = config["dir"]["atclean_input"]
@@ -486,7 +480,7 @@ if __name__ == "__main__":
 
     print(f"\nConverting {args.obj_name} to ATClean-readable format")
 
-    convert = ConvertLoop(preset_colnames, input_dir, output_dir)
+    convert = ConvertLoop(colnames, input_dir, output_dir)
     convert.loop(
         args.obj_name,
         args.filenames,
