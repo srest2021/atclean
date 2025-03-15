@@ -183,14 +183,21 @@ class PresetColumnNames:
 
     def __str__(self) -> str:
         """Readable string representation of all column names."""
+        skip_colnames = ["mjdbin", "snr", "mask"]
+
         lines = ["--- Required Columns ---"]
         for k, v in self.required_columns.items():
+            if k in skip_colnames:
+                continue
             lines.append(f"{k}: {v}")
+
         lines.append("--- Optional Columns ---")
         for k, v in self.optional_columns.items():
             lines.append(f"{k}: {v}")
+
         lines.append("--- Extra Columns to Copy ---")
         lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
+
         return "\n".join(lines)
 
 
@@ -893,12 +900,15 @@ LIGHT CURVES
 class Supernova:
     def __init__(
         self,
+        colnames: PresetColumnNames,
         tnsname: str = None,
         ra: str = None,
         dec: str = None,
         mjd0: float = None,
         filt="o",
     ):
+        self.colnames_master = colnames
+
         self.tnsname = tnsname
         self.coords: Coordinates = Coordinates(ra, dec)
         self.mjd0 = mjd0
@@ -935,8 +945,10 @@ class Supernova:
             print("Success")
 
     def verify_mjds(self, verbose=False):
-        # sort SN lc by MJD
-        self.lcs[0].t.sort_values(by=["MJD"], ignore_index=True, inplace=True)
+        """Sort SN and control light curves by MJD"""
+        self.lcs[0].t.sort_values(
+            by=[self.colnames_master.mjd], ignore_index=True, inplace=True
+        )
 
         if self.num_controls == 0:
             return
@@ -944,14 +956,16 @@ class Supernova:
         if verbose:
             print("\nMaking sure SN and control light curve MJDs match up exactly:")
 
-        sn_sorted_mjd = self.lcs[0].t["MJD"].to_numpy()
+        sn_sorted_mjd = self.lcs[0].t[self.colnames_master.mjd].to_numpy()
 
         for control_index in self.get_control_indices():
             # sort by MJD
             self.lcs[control_index].t.sort_values(
-                by=["MJD"], ignore_index=True, inplace=True
+                by=[self.colnames_master.mjd], ignore_index=True, inplace=True
             )
-            control_sorted_mjd = self.lcs[control_index].t["MJD"].to_numpy()
+            control_sorted_mjd = (
+                self.lcs[control_index].t[self.colnames_master.mjd].to_numpy()
+            )
 
             if (len(sn_sorted_mjd) != len(control_sorted_mjd)) or not np.array_equal(
                 sn_sorted_mjd, control_sorted_mjd
@@ -968,16 +982,23 @@ class Supernova:
                 # with all values of other columns NaN
                 if len(only_sn_mjd) > 0:
                     for mjd in only_sn_mjd:
-                        self.lcs[control_index].newrow({"MJD": mjd, "Mask": 0})
+                        self.lcs[control_index].newrow(
+                            {
+                                self.colnames_master.mjd: mjd,
+                                self.colnames_master.mask: 0,
+                            }
+                        )
 
                 # remove indices of rows in control light curve for which there is no MJD in the SN lc
                 if len(only_control_mjd) > 0:
                     ix_to_skip = []
                     for mjd in only_control_mjd:
-                        matching_ix = self.lcs[control_index].ix_equal("MJD", mjd)
+                        matching_ix = self.lcs[control_index].ix_equal(
+                            self.colnames_master.mjd, mjd
+                        )
                         if len(matching_ix) != 1:
                             raise RuntimeError(
-                                f"ERROR: Couldn't find MJD={mjd} in column MJD, but should be there!"
+                                f"ERROR: Couldn't find MJD={mjd} in MJD column, but should be there!"
                             )
                         ix_to_skip.extend(matching_ix)
                     ix = AnotB(self.lcs[control_index].getindices(), ix_to_skip)
@@ -985,7 +1006,9 @@ class Supernova:
                     ix = self.lcs[control_index].getindices()
 
                 # sort again
-                sorted_ix = self.lcs[control_index].ix_sort_by_cols("MJD", indices=ix)
+                sorted_ix = self.lcs[control_index].ix_sort_by_cols(
+                    self.colnames_master.mjd, indices=ix
+                )
                 self.lcs[control_index].t = self.lcs[control_index].t.loc[sorted_ix]
 
             self.lcs[control_index].t.reset_index(drop=True, inplace=True)
@@ -1000,7 +1023,7 @@ class Supernova:
 
         for control_index in self.get_all_indices():
             # add blank 'Mask' column
-            self.lcs[control_index].t["Mask"] = 0
+            self.lcs[control_index].t[self.colnames_master.mask] = 0
             # remove rows with duJy=0 or uJy=NaN
             self.lcs[control_index].remove_invalid_rows()
             # calculate flux/dflux column
@@ -1036,10 +1059,10 @@ class Supernova:
 
         for control_index in self.get_control_indices():
             dflux_clean_ix = self.lcs[control_index].ix_unmasked(
-                "Mask", maskval=cut.params["uncert_cut_flag"]
+                self.colnames_master.mask, maskval=cut.params["uncert_cut_flag"]
             )
             x2_clean_ix = self.lcs[control_index].ix_inrange(
-                colnames=["chi/N"],
+                colnames=[self.colnames_master.chisquare],
                 uplim=cut.params["temp_x2_max_value"],
                 exclude_uplim=True,
             )
@@ -1088,7 +1111,7 @@ class Supernova:
     def calculate_control_stats(self, previous_flags):
         print("Calculating control light curve statistics...")
 
-        len_mjd = len(self.lcs[0].t["MJD"])
+        len_mjd = len(self.lcs[0].t[self.colnames_master.mjd])
 
         # construct arrays for control lc data
         uJy = np.full((self.num_controls, len_mjd), np.nan)
@@ -1098,17 +1121,18 @@ class Supernova:
         i = 1
         for control_index in self.get_control_indices():
             if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(
-                self.lcs[0].t["MJD"], self.lcs[control_index].t["MJD"]
+                self.lcs[0].t[self.colnames_master.mjd],
+                self.lcs[control_index].t[self.colnames_master.mjd],
             ):
                 raise RuntimeError(
                     f"ERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds()."
                 )
             else:
-                uJy[i - 1, :] = self.lcs[control_index].t["uJy"]
+                uJy[i - 1, :] = self.lcs[control_index].t[self.colnames_master.flux]
                 duJy[i - 1, :] = self.lcs[control_index].t[
-                    self.lcs[control_index].dflux_colname
+                    self.lcs[control_index].colnames.dflux_new
                 ]
-                Mask[i - 1, :] = self.lcs[control_index].t["Mask"]
+                Mask[i - 1, :] = self.lcs[control_index].t[self.colnames_master.mask]
 
             i += 1
 
@@ -1118,14 +1142,16 @@ class Supernova:
 
         for index in range(uJy.shape[-1]):
             pda4MJD = pdastrostatsclass()
-            pda4MJD.t["uJy"] = uJy[0:, index]
-            pda4MJD.t[self.lcs[0].dflux_colname] = duJy[0:, index]
-            pda4MJD.t["Mask"] = np.bitwise_and(Mask[0:, index], previous_flags)
+            pda4MJD.t[self.colnames_master.flux] = uJy[0:, index]
+            pda4MJD.t[self.lcs[0].colnames.dflux_new] = duJy[0:, index]
+            pda4MJD.t[self.colnames_master.mask] = np.bitwise_and(
+                Mask[0:, index], previous_flags
+            )
 
             pda4MJD.calcaverage_sigmacutloop(
-                "uJy",
-                noisecol=self.lcs[0].dflux_colname,
-                maskcol="Mask",
+                self.colnames_master.flux,
+                noisecol=self.lcs[0].colnames.dflux_new,
+                maskcol=self.colnames_master.mask,
                 maskval=previous_flags,
                 verbose=1,
                 Nsigma=3.0,
@@ -1146,7 +1172,7 @@ class Supernova:
 
         # copy over SN's control cut flags to control light curve 'Mask' columns
         flags_arr = np.full(
-            self.lcs[0].t["Mask"].shape,
+            self.lcs[0].t[self.colnames_master.mask].shape,
             (
                 cut.flag
                 | cut.params["questionable_flag"]
@@ -1156,7 +1182,9 @@ class Supernova:
                 | cut.params["Ngood_flag"]
             ),
         )
-        flags_to_copy = np.bitwise_and(self.lcs[0].t["Mask"], flags_arr)
+        flags_to_copy = np.bitwise_and(
+            self.lcs[0].t[self.colnames_master.mask], flags_arr
+        )
         for control_index in self.get_control_indices():
             self.lcs[control_index].copy_flags(flags_to_copy)
 
@@ -1165,33 +1193,53 @@ class Supernova:
         len_ix = len(self.lcs[0].getindices())
         x2_percent_cut = (
             100
-            * len(self.lcs[0].ix_masked("Mask", maskval=cut.params["x2_flag"]))
+            * len(
+                self.lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=cut.params["x2_flag"]
+                )
+            )
             / len_ix
         )
         stn_percent_cut = (
             100
-            * len(self.lcs[0].ix_masked("Mask", maskval=cut.params["stn_flag"]))
+            * len(
+                self.lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=cut.params["stn_flag"]
+                )
+            )
             / len_ix
         )
         Nclip_percent_cut = (
             100
-            * len(self.lcs[0].ix_masked("Mask", maskval=cut.params["Nclip_flag"]))
+            * len(
+                self.lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=cut.params["Nclip_flag"]
+                )
+            )
             / len_ix
         )
         Ngood_percent_cut = (
             100
-            * len(self.lcs[0].ix_masked("Mask", maskval=cut.params["Ngood_flag"]))
+            * len(
+                self.lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=cut.params["Ngood_flag"]
+                )
+            )
             / len_ix
         )
         questionable_percent_cut = (
             100
             * len(
-                self.lcs[0].ix_masked("Mask", maskval=cut.params["questionable_flag"])
+                self.lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=cut.params["questionable_flag"]
+                )
             )
             / len_ix
         )
         percent_cut = (
-            100 * len(self.lcs[0].ix_masked("Mask", maskval=cut.flag)) / len_ix
+            100
+            * len(self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.flag))
+            / len_ix
         )
         return (
             x2_percent_cut,
@@ -1227,7 +1275,11 @@ class Supernova:
         )
         percent_cut = (
             100
-            * len(avg_sn.avg_lcs[0].ix_masked("Mask", maskval=all_flags))
+            * len(
+                avg_sn.avg_lcs[0].ix_masked(
+                    self.colnames_master.mask, maskval=all_flags
+                )
+            )
             / len(avg_sn.avg_lcs[0].t)
         )
         return avg_sn, percent_cut
@@ -1306,6 +1358,7 @@ class Supernova:
 class AveragedSupernova(Supernova):
     def __init__(
         self,
+        colnames: PresetColumnNames,
         tnsname: str = None,
         ra: str = None,
         dec: str = None,
@@ -1313,7 +1366,7 @@ class AveragedSupernova(Supernova):
         mjdbinsize: float = 1.0,
         filt: str = "o",
     ):
-        Supernova.__init__(self, tnsname, ra, dec, mjd0, filt)
+        Supernova.__init__(self, colnames, tnsname, ra, dec, mjd0, filt)
         self.mjdbinsize = mjdbinsize
 
         self.avg_lcs: Dict[int, AveragedLightCurve] = {}
