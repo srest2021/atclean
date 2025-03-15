@@ -12,6 +12,7 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
+import re
 import sys
 import numpy as np
 import pandas as pd
@@ -52,7 +53,7 @@ class PresetColumnNames:
                 f"ERROR: Preset '{preset}' (field '{f'column_name_preset.{preset}'}') not found in config file."
             )
 
-        self._parse_config_values(config_preset_settings)
+        self._read_config(config_preset_settings)
 
     def _validate_columns_dict(self, columns_dict: Dict, no_nones=False):
         for column, name in columns_dict.items():
@@ -64,7 +65,7 @@ class PresetColumnNames:
             columns_dict[column] = name
         return columns_dict
 
-    def _parse_config_values(self, config_preset_settings: Dict):
+    def _read_config(self, config_preset_settings: Dict):
         self.required_columns: Dict[str, str] = self._validate_columns_dict(
             {
                 "mjd": config_preset_settings.get("mjd_column_name"),
@@ -460,17 +461,26 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     return parser
 
 
+def get_allowed_presets(config: ConfigParser) -> list[str]:
+    """
+    Extract all preset names from the config that match 'column_name_preset.<PRESET NAME>'.
+    """
+    pattern = re.compile(r"^column_name_preset\.(.+)$")
+    return [match.group(1) for key in config.keys() if (match := pattern.match(key))]
+
+
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
     print("Success")
 
-    if args.preset is None:
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
         raise RuntimeError(
-            "ERROR: Please specify the preset name to load from the config file (ex. atlas, rubin, tess)"
+            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
 
-    print("\nLoading preset column names from config.ini...")
+    print(f"\nLoading {args.preset} preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
     print("Success")
