@@ -112,7 +112,7 @@ class PresetColumnNames:
             else [col.strip() for col in extra_columns.split(",")]
         )
 
-    def add_column_name(self, key: str, name: str, is_required: bool = False):
+    def add(self, key: str, name: str, is_required: bool = False):
         if not isinstance(key, str) or not key.strip():
             raise ValueError("Column key must be a non-empty string.")
         if not isinstance(name, str) or not name.strip():
@@ -128,7 +128,7 @@ class PresetColumnNames:
         else:
             self.optional_columns[key] = name
 
-    def update_column_name(self, key: str, name: str, is_required: bool = False):
+    def update(self, key: str, name: str, is_required: bool = False):
         if is_required:
             if key not in self.required_columns:
                 raise RuntimeError(
@@ -142,7 +142,15 @@ class PresetColumnNames:
                 )
             self.optional_columns[key] = name
 
-    def get_required_column_names(self):
+    def get_required_column_names(self, is_averaged: bool = False):
+        if is_averaged:
+            return [
+                self.required_columns["mjdbin"],
+                self.required_columns["flux"],
+                self.required_columns["dflux"],
+                self.required_columns["mask"],
+            ]
+
         return [
             self.required_columns["mjd"],
             self.required_columns["flux"],
@@ -1398,7 +1406,7 @@ class LightCurve(pdastrostatsclass):
         self.filt = filt
 
         self.colnames = colnames
-        self.colnames.add_column_name("dflux_new", self.colnames.dflux)
+        self.colnames.add("dflux_new", self.colnames.dflux)
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
@@ -1464,7 +1472,7 @@ class LightCurve(pdastrostatsclass):
         self.t[new_dflux_colname] = np.sqrt(
             self.t[self.colnames.dflux] * self.t[self.colnames.dflux] + sigma_extra**2
         )
-        self.colnames.update_column_name("dflux_new", new_dflux_colname)
+        self.colnames.update("dflux_new", new_dflux_colname)
         self.calculate_fdf_column()
 
     def flag_by_control_stats(self, cut: Cut):
@@ -1832,13 +1840,24 @@ class LightCurve(pdastrostatsclass):
 
 
 class AveragedLightCurve(LightCurve):
-    def __init__(self, control_index=0, filt="o", mjdbinsize=1.0, **kwargs):
-        LightCurve.__init__(self, control_index, filt, **kwargs)
+    def __init__(
+        self,
+        colnames: PresetColumnNames,
+        control_index=0,
+        filt="o",
+        mjdbinsize=1.0,
+        **kwargs,
+    ):
+        LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
         self.mjdbinsize = mjdbinsize
 
     def load_lc_by_filename(self, filename):
         self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
-        self.check_column_names(required_column_names=REQUIRED_AVG_COLUMN_NAMES)
+        self.check_column_names(
+            required_column_names=self.colnames.get_required_column_names(
+                is_averaged=True
+            )
+        )
 
     def load_lc(self, input_dir, tnsname):
         filename = get_filename(
