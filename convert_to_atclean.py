@@ -16,7 +16,7 @@ import sys
 import numpy as np
 import pandas as pd
 from configparser import ConfigParser
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 from download import ControlCoordinatesTable, load_config
 from lightcurve import (
     AorB,
@@ -29,7 +29,7 @@ from lightcurve import (
 
 def parse_config_value(value: str | None):
     """Parse value from config file by converting 'None' to None."""
-    if value == "None":
+    if value and value.strip().lower() == "none":
         return None
     return value
 
@@ -44,80 +44,87 @@ class PresetColumnNames:
         self.preset = preset
 
         try:
-            config_preset_settings: Dict[str, str] = config[f"convert.{preset}"]
+            config_preset_settings: Dict[str, str] = config[
+                f"column_name_preset.{preset}"
+            ]
         except:
             raise RuntimeError(
-                f"ERROR: Preset '{preset}' (field '{f'convert.{preset}'}') not found in config file."
+                f"ERROR: Preset '{preset}' (field '{f'column_name_preset.{preset}'}') not found in config file."
             )
 
-        self.parse_config_values(config_preset_settings)
+        self._parse_config_values(config_preset_settings)
 
-    def parse_config_values(self, config_preset_settings):
-        """Parse required and optional column names from config."""
-        # required columns
-        self.mjd: str = config_preset_settings["mjd_column_name"]
-        self.flux: str = config_preset_settings["flux_column_name"]
-        self.uncertainty: str = config_preset_settings["uncertainty_column_name"]
+    def _validate_columns_dict(self, columns_dict: Dict, no_nones=False):
+        for column, name in columns_dict.items():
+            name = parse_config_value(name)
+            if no_nones and name is None:
+                raise RuntimeError(
+                    f"ERROR: Column name '{name}' in config preset {self.preset} cannot be None"
+                )
+            columns_dict[column] = name
+        return columns_dict
 
-        # optional columns
-        self.chisquare: str | None = parse_config_value(
-            config_preset_settings["chisquare_column_name"]
+    def _parse_config_values(self, config_preset_settings: Dict):
+        self.required_columns: Dict[str, str] = self._validate_columns_dict(
+            {
+                "mjd": config_preset_settings.get("mjd_column_name"),
+                "flux": config_preset_settings.get("flux_column_name"),
+                "uncertainty": config_preset_settings.get("uncertainty_column_name"),
+            },
+            no_nones=True,
         )
-        self.filt: str | None = parse_config_value(
-            config_preset_settings["filter_column_name"]
-        )
-        self.mag: str | None = parse_config_value(
-            config_preset_settings["mag_column_name"]
-        )
-        self.dmag: str | None = parse_config_value(
-            config_preset_settings["dmag_column_name"]
-        )
-        self.ra: str | None = parse_config_value(
-            config_preset_settings["ra_column_name"]
-        )
-        self.dec: str | None = parse_config_value(
-            config_preset_settings["dec_column_name"]
+
+        self.optional_columns: Dict[str, Optional[str]] = self._validate_columns_dict(
+            {
+                "chisquare": config_preset_settings.get("chisquare_column_name"),
+                "filt": config_preset_settings.get("filter_column_name"),
+                "mag": config_preset_settings.get("mag_column_name"),
+                "dmag": config_preset_settings.get("dmag_column_name"),
+                "ra": config_preset_settings.get("ra_column_name"),
+                "dec": config_preset_settings.get("dec_column_name"),
+            }
         )
 
         # extra columns to copy
-        columns_to_copy = parse_config_value(config_preset_settings["columns_to_copy"])
-        self.columns_to_copy: List[str] = (
+        extra_columns = parse_config_value(config_preset_settings["extra_columns"])
+        self.extra_columns: List[str] = (
             []
-            if columns_to_copy is None
-            else [col.strip() for col in columns_to_copy.split(",")]
+            if extra_columns is None
+            else [col.strip() for col in extra_columns.split(",")]
         )
 
-    def get_all_columns_to_copy(self):
+    def get_all_columns_to_copy(self) -> List[str]:
         """Return all columns that should be copied into the output light curve."""
-        colset: Set[str] = {
-            self.mjd,
-            self.flux,
-            self.uncertainty,
-            self.chisquare,
-            self.filt,
-            self.mag,
-            self.dmag,
-            self.ra,
-            self.dec,
-        } | set(self.columns_to_copy)
-        colset.discard(None)
+        colset: Set[str] = (
+            set(self.required_columns.values())
+            | set(filter(None, self.optional_columns.values()))
+            | set(self.extra_columns)
+        )
         return list(colset)
 
-    def __str__(self):
+    def __getattr__(self, name: str) -> Optional[str]:
+        """
+        Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
+        """
+        if name in self.required_columns:
+            return self.required_columns[name]
+        if name in self.optional_columns:
+            return self.optional_columns[name]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
+
+    def __str__(self) -> str:
         """Readable string representation of all column names."""
-        column_names = [
-            f"mjd column: {self.mjd}",
-            f"flux column: {self.flux}",
-            f"uncertainty column: {self.uncertainty}",
-            f"chi-square column: {self.chisquare}",
-            f"filter column: {self.filt}",
-            f"mag column: {self.mag}",
-            f"dmag column: {self.dmag}",
-            f"ra column: {self.ra}",
-            f"dec column: {self.dec}",
-            f"columns to copy: {', '.join(self.columns_to_copy)}",
-        ]
-        return "\n".join(column_names)
+        lines = ["--- Required Columns ---"]
+        for k, v in self.required_columns.items():
+            lines.append(f"{k}: {v}")
+        lines.append("--- Optional Columns ---")
+        for k, v in self.optional_columns.items():
+            lines.append(f"{k}: {v}")
+        lines.append("--- Extra Columns to Copy ---")
+        lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
+        return "\n".join(lines)
 
 
 class ConvertLightCurve(LightCurve):
@@ -292,7 +299,8 @@ class ConvertLoop:
             self.output_dir, filename=sninfo_filename
         )
 
-    def check_args(self, filenames, control_indices):
+    @staticmethod
+    def validate_args(filenames, control_indices):
         if len(filenames) < 1:
             raise RuntimeError(
                 "ERROR: Please provide at least one file name using the -f argument"
@@ -308,6 +316,46 @@ class ConvertLoop:
                     f"Invalid control index: {control_index}. It must be a non-negative integer."
                 )
 
+    def convert_single_file(
+        self,
+        obj_name,
+        old_filename,
+        control_index,
+        all_columns_to_copy,
+        arg_ra=None,
+        arg_dec=None,
+        arg_mjd0=None,
+        overwrite=False,
+    ):
+        lc = ConvertLightCurve(
+            obj_name,
+            self.preset_colnames,
+            control_index=control_index,
+        )
+        lc.load_raw_t(old_filename)
+
+        # move MJD, flux, and dflux columns to the front of the file
+        lc.move_required_cols_to_front()
+
+        # try to get coordinates from either command line or ra/dec columns
+        coords = lc.get_coords(arg_ra, arg_dec)
+
+        # if not control lc, add new row to SnInfoTable
+        if control_index == 0:
+            self.sninfo.update_row(
+                obj_name, coords=coords, mjd0=arg_mjd0, overwrite=True
+            )
+
+        # for each filter, save a separate light curve
+        print()
+        total_len, filt_lens = lc.save(
+            self.input_dir,
+            all_columns_to_copy=all_columns_to_copy,
+            overwrite=overwrite,
+        )
+
+        return coords, total_len, filt_lens
+
     def loop(
         self,
         obj_name: str,
@@ -318,7 +366,7 @@ class ConvertLoop:
         mjd0: float | None = None,
         overwrite: bool = False,
     ):
-        self.check_args(filenames, control_indices)
+        self.validate_args(filenames, control_indices)
 
         # create ControlCoordinatesTable if any control light curves present
         ctrl_coords = None
@@ -333,30 +381,14 @@ class ConvertLoop:
             old_filename = filenames[i]
             control_index = control_indices[i]
 
-            lc = ConvertLightCurve(
+            coords, total_len, filt_lens = self.convert_single_file(
                 obj_name,
-                self.preset_colnames,
-                control_index=control_index,
-            )
-            lc.load_raw_t(old_filename)
-
-            # move MJD, flux, and dflux columns to the front of the file
-            lc.move_required_cols_to_front()
-
-            # try to get coordinates from either command line or ra/dec columns
-            coords = lc.get_coords(ra, dec)
-
-            # if not control lc, add new row to SnInfoTable
-            if control_index == 0:
-                self.sninfo.update_row(
-                    obj_name, coords=coords, mjd0=mjd0, overwrite=True
-                )
-
-            # for each filter, save a separate light curve
-            print()
-            total_len, filt_lens = lc.save(
-                self.input_dir,
-                all_columns_to_copy=all_columns_to_copy,
+                old_filename,
+                control_index,
+                all_columns_to_copy,
+                arg_ra=ra,
+                arg_dec=dec,
+                arg_mjd0=mjd0,
                 overwrite=overwrite,
             )
 
