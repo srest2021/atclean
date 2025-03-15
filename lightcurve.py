@@ -25,8 +25,6 @@ DISC_DATE_BUFFER = 20
 
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
-# ATLAS_FILTERS = ["o", "c"]
-
 """
 UTILITY
 """
@@ -1889,7 +1887,7 @@ class FullLightCurve:
             )
             lc.t = lc.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
-        for filt in ATLAS_FILTERS:
+        for filt in ["o", "c"]:
             filename = get_filename(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
             )

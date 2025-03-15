@@ -23,10 +23,6 @@ from download import (
 )
 from plot import PlotPdf
 
-"""
-UTILITY
-"""
-
 
 def hexstring_to_int(hexstring):
     return int(hexstring, 16)

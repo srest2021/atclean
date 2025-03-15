@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from configparser import ConfigParser
 from typing import Dict, List, Optional, Set
-from download import ControlCoordinatesTable, load_config
+from download import ControlCoordinatesTable, load_config, make_dir_if_not_exists
 from lightcurve import (
     AorB,
     Coordinates,
@@ -388,6 +388,8 @@ if __name__ == "__main__":
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
+    make_dir_if_not_exists(input_dir)
+    make_dir_if_not_exists(output_dir)
 
     print(f"\nConverting {args.obj_name} to ATClean-readable format")
 
