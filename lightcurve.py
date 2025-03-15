@@ -61,17 +61,7 @@ class PresetColumnNames:
 
     def __init__(self, config: ConfigParser, preset: str):
         self.preset = preset
-
-        try:
-            config_preset_settings: Dict[str, str] = config[
-                f"column_name_preset.{preset}"
-            ]
-        except:
-            raise RuntimeError(
-                f"ERROR: Preset '{preset}' (field '{f'column_name_preset.{preset}'}') not found in config file."
-            )
-
-        self._read_config(config_preset_settings)
+        self._read_config(config)
 
     def _validate_columns_dict(self, columns_dict: Dict, no_nones: bool = False):
         for key, name in columns_dict.items():
@@ -83,12 +73,22 @@ class PresetColumnNames:
             columns_dict[key] = name
         return columns_dict
 
-    def _read_config(self, config_preset_settings: Dict):
+    def _read_config(self, config: ConfigParser):
+        try:
+            config_preset_settings: Dict = config[f"column_name_preset.{self.preset}"]
+        except:
+            raise RuntimeError(
+                f"ERROR: Preset '{self.preset}' (field '{f'column_name_preset.{self.preset}'}') not found in config file."
+            )
+
         self.required_columns: Dict[str, str] = self._validate_columns_dict(
             {
                 "mjd": config_preset_settings.get("mjd_column_name"),
                 "flux": config_preset_settings.get("flux_column_name"),
-                "uncertainty": config_preset_settings.get("uncertainty_column_name"),
+                "dflux": config_preset_settings.get("dflux_column_name"),
+                "mjdbin": config["mjd_bin_column_name"],
+                "mask": config["mask_column_name"],
+                "snr": config["snr_column_name"],
             },
             no_nones=True,
         )
@@ -112,15 +112,6 @@ class PresetColumnNames:
             else [col.strip() for col in extra_columns.split(",")]
         )
 
-    def get_all_columns_to_copy(self) -> List[str]:
-        """Return all columns that should be copied into the output light curve."""
-        colset: Set[str] = (
-            set(self.required_columns.values())
-            | set(filter(None, self.optional_columns.values()))
-            | set(self.extra_columns)
-        )
-        return list(colset)
-
     def add_column_name(self, key: str, name: str, is_required: bool = False):
         if not isinstance(key, str) or not key.strip():
             raise ValueError("Column key must be a non-empty string.")
@@ -129,13 +120,46 @@ class PresetColumnNames:
 
         if key in self.required_columns or key in self.optional_columns:
             raise RuntimeError(
-                f"Column key '{key}' is already defined as a {'required' if key in self.required_columns else 'optional'} column."
+                f"ERROR: Column key '{key}' is already defined as a {'required' if key in self.required_columns else 'optional'} column."
             )
 
         if is_required:
             self.required_columns[key] = name
         else:
             self.optional_columns[key] = name
+
+    def update_column_name(self, key: str, name: str, is_required: bool = False):
+        if is_required:
+            if key not in self.required_columns:
+                raise RuntimeError(
+                    f"ERROR: Cannot update non-existing required column name {key} with '{name}'"
+                )
+            self.required_columns[key] = name
+        else:
+            if key not in self.optional_columns:
+                raise RuntimeError(
+                    f"ERROR: Cannot update non-existing optional column name {key} with '{name}'"
+                )
+            self.optional_columns[key] = name
+
+    def get_required_column_names(self):
+        return [
+            self.required_columns["mjd"],
+            self.required_columns["flux"],
+            self.required_columns["dflux"],
+        ]
+
+    def get_optional_column_names(self):
+        return list(self.optional_columns.values())
+
+    def get_all_columns_to_copy(self) -> List[str]:
+        """Return all columns that should be copied into the output light curve."""
+        colset: Set[str] = (
+            set(self.required_columns.values())
+            | set(filter(None, self.optional_columns.values()))
+            | set(self.extra_columns)
+        )
+        return list(colset)
 
     def __getattr__(self, name: str) -> Optional[str]:
         """
@@ -1366,38 +1390,44 @@ class AveragedSupernova(Supernova):
 
 # contains either o-band or c-band measurements only
 class LightCurve(pdastrostatsclass):
-    def __init__(self, control_index=0, filt="o", **kwargs):
+    def __init__(
+        self, colnames: PresetColumnNames, control_index=0, filt="o", **kwargs
+    ):
         pdastrostatsclass.__init__(self, **kwargs)
         self.control_index = control_index
         self.filt = filt
-        self.dflux_colname = "duJy"
+
+        self.colnames = colnames
+        self.colnames.add_column_name("dflux_new", self.colnames.dflux)
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
 
     def get_preMJD0_indices(self, mjd0: float):
-        return self.ix_inrange(colnames="MJD", uplim=mjd0, exclude_uplim=True)
+        return self.ix_inrange(
+            colnames=self.colnames.mjd, uplim=mjd0, exclude_uplim=True
+        )
 
     def get_postMJD0_indices(self, mjd0: float):
-        return self.ix_inrange(colnames="MJD", lowlim=mjd0)
+        return self.ix_inrange(colnames=self.colnames.mjd, lowlim=mjd0)
 
     def get_good_indices(self, flag: int):
-        return self.ix_unmasked("Mask", maskval=flag)
+        return self.ix_unmasked(self.colnames.mask, maskval=flag)
 
     def get_bad_indices(self, flag: int):
-        return self.ix_masked("Mask", maskval=flag)
+        return self.ix_masked(self.colnames.mask, maskval=flag)
 
     def can_plot(self, ix: List[int], columns: List[str] = None):
         if columns is None:
-            columns = ["MJD", "uJy", self.dflux_colname]
+            columns = [self.colnames.mjd, self.colnames.flux, self.colnames.dflux_new]
 
         # check that we are plotting at least one row
         # and that the columns to plot are not all NaN values
         return len(ix) > 0 and not self.t.loc[ix, columns].isna().all().all()
 
     def remove_invalid_rows(self, verbose=False):
-        dflux_zero_ix = self.ix_equal(colnames=["duJy"], val=0)
-        flux_nan_ix = self.ix_is_null(colnames=["uJy"])
+        dflux_zero_ix = self.ix_equal(colnames=[self.colnames.dflux], val=0)
+        flux_nan_ix = self.ix_is_null(colnames=[self.colnames.flux])
         if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
             if verbose:
                 print(
@@ -1414,22 +1444,27 @@ class LightCurve(pdastrostatsclass):
         # calculate flux/dflux
         if verbose:
             print("Calculating flux/dflux...")
-        self.t[f"uJy/duJy"] = self.t["uJy"] / self.t[self.dflux_colname]
+        self.t[self.colnames.snr] = (
+            self.t[self.colnames.flux] / self.t[self.colnames.dflux_new]
+        )
 
     def get_median_dflux(self, indices=None):
         if indices is None:
             indices = self.getindices()
-        return np.nanmedian(self.t.loc[indices, "duJy"])
+        return np.nanmedian(self.t.loc[indices, self.colnames.dflux])
 
     def get_stdev_flux(self, indices=None):
         self.calcaverage_sigmacutloop(
-            "uJy", indices=indices, Nsigma=3.0, median_firstiteration=True
+            self.colnames.flux, indices=indices, Nsigma=3.0, median_firstiteration=True
         )
         return self.statparams["stdev"]
 
     def add_noise_to_dflux(self, sigma_extra):
-        self.t["duJy_new"] = np.sqrt(self.t["duJy"] * self.t["duJy"] + sigma_extra**2)
-        self.dflux_colname = "duJy_new"
+        new_dflux_colname = f"{self.colnames.dflux}_new"
+        self.t[new_dflux_colname] = np.sqrt(
+            self.t[self.colnames.dflux] * self.t[self.colnames.dflux] + sigma_extra**2
+        )
+        self.colnames.update_column_name("dflux_new", new_dflux_colname)
         self.calculate_fdf_column()
 
     def flag_by_control_stats(self, cut: Cut):
@@ -1454,7 +1489,7 @@ class LightCurve(pdastrostatsclass):
         # update mask column with control light curve cut on any measurements flagged according to given bounds
         zero_Nclip_ix = self.ix_equal("c2_Nclip", 0)
         unmasked_ix = self.ix_unmasked(
-            "Mask",
+            self.colnames.mask,
             maskval=cut.params["x2_flag"]
             | cut.params["stn_flag"]
             | cut.params["Nclip_flag"]
@@ -1466,13 +1501,17 @@ class LightCurve(pdastrostatsclass):
         self.update_mask_column(cut.flag, AnotB(self.getindices(), unmasked_ix))
 
     def copy_flags(self, flags_to_copy):
-        self.t["Mask"] = self.t["Mask"].astype(np.int32)
+        self.t[self.colnames.mask] = self.t[self.colnames.mask].astype(np.int32)
         if len(self.t) < 1:
             return
         elif len(self.t) == 1:
-            self.t.loc[0, "Mask"] = int(self.t.loc[0, "Mask"]) | flags_to_copy
+            self.t.loc[0, self.colnames.mask] = (
+                int(self.t.loc[0, self.colnames.mask]) | flags_to_copy
+            )
         else:
-            self.t["Mask"] = np.bitwise_or(self.t["Mask"], flags_to_copy)
+            self.t[self.colnames.mask] = np.bitwise_or(
+                self.t[self.colnames.mask], flags_to_copy
+            )
 
     def average(
         self, cut: Cut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
@@ -1482,42 +1521,45 @@ class LightCurve(pdastrostatsclass):
             filt=self.filt,
             mjdbinsize=mjdbinsize,
             columns=[
-                "MJD",
-                "MJDbin",
-                "uJy",
-                "duJy",
+                self.colnames.mjd,
+                self.colnames.mjdbin,
+                self.colnames.flux,
+                self.colnames.dflux,
                 "stdev",
                 "x2",
                 "Nclip",
                 "Ngood",
                 "Nexcluded",
-                "Mask",
+                self.colnames.mask,
             ],
-            hexcols=["Mask"],
+            hexcols=[self.colnames.mask],
         )
         if self.control_index == 0:
             print(f"Now averaging SN light curve...")
         else:
             print(f"Now averaging control light curve {self.control_index}...")
 
-        mjd = int(np.amin(self.t["MJD"]))
-        mjd_max = int(np.amax(self.t["MJD"])) + 1
+        mjd = int(np.amin(self.t[self.colnames.mjd]))
+        mjd_max = int(np.amax(self.t[self.colnames.mjd])) + 1
 
         while mjd <= mjd_max:
             range_ix = self.ix_inrange(
-                colnames=["MJD"], lowlim=mjd, uplim=mjd + mjdbinsize, exclude_uplim=True
+                colnames=[self.colnames.mjd],
+                lowlim=mjd,
+                uplim=mjd + mjdbinsize,
+                exclude_uplim=True,
             )
             range_good_ix = self.ix_unmasked(
-                "Mask", maskval=previous_flags, indices=range_ix
+                self.colnames.mask, maskval=previous_flags, indices=range_ix
             )
 
             # add new row to averaged light curve
             new_row = {
-                "MJDbin": mjd + 0.5 * mjdbinsize,
+                self.colnames.mjdbin: mjd + 0.5 * mjdbinsize,
                 "Nclip": 0,
                 "Ngood": 0,
                 "Nexcluded": len(range_ix) - len(range_good_ix),
-                "Mask": 0,
+                self.colnames.mask: 0,
             }
             avglc_index = avg_lc.newrow(new_row)
 
@@ -1531,8 +1573,8 @@ class LightCurve(pdastrostatsclass):
             if len(range_good_ix) < 1:
                 # average flux
                 self.calcaverage_sigmacutloop(
-                    "uJy",
-                    noisecol=self.dflux_colname,
+                    self.colnames.flux,
+                    noisecol=self.colnames.dflux_new,
                     indices=range_ix,
                     Nsigma=3.0,
                     median_firstiteration=True,
@@ -1541,19 +1583,22 @@ class LightCurve(pdastrostatsclass):
 
                 # get average mjd
                 self.calcaverage_sigmacutloop(
-                    "MJD", indices=range_ix, Nsigma=0, median_firstiteration=False
+                    self.colnames.mjd,
+                    indices=range_ix,
+                    Nsigma=0,
+                    median_firstiteration=False,
                 )
                 avg_mjd = self.statparams["mean"]
 
                 # add row and flag
                 row = {
-                    "MJD": avg_mjd,
-                    "uJy": (
+                    self.colnames.mjd: avg_mjd,
+                    self.colnames.flux: (
                         fluxstatparams["mean"]
                         if not fluxstatparams["mean"] is None
                         else np.nan
                     ),
-                    "duJy": (
+                    self.colnames.dflux: (
                         fluxstatparams["mean_err"]
                         if not fluxstatparams["mean_err"] is None
                         else np.nan
@@ -1578,7 +1623,7 @@ class LightCurve(pdastrostatsclass):
                         if not fluxstatparams["Ngood"] is None
                         else np.nan
                     ),
-                    "Mask": 0,
+                    self.colnames.mask: 0,
                 }
                 avg_lc.add2row(avglc_index, row)
                 self.update_mask_column(cut.flag, range_ix, remove_old=False)
@@ -1589,8 +1634,8 @@ class LightCurve(pdastrostatsclass):
 
             # average good measurements
             self.calcaverage_sigmacutloop(
-                "uJy",
-                noisecol=self.dflux_colname,
+                self.colnames.flux,
+                noisecol=self.colnames.dflux_new,
                 indices=range_good_ix,
                 Nsigma=3.0,
                 median_firstiteration=True,
@@ -1606,8 +1651,8 @@ class LightCurve(pdastrostatsclass):
             # get average mjd
             # TODO: SHOULD NOISECOL HERE BE DUJY OR NONE?
             self.calcaverage_sigmacutloop(
-                "MJD",
-                noisecol=self.dflux_colname,
+                self.colnames.mjd,
+                noisecol=self.colnames.dflux_new,
                 indices=fluxstatparams["ix_good"],
                 Nsigma=0,
                 median_firstiteration=False,
@@ -1616,14 +1661,14 @@ class LightCurve(pdastrostatsclass):
 
             # add row to averaged light curve
             row = {
-                "MJD": avg_mjd,
-                "uJy": fluxstatparams["mean"],
-                "duJy": fluxstatparams["mean_err"],
+                self.colnames.mjd: avg_mjd,
+                self.colnames.flux: fluxstatparams["mean"],
+                self.colnames.dflux: fluxstatparams["mean_err"],
                 "stdev": fluxstatparams["stdev"],
                 "x2": fluxstatparams["X2norm"],
                 "Nclip": fluxstatparams["Nclip"],
                 "Ngood": fluxstatparams["Ngood"],
-                "Mask": 0,
+                self.colnames.mask: 0,
             }
             avg_lc.add2row(avglc_index, row)
 
@@ -1662,11 +1707,16 @@ class LightCurve(pdastrostatsclass):
             mjd += mjdbinsize
 
         avg_lc.flux2mag(
-            "uJy", "duJy", "m", "dm", zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit
+            self.colnames.flux,
+            self.colnames.dflux,
+            self.colnames.mag,
+            self.colnames.dmag,
+            zpt=23.9,
+            upperlim_Nsigma=flux2mag_sigmalimit,
         )
 
         # TODO: not sure if needed
-        for col in ["Nclip", "Ngood", "Nexcluded", "Mask"]:
+        for col in ["Nclip", "Ngood", "Nexcluded", self.colnames.mask]:
             avg_lc.t[col] = avg_lc.t[col].astype(np.int32)
 
         return avg_lc
@@ -1691,15 +1741,19 @@ class LightCurve(pdastrostatsclass):
     def update_mask_column(self, flag, indices, remove_old=True):
         if remove_old:
             # remove any old flags of the same value
-            self.t["Mask"] = np.bitwise_and(self.t["Mask"].astype(int), ~flag)
+            self.t[self.colnames.mask] = np.bitwise_and(
+                self.t[self.colnames.mask].astype(int), ~flag
+            )
 
         if len(indices) > 1:
-            flag_arr = np.full(self.t.loc[indices, "Mask"].shape, flag)
-            self.t.loc[indices, "Mask"] = np.bitwise_or(
-                self.t.loc[indices, "Mask"].astype(int), flag_arr
+            flag_arr = np.full(self.t.loc[indices, self.colnames.mask].shape, flag)
+            self.t.loc[indices, self.colnames.mask] = np.bitwise_or(
+                self.t.loc[indices, self.colnames.mask].astype(int), flag_arr
             )
         elif len(indices) == 1:
-            self.t.loc[indices, "Mask"] = int(self.t.loc[indices[0], "Mask"]) | flag
+            self.t.loc[indices, self.colnames.mask] = (
+                int(self.t.loc[indices[0], self.colnames.mask]) | flag
+            )
 
     def drop_extra_columns(self, verbose=False):
         dropcols = []
@@ -1752,8 +1806,12 @@ class LightCurve(pdastrostatsclass):
         self.load_lc_by_filename(filename)
 
     def load_lc_by_filename(self, filename):
-        self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
-        self.check_column_names(required_column_names=REQUIRED_COLUMN_NAMES)
+        self.load_spacesep(
+            filename, delim_whitespace=True, hexcols=[self.colnames.mask]
+        )
+        self.check_column_names(
+            required_column_names=self.colnames.get_required_column_names()
+        )
 
     def save_lc(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
         filename = get_filename(
@@ -1763,7 +1821,10 @@ class LightCurve(pdastrostatsclass):
 
     def save_lc_by_filename(self, filename, indices=None, overwrite=False):
         self.write(
-            filename=filename, indices=indices, overwrite=overwrite, hexcols=["Mask"]
+            filename=filename,
+            indices=indices,
+            overwrite=overwrite,
+            hexcols=[self.colnames.mask],
         )
 
     def __str__(self):

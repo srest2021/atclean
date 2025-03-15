@@ -55,11 +55,11 @@ class ConvertLightCurve(LightCurve):
             self.load_spacesep(filename)
 
     def move_required_cols_to_front(self):
-        """Reorder essential columns to the front (MJD, flux, uncertainty)."""
+        """Reorder essential columns to the front (MJD, flux, dflux)."""
         cols_to_front = [
             self.colnames.mjd,
             self.colnames.flux,
-            self.colnames.uncertainty,
+            self.colnames.dflux,
         ]
         self.t = self.t[
             cols_to_front + [col for col in self.t.columns if col not in cols_to_front]
@@ -152,7 +152,7 @@ class ConvertLightCurve(LightCurve):
         self.t = self.t.sort_values(by=[self.colnames.mjd], ignore_index=True)
 
         # remove rows with duJy=0 or uJy=NaN
-        dflux_zero_ix = self.ix_equal(colnames=[self.colnames.uncertainty], val=0)
+        dflux_zero_ix = self.ix_equal(colnames=[self.colnames.dflux], val=0)
         flux_nan_ix = self.ix_is_null(colnames=[self.colnames.flux])
         if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
             print(
