@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Tuple, Type
+from configparser import ConfigParser
+from typing import Dict, Any, List, Optional, Set, Tuple, Type
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -16,15 +17,15 @@ from pathlib import Path
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20
 
-# required light curve column names for the script to work
-REQUIRED_COLUMN_NAMES = ["MJD", "uJy", "duJy"]
+# # required light curve column names for the script to work
+# REQUIRED_COLUMN_NAMES = ["MJD", "uJy", "duJy"]
 
-# required averaged light curve column names for the script to work
-REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
+# # required averaged light curve column names for the script to work
+# REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
 
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
-ATLAS_FILTERS = ["o", "c"]
+# ATLAS_FILTERS = ["o", "c"]
 
 """
 UTILITY
@@ -47,15 +48,131 @@ def not_AandB(A, B):
     return np.setxor1d(A, B)
 
 
+def parse_config_value(value: str | None):
+    """Parse value from config file by converting None-like string to None."""
+    if value and value.strip().lower() == "none":
+        return None
+    return value
+
+
+class PresetColumnNames:
+    """
+    Class to handle loading and managing column names for light curve conversion
+    to ATClean-readable format, as defined in the config file.
+    """
+
+    def __init__(self, config: ConfigParser, preset: str):
+        self.preset = preset
+
+        try:
+            config_preset_settings: Dict[str, str] = config[
+                f"column_name_preset.{preset}"
+            ]
+        except:
+            raise RuntimeError(
+                f"ERROR: Preset '{preset}' (field '{f'column_name_preset.{preset}'}') not found in config file."
+            )
+
+        self._read_config(config_preset_settings)
+
+    def _validate_columns_dict(self, columns_dict: Dict, no_nones: bool = False):
+        for key, name in columns_dict.items():
+            name = parse_config_value(name)
+            if no_nones and name is None:
+                raise RuntimeError(
+                    f"ERROR: Column name '{name}' in config preset {self.preset} cannot be None"
+                )
+            columns_dict[key] = name
+        return columns_dict
+
+    def _read_config(self, config_preset_settings: Dict):
+        self.required_columns: Dict[str, str] = self._validate_columns_dict(
+            {
+                "mjd": config_preset_settings.get("mjd_column_name"),
+                "flux": config_preset_settings.get("flux_column_name"),
+                "uncertainty": config_preset_settings.get("uncertainty_column_name"),
+            },
+            no_nones=True,
+        )
+
+        self.optional_columns: Dict[str, Optional[str]] = self._validate_columns_dict(
+            {
+                "chisquare": config_preset_settings.get("chisquare_column_name"),
+                "filt": config_preset_settings.get("filter_column_name"),
+                "mag": config_preset_settings.get("mag_column_name"),
+                "dmag": config_preset_settings.get("dmag_column_name"),
+                "ra": config_preset_settings.get("ra_column_name"),
+                "dec": config_preset_settings.get("dec_column_name"),
+            }
+        )
+
+        # extra columns to copy
+        extra_columns = parse_config_value(config_preset_settings["extra_columns"])
+        self.extra_columns: List[str] = (
+            []
+            if extra_columns is None
+            else [col.strip() for col in extra_columns.split(",")]
+        )
+
+    def get_all_columns_to_copy(self) -> List[str]:
+        """Return all columns that should be copied into the output light curve."""
+        colset: Set[str] = (
+            set(self.required_columns.values())
+            | set(filter(None, self.optional_columns.values()))
+            | set(self.extra_columns)
+        )
+        return list(colset)
+
+    def add_column_name(self, key: str, name: str, is_required: bool = False):
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("Column key must be a non-empty string.")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"Column name for key '{key}' must be a non-empty string.")
+
+        if key in self.required_columns or key in self.optional_columns:
+            raise RuntimeError(
+                f"Column key '{key}' is already defined as a {'required' if key in self.required_columns else 'optional'} column."
+            )
+
+        if is_required:
+            self.required_columns[key] = name
+        else:
+            self.optional_columns[key] = name
+
+    def __getattr__(self, name: str) -> Optional[str]:
+        """
+        Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
+        """
+        if name in self.required_columns:
+            return self.required_columns[name]
+        if name in self.optional_columns:
+            return self.optional_columns[name]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
+
+    def __str__(self) -> str:
+        """Readable string representation of all column names."""
+        lines = ["--- Required Columns ---"]
+        for k, v in self.required_columns.items():
+            lines.append(f"{k}: {v}")
+        lines.append("--- Optional Columns ---")
+        for k, v in self.optional_columns.items():
+            lines.append(f"{k}: {v}")
+        lines.append("--- Extra Columns to Copy ---")
+        lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
+        return "\n".join(lines)
+
+
 class Credentials:
     def __init__(
         self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
     ):
-        self.atlas_username = None if atlas_username == "None" else atlas_username
-        self.atlas_password = None if atlas_password == "None" else atlas_password
-        self.tns_api_key = None if tns_api_key == "None" else tns_api_key
-        self.tns_id = None if tns_id == "None" else tns_id
-        self.tns_bot_name = None if tns_bot_name == "None" else tns_bot_name
+        self.atlas_username = parse_config_value(atlas_username)
+        self.atlas_password = parse_config_value(atlas_password)
+        self.tns_api_key = parse_config_value(tns_api_key)
+        self.tns_id = parse_config_value(tns_id)
+        self.tns_bot_name = parse_config_value(tns_bot_name)
 
         tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
         not_none_count = sum(param is not None for param in tns_params)
@@ -475,7 +592,7 @@ class SnInfoTable:
         return self.t.to_string()
 
 
-def get_mjd0(
+def get_mjd0_from_tns(
     tnsname: str, sninfo: SnInfoTable, credentials: Credentials
 ) -> Tuple[float, Coordinates | None]:
     _, sninfo_row = sninfo.get_row(tnsname)
@@ -502,6 +619,7 @@ def get_mjd0(
         return mjd0, coords
 
 
+# TODO (COLUMN): not sure if internal column string should be actual or preset
 class Cut:
     def __init__(
         self,
@@ -644,6 +762,7 @@ class CutList:
         return output
 
 
+# TODO: needs access to column names (flux/dflux, chi/N)
 class LimCutsTable:
     def __init__(self, lc: pdastrostatsclass, stn_bound, indices=None):
         self.t = None

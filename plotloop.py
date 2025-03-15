@@ -17,7 +17,7 @@ from lightcurve import (
     CutList,
     SnInfoTable,
     Supernova,
-    get_mjd0,
+    get_mjd0_from_tns,
 )
 from plot import PlotLimits, PlotPdf
 
@@ -243,7 +243,7 @@ class PlotLoop:
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
 
             if mjd0 is None:
-                mjd0, coords = get_mjd0(tnsname, self.sninfo, self.credentials)
+                mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)

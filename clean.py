@@ -13,7 +13,7 @@ from lightcurve import (
     SnInfoTable,
     Supernova,
     AveragedSupernova,
-    get_mjd0,
+    get_mjd0_from_tns,
 )
 from download import (
     Credentials,
@@ -752,7 +752,7 @@ class CleanLoop:
                     and cut_list.get("x2_cut").params["use_pre_mjd0_lc"]
                 )
             ):
-                mjd0, coords = get_mjd0(tnsname, self.sninfo, self.credentials)
+                mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
