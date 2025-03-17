@@ -90,7 +90,7 @@ class PresetColumnNames:
                 "dflux": config_preset_settings.get("dflux_column_name"),
                 "mjdbin": config["mjd_bin_column_name"],
                 "mask": config["mask_column_name"],
-                "snr": config["snr_column_name"],
+                "fdf": config["snr_column_name"],
             },
             no_nones=True,
         )
@@ -753,7 +753,7 @@ class CutList:
                 elif not flag is None:
                     unique_flags.add(flag)
 
-        return len(duplicate_flags) > 0, duplicate_flags
+        return duplicate_flags
 
     def get_custom_cuts(self) -> Dict[str, Cut]:
         custom_cuts = {}
@@ -803,99 +803,6 @@ class CutList:
         for name in self.list:
             output += f"\n{name}: " + self.list[name].__str__()
         return output
-
-
-# TODO: needs access to column names (flux/dflux, chi/N)
-class LimCutsTable:
-    def __init__(self, lc: pdastrostatsclass, stn_bound, indices=None):
-        self.t = None
-
-        self.lc = lc
-        if indices is None:
-            indices = self.lc.getindices()
-        self.indices = indices
-
-        self.good_ix, self.bad_ix = self.get_goodbad_indices(stn_bound)
-
-    def get_goodbad_indices(self, stn_bound):
-        good_ix = self.lc.ix_inrange(
-            colnames=["uJy/duJy"],
-            lowlim=-stn_bound,
-            uplim=stn_bound,
-            indices=self.indices,
-        )
-        bad_ix = AnotB(self.indices, good_ix)
-        return good_ix, bad_ix
-
-    def get_keptcut_indices(self, x2_max):
-        kept_ix = self.lc.ix_inrange(
-            colnames=["chi/N"], uplim=x2_max, indices=self.indices
-        )
-        cut_ix = AnotB(self.indices, kept_ix)
-        return kept_ix, cut_ix
-
-    def calculate_row(self, x2_max, kept_ix=None, cut_ix=None):
-        if kept_ix is None or cut_ix is None:
-            kept_ix, cut_ix = self.get_keptcut_indices(x2_max)
-        data = {
-            "PSF Chi-Square Cut": x2_max,
-            "N": len(self.indices),
-            "Ngood": len(self.good_ix),
-            "Nbad": len(self.bad_ix),
-            "Nkept": len(kept_ix),
-            "Ncut": len(cut_ix),
-            "Ngood,kept": len(AandB(self.good_ix, kept_ix)),
-            "Ngood,cut": len(AandB(self.good_ix, cut_ix)),
-            "Nbad,kept": len(AandB(self.bad_ix, kept_ix)),
-            "Nbad,cut": len(AandB(self.bad_ix, cut_ix)),
-            "Pgood,kept": 100 * len(AandB(self.good_ix, kept_ix)) / len(self.indices),
-            "Pgood,cut": 100 * len(AandB(self.good_ix, cut_ix)) / len(self.indices),
-            "Pbad,kept": 100 * len(AandB(self.bad_ix, kept_ix)) / len(self.indices),
-            "Pbad,cut": 100 * len(AandB(self.bad_ix, cut_ix)) / len(self.indices),
-            "Ngood,kept/Ngood": 100
-            * len(AandB(self.good_ix, kept_ix))
-            / len(self.good_ix),
-            "Ploss": 100 * len(AandB(self.good_ix, cut_ix)) / len(self.good_ix),
-            "Pcontamination": 100 * len(AandB(self.bad_ix, kept_ix)) / len(kept_ix),
-        }
-        return data
-
-    def calculate_table(self, cut_start, cut_stop, cut_step):
-        print(
-            f"Calculating loss and contamination for chi-square cuts from {cut_start} to {cut_stop}..."
-        )
-
-        self.t = pd.DataFrame(
-            columns=[
-                "PSF Chi-Square Cut",
-                "N",
-                "Ngood",
-                "Nbad",
-                "Nkept",
-                "Ncut",
-                "Ngood,kept",
-                "Ngood,cut",
-                "Nbad,kept",
-                "Nbad,cut",
-                "Pgood,kept",
-                "Pgood,cut",
-                "Pbad,kept",
-                "Pbad,cut",
-                "Ngood,kept/Ngood",
-                "Ploss",
-                "Pcontamination",
-            ]
-        )
-
-        # for different x2 cuts decreasing from 50
-        for cut in range(cut_start, cut_stop + 1, cut_step):
-            kept_ix, cut_ix = self.get_keptcut_indices(cut)
-            percent_kept = 100 * len(kept_ix) / len(self.indices)
-            if percent_kept < 10:
-                # less than 10% of measurements kept, so no chi-square cuts beyond this point are valid
-                continue
-            row = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
-            self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
 
 """
@@ -1511,7 +1418,7 @@ class LightCurve(pdastrostatsclass):
         # calculate flux/dflux
         if verbose:
             print("Calculating flux/dflux...")
-        self.t[self.colnames.snr] = (
+        self.t[self.colnames.fdf] = (
             self.t[self.colnames.flux] / self.t[self.colnames.dflux_new]
         )
 
@@ -1901,6 +1808,98 @@ class LightCurve(pdastrostatsclass):
 
     def __str__(self):
         return self.t.to_string()
+
+
+class LimCutsTable:
+    def __init__(self, lc: LightCurve, stn_bound, indices=None):
+        self.t = None
+
+        self.lc = lc
+        if indices is None:
+            indices = self.lc.getindices()
+        self.indices = indices
+
+        self.good_ix, self.bad_ix = self.get_goodbad_indices(stn_bound)
+
+    def get_goodbad_indices(self, stn_bound):
+        good_ix = self.lc.ix_inrange(
+            colnames=[self.lc.colnames.fdf],
+            lowlim=-stn_bound,
+            uplim=stn_bound,
+            indices=self.indices,
+        )
+        bad_ix = AnotB(self.indices, good_ix)
+        return good_ix, bad_ix
+
+    def get_keptcut_indices(self, x2_max):
+        kept_ix = self.lc.ix_inrange(
+            colnames=self.lc.colnames.chisquare, uplim=x2_max, indices=self.indices
+        )
+        cut_ix = AnotB(self.indices, kept_ix)
+        return kept_ix, cut_ix
+
+    def calculate_row(self, x2_max, kept_ix=None, cut_ix=None):
+        if kept_ix is None or cut_ix is None:
+            kept_ix, cut_ix = self.get_keptcut_indices(x2_max)
+        data = {
+            "PSF Chi-Square Cut": x2_max,
+            "N": len(self.indices),
+            "Ngood": len(self.good_ix),
+            "Nbad": len(self.bad_ix),
+            "Nkept": len(kept_ix),
+            "Ncut": len(cut_ix),
+            "Ngood,kept": len(AandB(self.good_ix, kept_ix)),
+            "Ngood,cut": len(AandB(self.good_ix, cut_ix)),
+            "Nbad,kept": len(AandB(self.bad_ix, kept_ix)),
+            "Nbad,cut": len(AandB(self.bad_ix, cut_ix)),
+            "Pgood,kept": 100 * len(AandB(self.good_ix, kept_ix)) / len(self.indices),
+            "Pgood,cut": 100 * len(AandB(self.good_ix, cut_ix)) / len(self.indices),
+            "Pbad,kept": 100 * len(AandB(self.bad_ix, kept_ix)) / len(self.indices),
+            "Pbad,cut": 100 * len(AandB(self.bad_ix, cut_ix)) / len(self.indices),
+            "Ngood,kept/Ngood": 100
+            * len(AandB(self.good_ix, kept_ix))
+            / len(self.good_ix),
+            "Ploss": 100 * len(AandB(self.good_ix, cut_ix)) / len(self.good_ix),
+            "Pcontamination": 100 * len(AandB(self.bad_ix, kept_ix)) / len(kept_ix),
+        }
+        return data
+
+    def calculate_table(self, cut_start, cut_stop, cut_step):
+        print(
+            f"Calculating loss and contamination for chi-square cuts from {cut_start} to {cut_stop}..."
+        )
+
+        self.t = pd.DataFrame(
+            columns=[
+                "PSF Chi-Square Cut",
+                "N",
+                "Ngood",
+                "Nbad",
+                "Nkept",
+                "Ncut",
+                "Ngood,kept",
+                "Ngood,cut",
+                "Nbad,kept",
+                "Nbad,cut",
+                "Pgood,kept",
+                "Pgood,cut",
+                "Pbad,kept",
+                "Pbad,cut",
+                "Ngood,kept/Ngood",
+                "Ploss",
+                "Pcontamination",
+            ]
+        )
+
+        # for different x2 cuts decreasing from 50
+        for cut in range(cut_start, cut_stop + 1, cut_step):
+            kept_ix, cut_ix = self.get_keptcut_indices(cut)
+            percent_kept = 100 * len(kept_ix) / len(self.indices)
+            if percent_kept < 10:
+                # less than 10% of measurements kept, so no chi-square cuts beyond this point are valid
+                continue
+            row = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
+            self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
 
 class AveragedLightCurve(LightCurve):

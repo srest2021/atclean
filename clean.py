@@ -818,12 +818,21 @@ class CleanLoop:
                 )
 
 
-def find_config_custom_cuts(config):
+def find_config_custom_cuts(config: ConfigParser):
     print("\nSearching config file for custom cuts...")
+
+    required_keys = {"column", "flag"}
     custom_cuts = []
+
     for key in config:
         if key.endswith("_cut") and not key in DEFAULT_CUT_NAMES:
-            custom_cuts.append(config[key])
+            if not required_keys.issubset(config[key].keys()):
+                print(
+                    f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys})"
+                )
+            else:
+                custom_cuts.append(config[key])
+
     print(f"Found {len(custom_cuts)}")
     return custom_cuts
 
@@ -898,7 +907,7 @@ def parse_config_cuts(args, config):
             "mjd_bin_size": (
                 float(config["averaging"]["mjd_bin_size"])
                 if args.mjd_bin_size is None
-                else args.args.mjd_bin_size
+                else args.mjd_bin_size
             ),
             "x2_max": float(config["averaging"]["x2_max"]),
             "Nclip_max": int(config["averaging"]["Nclip_max"]),
@@ -933,10 +942,12 @@ def parse_config_cuts(args, config):
                 cut_list.add(custom_cut, f"custom_cut_{i}")
                 print(f"- Custom cut {i}: {custom_cut}")
             except Exception as e:
-                print(f"WARNING: Could not parse custom cut {cut_settings}: {str(e)}")
+                print(
+                    f"WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
+                )
 
-    has_duplicate_flags, duplicate_flags = cut_list.check_for_flag_duplicates()
-    if has_duplicate_flags:
+    duplicate_flags = cut_list.check_for_flag_duplicates()
+    if len(duplicate_flags) > 0:
         raise RuntimeError(
             f"ERROR: Cuts in the config file contain duplicate flags: {duplicate_flags}."
         )
@@ -984,7 +995,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="comma-separated list of filters to clean",
     )
     parser.add_argument(
-        "-p",
         "--plot",
         default=False,
         action="store_true",
