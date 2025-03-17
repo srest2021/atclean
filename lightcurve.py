@@ -1791,7 +1791,7 @@ class LightCurve(pdastrostatsclass):
     def apply_cut(self, column_name, flag, min_value=None, max_value=None):
         if not column_name in self.t.columns:
             raise RuntimeError(
-                f"ERROR: No column name '{column_name}' exists in ligt curve; cannot apply custom cut"
+                f"ERROR: No column name '{column_name}' exists in light curve; cannot apply custom cut"
             )
 
         all_ix = self.getindices()

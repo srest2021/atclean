@@ -541,7 +541,7 @@ class Plot:
                     plt.errorbar(
                         lc.t.loc[good_ix, lc.colnames.mjd],
                         lc.t.loc[good_ix, lc.colnames.flux],
-                        yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
+                        yerr=lc.t.loc[good_ix, lc.colnames.dflux],
                         fmt="none",
                         ecolor=CONTROL_FLUX_COLOR,
                         elinewidth=1.5,
@@ -574,7 +574,7 @@ class Plot:
                 ax1.errorbar(
                     avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.mjd],
                     avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.flux],
-                    yerr=avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.dflux_new],
+                    yerr=avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.dflux],
                     fmt="none",
                     ecolor=SN_FLAGGED_FLUX_COLOR,
                     elinewidth=1,
@@ -601,7 +601,7 @@ class Plot:
             plt.errorbar(
                 avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.mjd],
                 avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.flux],
-                yerr=avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.dflux_new],
+                yerr=avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.dflux],
                 fmt="none",
                 ecolor=SN_FLUX_COLORS[avg_sn_lc.filt],
                 elinewidth=1,
