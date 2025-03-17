@@ -147,7 +147,7 @@ class Plot:
         ax1.minorticks_on()
         ax1.tick_params(direction="in", which="both")
         ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel("MJD")
+        ax1.set_xlabel(sn.colnames_master.mjd)
         ax1.axhline(linewidth=1, color="k")
 
         if plot_controls and sn.num_controls > 0:
@@ -157,9 +157,9 @@ class Plot:
                 lc = sn.lcs[control_index]
 
                 plt.errorbar(
-                    lc.t["MJD"],
-                    lc.t["uJy"],
-                    yerr=lc.t[lc.dflux_colname],
+                    lc.t[lc.colnames.mjd],
+                    lc.t[lc.colnames.flux],
+                    yerr=lc.t[lc.colnames.dflux],
                     fmt="none",
                     ecolor=CONTROL_FLUX_COLOR,
                     elinewidth=1.5,
@@ -169,8 +169,8 @@ class Plot:
                     zorder=0,
                 )
                 plt.scatter(
-                    lc.t["MJD"],
-                    lc.t["uJy"],
+                    lc.t[lc.colnames.mjd],
+                    lc.t[lc.colnames.flux],
                     s=marker_size,
                     color=CONTROL_FLUX_COLOR,
                     marker="o",
@@ -189,9 +189,9 @@ class Plot:
         if sn_lc.can_plot(preMJD0_ix):
             # plot pre-MJD0 SN light curve
             plt.errorbar(
-                sn_lc.t.loc[preMJD0_ix, "MJD"],
-                sn_lc.t.loc[preMJD0_ix, "uJy"],
-                yerr=sn_lc.t.loc[preMJD0_ix, sn_lc.dflux_colname],
+                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.flux],
+                yerr=sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.dflux],
                 fmt="none",
                 ecolor="magenta",
                 elinewidth=1,
@@ -201,8 +201,8 @@ class Plot:
                 zorder=10,
             )
             plt.scatter(
-                sn_lc.t.loc[preMJD0_ix, "MJD"],
-                sn_lc.t.loc[preMJD0_ix, "uJy"],
+                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color="magenta",
@@ -215,9 +215,9 @@ class Plot:
         if sn_lc.can_plot(postMJD0_ix):
             # plot post-MJD0 SN light curve
             plt.errorbar(
-                sn_lc.t.loc[postMJD0_ix, "MJD"],
-                sn_lc.t.loc[postMJD0_ix, "uJy"],
-                yerr=sn_lc.t.loc[postMJD0_ix, sn_lc.dflux_colname],
+                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.flux],
+                yerr=sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.dflux],
                 fmt="none",
                 ecolor="lime",
                 elinewidth=1,
@@ -227,8 +227,8 @@ class Plot:
                 zorder=10,
             )
             plt.scatter(
-                sn_lc.t.loc[postMJD0_ix, "MJD"],
-                sn_lc.t.loc[postMJD0_ix, "uJy"],
+                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color="lime",
@@ -284,7 +284,7 @@ class Plot:
         ax2.minorticks_on()
         ax2.tick_params(direction="in", which="both")
         ax2.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel("MJD")
+        ax1.set_xlabel(lc.colnames.mjd)
         ax2.axhline(linewidth=1, color="k")
 
         good_ix = lc.get_good_indices(flag)
@@ -292,9 +292,9 @@ class Plot:
 
         if lc.can_plot(good_ix):
             ax1.errorbar(
-                lc.t.loc[good_ix, "MJD"],
-                lc.t.loc[good_ix, "uJy"],
-                yerr=lc.t.loc[good_ix, lc.dflux_colname],
+                lc.t.loc[good_ix, lc.colnames.mjd],
+                lc.t.loc[good_ix, lc.colnames.flux],
+                yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
                 fmt="none",
                 ecolor=SN_FLUX_COLORS[lc.filt],
                 elinewidth=1,
@@ -303,8 +303,8 @@ class Plot:
                 alpha=0.5,
             )
             ax1.scatter(
-                lc.t.loc[good_ix, "MJD"],
-                lc.t.loc[good_ix, "uJy"],
+                lc.t.loc[good_ix, lc.colnames.mjd],
+                lc.t.loc[good_ix, lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color=SN_FLUX_COLORS[lc.filt],
@@ -314,9 +314,9 @@ class Plot:
             )
 
             ax2.errorbar(
-                lc.t.loc[good_ix, "MJD"],
-                lc.t.loc[good_ix, "uJy"],
-                yerr=lc.t.loc[good_ix, lc.dflux_colname],
+                lc.t.loc[good_ix, lc.colnames.mjd],
+                lc.t.loc[good_ix, lc.colnames.flux],
+                yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
                 fmt="none",
                 ecolor=SN_FLUX_COLORS[lc.filt],
                 elinewidth=1,
@@ -326,8 +326,8 @@ class Plot:
                 zorder=5,
             )
             ax2.scatter(
-                lc.t.loc[good_ix, "MJD"],
-                lc.t.loc[good_ix, "uJy"],
+                lc.t.loc[good_ix, lc.colnames.mjd],
+                lc.t.loc[good_ix, lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color=SN_FLUX_COLORS[lc.filt],
@@ -339,9 +339,9 @@ class Plot:
 
         if lc.can_plot(bad_ix):
             ax2.errorbar(
-                lc.t.loc[bad_ix, "MJD"],
-                lc.t.loc[bad_ix, "uJy"],
-                yerr=lc.t.loc[bad_ix, lc.dflux_colname],
+                lc.t.loc[bad_ix, lc.colnames.mjd],
+                lc.t.loc[bad_ix, lc.colnames.flux],
+                yerr=lc.t.loc[bad_ix, lc.colnames.dflux_new],
                 fmt="none",
                 ecolor=SN_FLAGGED_FLUX_COLOR,
                 elinewidth=1,
@@ -351,8 +351,8 @@ class Plot:
                 zorder=10,
             )
             ax2.scatter(
-                lc.t.loc[bad_ix, "MJD"],
-                lc.t.loc[bad_ix, "uJy"],
+                lc.t.loc[bad_ix, lc.colnames.mjd],
+                lc.t.loc[bad_ix, lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color=SN_FLAGGED_FLUX_COLOR,
@@ -400,7 +400,7 @@ class Plot:
         ax1.minorticks_on()
         ax1.tick_params(direction="in", which="both")
         ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel("MJD")
+        ax1.set_xlabel(sn.colnames_master.mjd)
         ax1.axhline(linewidth=1, color="k")
 
         if plot_controls and sn.num_controls > 0:
@@ -412,9 +412,9 @@ class Plot:
 
                 if lc.can_plot(good_ix):
                     plt.errorbar(
-                        lc.t.loc[good_ix, "MJD"],
-                        lc.t.loc[good_ix, "uJy"],
-                        yerr=lc.t.loc[good_ix, lc.dflux_colname],
+                        lc.t.loc[good_ix, lc.colnames.mjd],
+                        lc.t.loc[good_ix, lc.colnames.flux],
+                        yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
                         fmt="none",
                         ecolor=CONTROL_FLUX_COLOR,
                         elinewidth=1.5,
@@ -424,8 +424,8 @@ class Plot:
                         zorder=0,
                     )
                     plt.scatter(
-                        lc.t.loc[good_ix, "MJD"],
-                        lc.t.loc[good_ix, "uJy"],
+                        lc.t.loc[good_ix, lc.colnames.mjd],
+                        lc.t.loc[good_ix, lc.colnames.flux],
                         s=marker_size,
                         color=CONTROL_FLUX_COLOR,
                         marker="o",
@@ -445,9 +445,9 @@ class Plot:
 
             if sn_lc.can_plot(bad_ix):
                 ax1.errorbar(
-                    sn_lc.t.loc[bad_ix, "MJD"],
-                    sn_lc.t.loc[bad_ix, "uJy"],
-                    yerr=sn_lc.t.loc[bad_ix, sn_lc.dflux_colname],
+                    sn_lc.t.loc[bad_ix, sn_lc.colnames.mjd],
+                    sn_lc.t.loc[bad_ix, sn_lc.colnames.flux],
+                    yerr=sn_lc.t.loc[bad_ix, sn_lc.colnames.dflux_new],
                     fmt="none",
                     ecolor=SN_FLAGGED_FLUX_COLOR,
                     elinewidth=1,
@@ -457,8 +457,8 @@ class Plot:
                     zorder=10,
                 )
                 ax1.scatter(
-                    sn_lc.t.loc[bad_ix, "MJD"],
-                    sn_lc.t.loc[bad_ix, "uJy"],
+                    sn_lc.t.loc[bad_ix, sn_lc.colnames.mjd],
+                    sn_lc.t.loc[bad_ix, sn_lc.colnames.flux],
                     s=marker_size,
                     lw=marker_edgewidth,
                     color=SN_FLAGGED_FLUX_COLOR,
@@ -472,9 +472,9 @@ class Plot:
 
         if sn_lc.can_plot(good_ix):
             plt.errorbar(
-                sn_lc.t.loc[good_ix, "MJD"],
-                sn_lc.t.loc[good_ix, "uJy"],
-                yerr=sn_lc.t.loc[good_ix, sn_lc.dflux_colname],
+                sn_lc.t.loc[good_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[good_ix, sn_lc.colnames.flux],
+                yerr=sn_lc.t.loc[good_ix, sn_lc.colnames.dflux_new],
                 fmt="none",
                 ecolor=SN_FLUX_COLORS[sn.filt],
                 elinewidth=1,
@@ -484,8 +484,8 @@ class Plot:
                 zorder=10,
             )
             plt.scatter(
-                sn_lc.t.loc[good_ix, "MJD"],
-                sn_lc.t.loc[good_ix, "uJy"],
+                sn_lc.t.loc[good_ix, sn_lc.colnames.mjd],
+                sn_lc.t.loc[good_ix, sn_lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color=SN_FLUX_COLORS[sn.filt],
@@ -527,7 +527,7 @@ class Plot:
         ax1.minorticks_on()
         ax1.tick_params(direction="in", which="both")
         ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel("MJD")
+        ax1.set_xlabel(avg_sn.colnames_master.mjd)
         ax1.axhline(linewidth=1, color="k")
 
         if plot_controls and avg_sn.num_controls > 0:
@@ -539,9 +539,9 @@ class Plot:
 
                 if lc.can_plot(good_ix):
                     plt.errorbar(
-                        lc.t.loc[good_ix, "MJD"],
-                        lc.t.loc[good_ix, "uJy"],
-                        yerr=lc.t.loc[good_ix, lc.dflux_colname],
+                        lc.t.loc[good_ix, lc.colnames.mjd],
+                        lc.t.loc[good_ix, lc.colnames.flux],
+                        yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
                         fmt="none",
                         ecolor=CONTROL_FLUX_COLOR,
                         elinewidth=1.5,
@@ -551,8 +551,8 @@ class Plot:
                         zorder=0,
                     )
                     plt.scatter(
-                        lc.t.loc[good_ix, "MJD"],
-                        lc.t.loc[good_ix, "uJy"],
+                        lc.t.loc[good_ix, lc.colnames.mjd],
+                        lc.t.loc[good_ix, lc.colnames.flux],
                         s=marker_size,
                         color=CONTROL_FLUX_COLOR,
                         marker="o",
@@ -572,9 +572,9 @@ class Plot:
 
             if avg_sn_lc.can_plot(bad_ix):
                 ax1.errorbar(
-                    avg_sn_lc.t.loc[bad_ix, "MJD"],
-                    avg_sn_lc.t.loc[bad_ix, "uJy"],
-                    yerr=avg_sn_lc.t.loc[bad_ix, avg_sn_lc.dflux_colname],
+                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.mjd],
+                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.flux],
+                    yerr=avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.dflux_new],
                     fmt="none",
                     ecolor=SN_FLAGGED_FLUX_COLOR,
                     elinewidth=1,
@@ -584,8 +584,8 @@ class Plot:
                     zorder=10,
                 )
                 ax1.scatter(
-                    avg_sn_lc.t.loc[bad_ix, "MJD"],
-                    avg_sn_lc.t.loc[bad_ix, "uJy"],
+                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.mjd],
+                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.flux],
                     s=marker_size,
                     lw=marker_edgewidth,
                     color=SN_FLAGGED_FLUX_COLOR,
@@ -599,9 +599,9 @@ class Plot:
 
         if avg_sn_lc.can_plot(good_ix):
             plt.errorbar(
-                avg_sn_lc.t.loc[good_ix, "MJD"],
-                avg_sn_lc.t.loc[good_ix, "uJy"],
-                yerr=avg_sn_lc.t.loc[good_ix, avg_sn_lc.dflux_colname],
+                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.mjd],
+                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.flux],
+                yerr=avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.dflux_new],
                 fmt="none",
                 ecolor=SN_FLUX_COLORS[avg_sn_lc.filt],
                 elinewidth=1,
@@ -611,8 +611,8 @@ class Plot:
                 zorder=10,
             )
             plt.scatter(
-                avg_sn_lc.t.loc[good_ix, "MJD"],
-                avg_sn_lc.t.loc[good_ix, "uJy"],
+                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.mjd],
+                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.flux],
                 s=marker_size,
                 lw=marker_edgewidth,
                 color=SN_FLUX_COLORS[avg_sn_lc.filt],
@@ -650,9 +650,9 @@ class Plot:
         save: bool = False,
         filename: str = "uncert_est",
     ):
-        if not "duJy_new" in lc.t.columns:
+        if not f"{lc.colnames.dflux}_new" in lc.t.columns:
             print(
-                'WARNING: Cannot plot true uncertainties estimation due to missing "duJy_new" column; skipping...'
+                f"WARNING: Cannot plot true uncertainties estimation due to missing {lc.colnames.dflux}_new column; skipping..."
             )
             return None
 
@@ -673,13 +673,13 @@ class Plot:
         ax2.minorticks_on()
         ax2.tick_params(direction="in", which="both")
         ax2.set_ylabel(r"Flux ($\mu$Jy)")
-        ax2.set_xlabel("MJD")
+        ax2.set_xlabel(lc.colnames.mjd)
         ax2.axhline(linewidth=1, color="k")
 
         ax1.errorbar(
-            lc.t["MJD"],
-            lc.t["uJy"],
-            yerr=lc.t["duJy"],
+            lc.t[lc.colnames.mjd],
+            lc.t[lc.colnames.flux],
+            yerr=lc.t[lc.colnames.dflux],
             fmt="none",
             ecolor=SN_FLUX_COLORS[lc.filt],
             elinewidth=1,
@@ -688,8 +688,8 @@ class Plot:
             alpha=0.5,
         )
         ax1.scatter(
-            lc.t["MJD"],
-            lc.t["uJy"],
+            lc.t[lc.colnames.mjd],
+            lc.t[lc.colnames.flux],
             s=marker_size,
             lw=marker_edgewidth,
             color=SN_FLUX_COLORS[lc.filt],
@@ -698,9 +698,9 @@ class Plot:
         )
 
         ax2.errorbar(
-            lc.t["MJD"],
-            lc.t["uJy"],
-            yerr=lc.t["duJy_new"],
+            lc.t[lc.colnames.mjd],
+            lc.t[lc.colnames.flux],
+            yerr=lc.t[lc.colnames.dflux_new],
             fmt="none",
             ecolor=SN_FLUX_COLORS[lc.filt],
             elinewidth=1,
@@ -709,8 +709,8 @@ class Plot:
             alpha=0.5,
         )
         ax2.scatter(
-            lc.t["MJD"],
-            lc.t["uJy"],
+            lc.t[lc.colnames.mjd],
+            lc.t[lc.colnames.flux],
             s=marker_size,
             lw=marker_edgewidth,
             color=SN_FLUX_COLORS[lc.filt],

@@ -15,8 +15,10 @@ from download import (
 from lightcurve import (
     AveragedSupernova,
     CutList,
+    PresetColumnNames,
     SnInfoTable,
     Supernova,
+    get_allowed_presets,
     get_mjd0_from_tns,
 )
 from plot import PlotLimits, PlotPdf
@@ -25,12 +27,14 @@ from plot import PlotLimits, PlotPdf
 class PlotLoop:
     def __init__(
         self,
+        colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
         sninfo_filename: str = None,
         overwrite: bool = False,
     ):
+        self.colnames = colnames
         self.sn: Supernova = None
         self.avg_sn: AveragedSupernova = None
         self.cut_list: CutList = None
@@ -53,7 +57,7 @@ class PlotLoop:
         num_controls: int = 0,
         cleaned: bool = False,
     ):
-        self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
+        self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
         try:
             self.sn.load_all(
                 self.output_dir, num_controls=num_controls, cleaned=cleaned
@@ -63,6 +67,7 @@ class PlotLoop:
 
     def load_avg_sn(self, tnsname: str, mjd0: float, filt: str, mjdbinsize: float):
         self.avg_sn = AveragedSupernova(
+            self.colnames,
             tnsname=tnsname,
             mjd0=mjd0,
             filt=filt,
@@ -271,6 +276,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "tnsnames", nargs="+", help="TNS names of the transients to clean"
     )
     parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
+    )
+    parser.add_argument(
         "--config_file",
         default="config.ini",
         type=str,
@@ -397,6 +409,16 @@ if __name__ == "__main__":
         )
     print(f"\nList of transients to plot: {args.tnsnames}")
 
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
+        raise RuntimeError(
+            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
+    print("Success")
+
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
     sninfo_filename = config["dir"]["sninfo_filename"]
@@ -440,6 +462,7 @@ if __name__ == "__main__":
         config["credentials"]["tns_bot_name"],
     )
     plotloop = PlotLoop(
+        colnames,
         input_dir,
         output_dir,
         credentials,

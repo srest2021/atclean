@@ -17,12 +17,6 @@ from pathlib import Path
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20
 
-# # required light curve column names for the script to work
-# REQUIRED_COLUMN_NAMES = ["MJD", "uJy", "duJy"]
-
-# # required averaged light curve column names for the script to work
-# REQUIRED_AVG_COLUMN_NAMES = ["MJDbin", "uJy", "duJy", "Mask"]
-
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 """
@@ -44,6 +38,14 @@ def AorB(A, B):
 
 def not_AandB(A, B):
     return np.setxor1d(A, B)
+
+
+def get_allowed_presets(config: ConfigParser) -> list[str]:
+    """
+    Extract all preset names from the config that match 'column_name_preset.<PRESET NAME>'.
+    """
+    pattern = re.compile(r"^column_name_preset\.(.+)$")
+    return [match.group(1) for key in config.keys() if (match := pattern.match(key))]
 
 
 def parse_config_value(value: str | None):
@@ -1787,6 +1789,11 @@ class LightCurve(pdastrostatsclass):
         return avg_lc
 
     def apply_cut(self, column_name, flag, min_value=None, max_value=None):
+        if not column_name in self.t.columns:
+            raise RuntimeError(
+                f"ERROR: No column name '{column_name}' exists in ligt curve; cannot apply custom cut"
+            )
+
         all_ix = self.getindices()
         if not min_value is None or not max_value is None:
             kept_ix = self.ix_inrange(
@@ -2291,7 +2298,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         **kwargs,
     ) -> Self:
         """
-        Add any Simulation object to the light curve, specifying parameters using keyword arguments.
+        Add any Simulation object to a copy of the light curve, specifying parameters using keyword arguments.
 
         :param sim: The Simulation to add.
         :param peak_appmag: The desired peak apparent magnitude of the Simulation to add.

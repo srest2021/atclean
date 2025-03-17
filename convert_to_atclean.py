@@ -25,6 +25,7 @@ from lightcurve import (
     LightCurve,
     PresetColumnNames,
     SnInfoTable,
+    get_allowed_presets,
     get_filename,
 )
 
@@ -320,7 +321,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "-p",
         "--preset",
         type=str,
-        default="rubin",
+        default="atlas",
         help="preset name from config file (ex. atlas, rubin, tess)",
     )
     parser.add_argument(
@@ -360,14 +361,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     )
 
     return parser
-
-
-def get_allowed_presets(config: ConfigParser) -> list[str]:
-    """
-    Extract all preset names from the config that match 'column_name_preset.<PRESET NAME>'.
-    """
-    pattern = re.compile(r"^column_name_preset\.(.+)$")
-    return [match.group(1) for key in config.keys() if (match := pattern.match(key))]
 
 
 if __name__ == "__main__":

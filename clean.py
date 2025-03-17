@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from configparser import ConfigParser
+import re
 from typing import Callable, List
 import sys, argparse
 import pandas as pd
@@ -10,9 +12,11 @@ from lightcurve import (
     Cut,
     CutList,
     LimCutsTable,
+    PresetColumnNames,
     SnInfoTable,
     Supernova,
     AveragedSupernova,
+    get_allowed_presets,
     get_mjd0_from_tns,
 )
 from download import (
@@ -320,6 +324,7 @@ class ChiSquareCutTable:
 class CleanLoop:
     def __init__(
         self,
+        colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
@@ -327,6 +332,7 @@ class CleanLoop:
         flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ):
+        self.colnames = colnames
         self.sn: Supernova = None
         self.avg_sn: AveragedSupernova = None
         self.cut_list: CutList = None
@@ -439,7 +445,13 @@ class CleanLoop:
     def apply_x2_cut(self, cut: Cut, plot: bool = False):
         if cut is None:
             return
+
         print(f"\nApplying chi-square cut ({cut}):")
+        if self.sn.colnames_master.chisquare is None:
+            print(
+                "WARNING: No chi-square column name provided in config file; skipping..."
+            )
+            return
 
         if cut.params["use_pre_mjd0_lc"]:
             print("Using pre-MJD0 light curve to determine contamination and loss")
@@ -448,7 +460,7 @@ class CleanLoop:
                     "ERROR: MJD0 cannot be None. Please provide MJD0 throught the SN info table or --mjd0 argument, or set the use_pre_MJD0_lc field in the config file to False."
                 )
             lc_temp = deepcopy(self.sn.lcs[0])
-            ix = lc_temp.ix_inrange("MJD", uplim=self.sn.mjd0)
+            ix = lc_temp.ix_inrange(lc_temp.colnames.mjd, uplim=self.sn.mjd0)
             if len(ix) < 1:
                 raise RuntimeError("ERROR: no pre-MJD0 light curve available")
         else:
@@ -622,7 +634,7 @@ class CleanLoop:
         print(f"\n\tFILTER: {filt}")
 
         # load the SN and control light curves
-        self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
+        self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
         try:
             self.sn.load_all(self.input_dir, num_controls=num_controls)
         except Exception as e:
@@ -910,6 +922,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "tnsnames", nargs="+", help="TNS names of the transients to clean"
     )
     parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
+    )
+    parser.add_argument(
         "--sninfo_file",
         default=None,
         type=str,
@@ -1028,6 +1047,16 @@ if __name__ == "__main__":
         )
     print(f"\nList of transients to clean: {args.tnsnames}")
 
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
+        raise RuntimeError(
+            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
+    print("Success")
+
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
     sninfo_filename = config["dir"]["sninfo_filename"]
@@ -1067,6 +1096,7 @@ if __name__ == "__main__":
         config["credentials"]["tns_bot_name"],
     )
     clean = CleanLoop(
+        colnames,
         input_dir,
         output_dir,
         credentials,
