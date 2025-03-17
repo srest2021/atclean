@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
-from typing import Dict, Any, List, Optional, Set, Tuple, Type
+from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -127,6 +127,10 @@ class PresetColumnNames:
             self.required_columns[key] = name
         else:
             self.optional_columns[key] = name
+
+    def add_many(self, coldict: Dict, is_required: bool = False):
+        for key, name in coldict.items():
+            self.add(key, name, is_required=is_required)
 
     def update(self, key: str, name: str, is_required: bool = False):
         if is_required:
@@ -2064,9 +2068,15 @@ class Simulation(ABC):
 
 
 class SimDetecSupernova(AveragedSupernova):
-    def __init__(self, tnsname: str = None, mjdbinsize: float = 1.0, filt: str = "o"):
+    def __init__(
+        self,
+        colnames: PresetColumnNames,
+        tnsname: str = None,
+        mjdbinsize: float = 1.0,
+        filt: str = "o",
+    ):
         AveragedSupernova.__init__(
-            self, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt
+            self, colnames, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt
         )
         self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
 
@@ -2084,7 +2094,10 @@ class SimDetecSupernova(AveragedSupernova):
 
     def load(self, input_dir, control_index=0):
         self.avg_lcs[control_index] = SimDetecLightCurve(
-            control_index=control_index, filt=self.filt, mjdbinsize=self.mjdbinsize
+            self.colnames_master,
+            control_index=control_index,
+            filt=self.filt,
+            mjdbinsize=self.mjdbinsize,
         )
         if control_index == 0:
             filename = f"{input_dir}/{self.tnsname}.{self.filt}.{self.mjdbinsize:0.2f}days.lc.txt"
@@ -2094,30 +2107,64 @@ class SimDetecSupernova(AveragedSupernova):
 
 
 class SimDetecLightCurve(AveragedLightCurve):
-    def __init__(self, control_index=0, filt="o", mjd0=None, mjdbinsize=1.0, **kwargs):
-        AveragedLightCurve.__init__(self, control_index, filt, mjdbinsize, **kwargs)
+    def __init__(
+        self,
+        colnames: PresetColumnNames,
+        control_index=0,
+        filt="o",
+        mjd0=None,
+        mjdbinsize=1.0,
+        **kwargs,
+    ):
+        colnames.add_many(
+            {
+                "snr": "SNR",
+                "snrsum": "SNR_sum",
+                "snrsumnorm": "SNR_sumnorm",
+                "fluxsim": f"{colnames.flux}_sim",
+                "snrsim": "SNR_sim",
+                "snrsimsum": "SNR_simsum",
+            }
+        )
+
+        AveragedLightCurve.__init__(
+            self, colnames, control_index, filt, mjdbinsize, **kwargs
+        )
+
         self.cur_sigma_kern = None
-        self.pre_mjd0_ix = self.ix_inrange("MJD", uplim=mjd0)
+        self.pre_mjd0_ix = self.ix_inrange(self.colnames.mjd, uplim=mjd0)
         self.valid_seasons_ix = None
+
+    def remove_columns(self, colnames: List[str]):
+        dropcols = []
+        for col in colnames:
+            if col in self.t.columns:
+                dropcols.append(col)
+        if len(dropcols) > 0:
+            self.t.drop(columns=dropcols, inplace=True)
 
     # remove rolling sum columns
     def remove_rolling_sum(self):
         self.cur_sigma_kern = None
-        dropcols = []
-        for col in ["__tmp_SN", "SNR", "SNRsum", "SNRsumnorm"]:
-            if col in self.t.columns:
-                dropcols.append(col)
-        if len(dropcols) > 0:
-            self.t.drop(columns=dropcols, inplace=True)
+        self.remove_columns(
+            [
+                "__tmp_SN",
+                self.colnames.snr,
+                self.colnames.snrsum,
+                self.colnames.snrsumnorm,
+            ]
+        )
 
     # remove simulation columns
     def remove_simulations(self):
-        dropcols = []
-        for col in ["__tmp_SN", "uJysim", "SNRsim", "simLC", "SNRsimsum"]:
-            if col in self.t.columns:
-                dropcols.append(col)
-        if len(dropcols) > 0:
-            self.t.drop(columns=dropcols, inplace=True)
+        self.remove_columns(
+            [
+                "__tmp_SN",
+                self.colnames.fluxsim,
+                self.colnames.snrsim,
+                self.colnames.snrsimsum,
+            ]
+        )
 
     # apply a rolling sum to the light curve and add SNR, SNRsum, and SNRsumnorm columns
     def apply_rolling_sum(self, sigma_kern, indices=None, flag=0x800000, verbose=False):
@@ -2127,13 +2174,14 @@ class SimDetecLightCurve(AveragedLightCurve):
             raise RuntimeError(
                 "ERROR: not enough measurements to apply simulated gaussian"
             )
-        good_ix = AandB(indices, self.ix_unmasked("Mask", flag))
+        good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
 
         self.remove_rolling_sum()
         self.cur_sigma_kern = sigma_kern
-        self.t.loc[indices, "SNR"] = 0.0
-        self.t.loc[good_ix, "SNR"] = (
-            self.t.loc[good_ix, "uJy"] / self.t.loc[good_ix, "duJy"]
+        self.t.loc[indices, self.colnames.snr] = 0.0
+        self.t.loc[good_ix, self.colnames.snr] = (
+            self.t.loc[good_ix, self.colnames.flux]
+            / self.t.loc[good_ix, self.colnames.dflux]
         )
 
         new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
@@ -2147,12 +2195,14 @@ class SimDetecLightCurve(AveragedLightCurve):
         # calculate the rolling SNR sum
         l = len(self.t.loc[indices])
         dataindices = np.array(range(l) + np.full(l, halfwindowsize))
-        temp = pd.Series(np.zeros(l + 2 * halfwindowsize), name="SNR", dtype=np.float64)
-        temp[dataindices] = self.t.loc[indices, "SNR"]
+        temp = pd.Series(
+            np.zeros(l + 2 * halfwindowsize), name=self.colnames.snr, dtype=np.float64
+        )
+        temp[dataindices] = self.t.loc[indices, self.colnames.snr]
         SNRsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        self.t.loc[indices, "SNRsum"] = list(SNRsum[dataindices])
+        self.t.loc[indices, self.colnames.snrsum] = list(SNRsum[dataindices])
 
         # normalize it
         norm_temp = pd.Series(
@@ -2162,7 +2212,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         norm_temp_sum = norm_temp.rolling(
             windowsize, center=True, win_type="gaussian"
         ).sum(std=new_gaussian_sigma)
-        self.t.loc[indices, "SNRsumnorm"] = list(
+        self.t.loc[indices, self.colnames.snrsumnorm] = list(
             SNRsum.loc[dataindices]
             / norm_temp_sum.loc[dataindices]
             * max(norm_temp_sum.loc[dataindices])
@@ -2171,7 +2221,6 @@ class SimDetecLightCurve(AveragedLightCurve):
     # add simulated flux to the light curve and add SNRsim and SNRsimsum columns
     def add_sim_flux(
         self,
-        lc,
         good_ix,
         sim_flux,
         cur_sigma_kern=None,
@@ -2194,15 +2243,18 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
 
         if remove_old:
-            lc.remove_simulations()
-            lc.t.loc[good_ix, "uJysim"] = lc.t.loc[good_ix, "uJy"]
-        lc.t.loc[good_ix, "uJysim"] += sim_flux
+            self.remove_simulations()
+            self.t.loc[good_ix, self.colnames.fluxsim] = self.t.loc[
+                good_ix, self.colnames.flux
+            ]
+        self.t.loc[good_ix, self.colnames.fluxsim] += sim_flux
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
-        lc.t["SNRsim"] = 0.0
+        self.t[self.colnames.snrsim] = 0.0
         # include only simulated flux in the SNR
-        lc.t.loc[good_ix, "SNRsim"] = (
-            lc.t.loc[good_ix, "uJysim"] / lc.t.loc[good_ix, "duJy"]
+        self.t.loc[good_ix, self.colnames.snrsim] = (
+            self.t.loc[good_ix, self.colnames.fluxsim]
+            / self.t.loc[good_ix, self.colnames.dflux]
         )
 
         new_gaussian_sigma = round(cur_sigma_kern / self.mjdbinsize)
@@ -2217,27 +2269,27 @@ class SimDetecLightCurve(AveragedLightCurve):
         l = len(self.t)
         dataindices = np.array(range(l) + np.full(l, halfwindowsize))
         temp = pd.Series(
-            np.zeros(l + 2 * halfwindowsize), name="SNRsim", dtype=np.float64
+            np.zeros(l + 2 * halfwindowsize),
+            name=self.colnames.snrsim,
+            dtype=np.float64,
         )
-        temp[dataindices] = lc.t["SNRsim"]
+        temp[dataindices] = self.t[self.colnames.snrsim]
         SNRsimsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        lc.t["SNRsimsum"] = list(SNRsimsum.loc[dataindices])
-
-        return lc
+        self.t[self.colnames.snrsimsum] = list(SNRsimsum.loc[dataindices])
 
     # add any simulation to the light curve, specifying parameters using keyword arguments
     def add_simulation(
         self,
         sim: Simulation,
         peak_appmag: float,
-        cur_sigma_kern=None,
-        flag=0x800000,
-        verbose=False,
-        remove_old=True,
+        cur_sigma_kern: int = None,
+        flag: int = 0x800000,
+        verbose: bool = False,
+        remove_old: bool = True,
         **kwargs,
-    ):
+    ) -> Self:
         """
         Add any Simulation object to the light curve, specifying parameters using keyword arguments.
 
@@ -2251,11 +2303,12 @@ class SimDetecLightCurve(AveragedLightCurve):
             print(f"Adding simulation: {sim}")
 
         lc = deepcopy(self)
-        good_ix = AandB(lc.getindices(), lc.ix_unmasked("Mask", flag))
-        sim_flux = sim.get_sim_flux(lc.t.loc[good_ix, "MJD"], peak_appmag, **kwargs)
+        good_ix = AandB(lc.getindices(), lc.ix_unmasked(self.colnames.mask, flag))
+        sim_flux = sim.get_sim_flux(
+            lc.t.loc[good_ix, self.colnames.mjd], peak_appmag, **kwargs
+        )
 
-        return self.add_sim_flux(
-            lc,
+        return lc.add_sim_flux(
             good_ix,
             sim_flux,
             cur_sigma_kern=cur_sigma_kern,
@@ -2263,13 +2316,21 @@ class SimDetecLightCurve(AveragedLightCurve):
             remove_old=remove_old,
         )
 
-    # get max FOM (for simulated FOM, column='SNRsimsum'; else column='SNRsumnorm')
+    # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices
-    def get_max_fom(self, indices=None, column="SNRsimsum"):
+    def get_max_fom(self, indices=None):
         if indices is None:
             indices = self.getindices()
-        max_fom_idx = self.t.loc[indices, column].idxmax()
 
-        max_fom_mjd = self.t.loc[max_fom_idx, "MJDbin"]
-        max_fom = self.t.loc[max_fom_idx, column]
+        if self.colnames.snrsimsum in self.t.columns:
+            colname = self.colnames.snrsimsum
+        elif self.colnames.snrsumnorm in self.t.columns:
+            colname = self.colnames.snrsumnorm
+        else:
+            raise RuntimeError(f"No FOM column found (columns: {self.t.columns})")
+
+        max_fom_idx = self.t.loc[indices, colname].idxmax()
+
+        max_fom_mjd = self.t.loc[max_fom_idx, self.colnames.mjdbin]
+        max_fom = self.t.loc[max_fom_idx, colname]
         return max_fom_mjd, max_fom
