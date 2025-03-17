@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from configparser import ConfigParser
+import os
 import re
 from typing import Callable, List
 import sys, argparse
@@ -621,6 +622,37 @@ class CleanLoop:
                 title=f"Custom cut {name}",
             )
 
+    def find_all_filts(self, directory, tnsname):
+        subdir = os.path.join(directory, tnsname)
+        if not os.path.isdir(subdir):
+            raise RuntimeError(
+                f"ERROR: Cannot search for filters because the path does not exist: {subdir}"
+            )
+
+        filts = set()
+
+        pattern = re.compile(
+            rf"^{re.escape(tnsname)}"  # starts with tnsname
+            r"(?:_i\d{3})?"  # optional control index
+            r"\.(?P<filt>\w+)"  # filter (captured)
+            r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+            r"(?:\.clean)?"  # optional 'clean'
+            r"\.lc\.txt$"  # ends with '.lc.txt'
+        )
+
+        for file in os.listdir(subdir):
+            match = pattern.match(file)
+            if match:
+                filt = match.group("filt")
+                filts.add(filt)
+
+        if len(filts) < 1:
+            raise RuntimeError(
+                f"ERROR: Could not find filters from the files in {subdir}"
+            )
+
+        return filts
+
     def clean_lcs(
         self,
         tnsname: str,
@@ -737,7 +769,7 @@ class CleanLoop:
         apply_uncert_est_function: Callable,
         num_controls: int = 0,
         mjd0=None,
-        filters: List[str] = ["o", "c"],
+        filts: List[str] = None,
         cut_list: CutList = None,
         apply_template_correction: bool = False,
         plot: bool = False,
@@ -768,7 +800,12 @@ class CleanLoop:
             else:
                 print(f"\nSetting MJD0 to {mjd0}")
 
-            for filt in filters:
+            if filts is None:
+                print("Searching for filters in input directory...")
+                filts = self.find_all_filts(self.input_dir, tnsname)
+                print(f"Filters found: {filts}")
+
+            for filt in filts:
                 self.f.add_filter_section(filt)
                 self.clean_lcs(
                     tnsname,
@@ -779,13 +816,6 @@ class CleanLoop:
                     apply_template_correction=apply_template_correction,
                     plot=plot,
                 )
-
-
-def parse_config_filters(args, config):
-    if args.filters:
-        return parse_comma_separated_string(args.filters)
-    else:
-        return parse_comma_separated_string(config["convert"]["filters"])
 
 
 def find_config_custom_cuts(config):
@@ -1070,8 +1100,9 @@ if __name__ == "__main__":
 
     print(f"Overwrite existing files: {args.overwrite}")
     print(f"Save PDF of diagnostic plots: {args.plot}")
-    filters = parse_config_filters(args, config)
-    print(f"Filters: {filters}")
+    filters = parse_comma_separated_string(args.filters)
+    if filters is not None:
+        print(f"Filters to clean: {filters}")
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
     print(f"Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}")
     if args.mjd0:
@@ -1114,7 +1145,7 @@ if __name__ == "__main__":
         cut_list=cut_list,
         num_controls=num_controls,
         mjd0=args.mjd0,
-        filters=filters,
+        filts=filters,
         apply_template_correction=args.template_correction,
         plot=args.plot,
     )

@@ -39,7 +39,9 @@ UTILITY
 """
 
 
-def parse_comma_separated_string(string):
+def parse_comma_separated_string(string: str | None):
+    if string is None:
+        return None
     return [item.strip() for item in string.split(",")]
 
 

@@ -134,6 +134,11 @@ class ConvertLightCurve(LightCurve):
             )
             self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
+    def get_filts(self) -> List[str]:
+        if self.colnames.filt is None:  # if no filter column, set filter to preset
+            return [self.colnames.preset]
+        return self.t[self.colnames.filt].unique().tolist()
+
     # divide the light curve by filter and save into separate files
     def save(self, input_dir, all_columns_to_copy=None, overwrite=False):
         """
@@ -145,7 +150,7 @@ class ConvertLightCurve(LightCurve):
         if self.colnames.filt is None:  # if no filter column, set filter to preset
             filts = [self.colnames.preset]
         else:  # get filters from filter column
-            filts = self.t[self.colnames.filt].unique().tolist()
+            filts = self.get_filts()
             for filt in filts:
                 filt_lens[filt] = len(np.where(self.t[self.colnames.filt] == filt)[0])
 

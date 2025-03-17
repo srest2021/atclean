@@ -326,9 +326,9 @@ class Coordinates:
 
 
 def get_filename(
-    output_dir, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
+    directory, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
 ):
-    filename = f"{output_dir}/{tnsname}"
+    filename = f"{directory}/{tnsname}"
 
     if control_index != 0:
         filename += "/controls"
