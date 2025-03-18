@@ -3,6 +3,7 @@
 import os
 from typing import List
 import matplotlib
+from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from lightcurve import (
@@ -36,7 +37,20 @@ marker_size = 30
 marker_edgewidth = 1.5
 
 # color scheme
-SN_FLUX_COLORS = {"o": "orange", "c": "cyan"}
+SN_FLUX_COLORS = {
+    # ATLAS
+    "o": "orange",  # Orange filter
+    "c": "cyan",  # Cyan filter
+    # Rubin
+    "u": "purple",  # Ultraviolet (u-band)
+    "g": "green",  # Green (g-band)
+    "r": "salmon",  # Red (r-band)
+    "i": "indigo",  # Near-infrared (i-band)
+    "z": "brown",  # Deep red (z-band)
+    "y": "darkred",  # Near-infrared (y-band)
+    # TESS
+    "tess": "pink",  # TESS uses a single wide bandpass (red-sensitive)
+}
 SN_FLAGGED_FLUX_COLOR = "red"
 CONTROL_FLUX_COLOR = "steelblue"
 
@@ -99,12 +113,12 @@ class Plot:
     def __init__(self, output_dir: str = None):
         self.output_dir = output_dir
 
-    def save_plot(self, filename):
+    def save_plot(self, filename, **kwargs):
         filename = f"{self.output_dir}/{filename}.png"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         print(f"Saving plot: {filename}")
-        plt.savefig(filename, dpi=200)
+        plt.savefig(filename, dpi=200, **kwargs)
 
     def get_lims(
         self,
@@ -728,9 +742,268 @@ class Plot:
 
         return fig
 
-    def plot_template_correction(self, lc: LightCurve):
-        # TODO
-        pass
+    def plot_template_correction(
+        self,
+        lc: LightCurve,
+        lims: PlotLimits,
+        title=None,
+        save: bool = False,
+        filename: str = "template_correction",
+    ):
+        colors = ["salmon", "sandybrown", "darkseagreen"]
+
+        region1_ix = lc.ix_inrange(lc.colnames.mjd, uplim=TEMPLATE_CHANGE_1_MJD)
+        region2_ix = lc.ix_inrange(
+            lc.colnames.mjd, lowlim=TEMPLATE_CHANGE_1_MJD, uplim=TEMPLATE_CHANGE_2_MJD
+        )
+        region3_ix = lc.ix_inrange(lc.colnames.mjd, lowlim=TEMPLATE_CHANGE_2_MJD)
+
+        region1_mean = lc.get_mean(
+            lc.colnames.flux, indices=region1_ix[-40:]
+        )  # last 40 measurements before t1
+        region2a_mean = lc.get_mean(
+            lc.colnames.flux, indices=region2_ix[:40]
+        )  # first 40 measurements after t1
+        region2b_mean = lc.get_mean(
+            lc.colnames.flux, indices=region2_ix[-40:]
+        )  # last 40 measurements before t2
+        region3_mean = lc.get_mean(
+            lc.colnames.flux, indices=region3_ix[:40]
+        )  # first 40 measurements after t2
+
+        gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1], hspace=0.35, wspace=0.4)
+        fig = plt.figure()
+        fig.set_figwidth(6)
+        fig.set_figheight(6)
+        fig.tight_layout()
+
+        # ax1: all template regions in different colors
+        ax1 = plt.subplot(gs[0, :])
+        if not title is None:
+            ax1.set_title(title)
+        ax1.axvline(
+            x=TEMPLATE_CHANGE_1_MJD,
+            color="k",
+            linestyle="dotted",
+            label="ATLAS template change",
+            zorder=100,
+        )
+        ax1.axvline(x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100)
+        ax1.axhline(color="k", zorder=0)
+        ax1.set_xlim(lims.xlower, lims.xupper)
+        ax1.set_ylim(lims.ylower, lims.yupper)
+
+        ax1.errorbar(
+            lc.t.loc[region1_ix, lc.colnames.mjd],
+            lc.t.loc[region1_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region1_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[0],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax1.scatter(
+            lc.t.loc[region1_ix, lc.colnames.mjd],
+            lc.t.loc[region1_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[0],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+            label="Region 1 flux",
+        )
+        ax1.errorbar(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[1],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax1.scatter(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[1],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+            label="Region 2 flux",
+        )
+        ax1.errorbar(
+            lc.t.loc[region3_ix, lc.colnames.mjd],
+            lc.t.loc[region3_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region3_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[2],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax1.scatter(
+            lc.t.loc[region3_ix, lc.colnames.mjd],
+            lc.t.loc[region3_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[2],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+            label="Region 2 flux",
+        )
+        ax1.legend(
+            facecolor="white", framealpha=1, loc="upper left", bbox_to_anchor=(1, 1)
+        )
+
+        # ax2: zoom in on first template change transition
+        ax2 = plt.subplot(gs[1, 0])
+        ax2.set_title("First template change", fontsize=12)
+        ax2.axvline(x=TEMPLATE_CHANGE_1_MJD, color="k", linestyle="dotted", zorder=100)
+        ax2.axhline(color="k", zorder=0)
+        ax2.set_xlim(
+            lc.t.loc[region1_ix[-40:][0], lc.colnames.mjd],
+            lc.t.loc[region2_ix[:40][-1], lc.colnames.mjd],
+        )
+        ax2.set_ylim(lims.ylower, lims.yupper)
+
+        ax2.errorbar(
+            lc.t.loc[region1_ix, lc.colnames.mjd],
+            lc.t.loc[region1_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region1_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[0],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax2.scatter(
+            lc.t.loc[region1_ix, lc.colnames.mjd],
+            lc.t.loc[region1_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[0],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+        )
+        ax2.errorbar(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[1],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax2.scatter(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[1],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+        )
+
+        ax2.axhline(
+            y=region1_mean, color=colors[0], linestyle="dashed", label="Region 1 mean"
+        )
+        ax2.axhline(
+            y=region2a_mean, color=colors[1], linestyle="dashed", label="Region 2 mean"
+        )
+        ax2.legend(facecolor="white", framealpha=1)
+
+        # ax3: zoom in on second template change transition
+        ax3 = plt.subplot(gs[1, 1])
+        ax3.set_title("Second template change", fontsize=12)
+        ax3.axvline(x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100)
+        ax3.axhline(color="k", zorder=0)
+        ax3.set_xlim(
+            lc.t.loc[region2_ix[-40:][0], lc.colnames.mjd],
+            lc.t.loc[region3_ix[:40][-1], lc.colnames.mjd],
+        )
+        ax3.set_ylim(lims.ylower, lims.yupper)
+
+        ax3.errorbar(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[1],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax3.scatter(
+            lc.t.loc[region2_ix, lc.colnames.mjd],
+            lc.t.loc[region2_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[1],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+        )
+        ax3.errorbar(
+            lc.t.loc[region3_ix, lc.colnames.mjd],
+            lc.t.loc[region3_ix, lc.colnames.flux],
+            yerr=lc.t.loc[region3_ix, lc.colnames.dflux],
+            fmt="none",
+            ecolor=colors[2],
+            elinewidth=1,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[lc.filt],
+            alpha=0.5,
+            zorder=10,
+        )
+        ax3.scatter(
+            lc.t.loc[region3_ix, lc.colnames.mjd],
+            lc.t.loc[region3_ix, lc.colnames.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=colors[2],
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+        )
+
+        ax3.axhline(
+            y=region2b_mean, color=colors[1], linestyle="dashed", label="Region 2 mean"
+        )
+        ax3.axhline(
+            y=region3_mean, color=colors[2], linestyle="dashed", label="Region 3 mean"
+        )
+        ax3.legend(facecolor="white", framealpha=1)
+
+        for ax in (ax1, ax2, ax3):
+            ax.minorticks_on()
+            ax.tick_params(direction="in", which="both")
+            ax.set_xlabel("MJD")
+            ax.set_ylabel(r"Flux ($\mu$Jy)")
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
 
 
 class PlotPdf(Plot):

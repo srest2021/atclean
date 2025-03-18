@@ -1443,6 +1443,12 @@ class LightCurve(pdastrostatsclass):
             indices = self.getindices()
         return np.nanmedian(self.t.loc[indices, self.colnames.dflux])
 
+    def get_mean(self, colname, indices=None):
+        self.calcaverage_sigmacutloop(
+            colname, indices=indices, Nsigma=3.0, median_firstiteration=True
+        )
+        return self.statparams["mean"]
+
     def get_stdev_flux(self, indices=None):
         self.calcaverage_sigmacutloop(
             self.colnames.flux, indices=indices, Nsigma=3.0, median_firstiteration=True
@@ -1750,6 +1756,10 @@ class LightCurve(pdastrostatsclass):
             self.t.loc[indices, self.colnames.mask] = (
                 int(self.t.loc[indices[0], self.colnames.mask]) | flag
             )
+
+    def apply_template_correction(self):
+        # TODO
+        pass
 
     def drop_extra_columns(self, verbose=False):
         dropcols = []
