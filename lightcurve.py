@@ -88,9 +88,9 @@ class PresetColumnNames:
                 "mjd": config_preset_settings.get("mjd_column_name"),
                 "flux": config_preset_settings.get("flux_column_name"),
                 "dflux": config_preset_settings.get("dflux_column_name"),
-                "mjdbin": config["mjd_bin_column_name"],
-                "mask": config["mask_column_name"],
-                "fdf": config["snr_column_name"],
+                "mjdbin": config["column_name_preset"]["mjd_bin_column_name"],
+                "mask": config["column_name_preset"]["mask_column_name"],
+                "fdf": config["column_name_preset"]["snr_column_name"],
             },
             no_nones=True,
         )
@@ -114,15 +114,19 @@ class PresetColumnNames:
             else [col.strip() for col in extra_columns.split(",")]
         )
 
-    def add(self, key: str, name: str, is_required: bool = False):
+    def add(
+        self, key: str, name: str, is_required: bool = False, overwrite: bool = False
+    ):
         if not isinstance(key, str) or not key.strip():
             raise ValueError("Column key must be a non-empty string.")
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"Column name for key '{key}' must be a non-empty string.")
 
-        if key in self.required_columns or key in self.optional_columns:
+        if not overwrite and (
+            key in self.required_columns or key in self.optional_columns
+        ):
             raise RuntimeError(
-                f"ERROR: Column key '{key}' is already defined as a {'required' if key in self.required_columns else 'optional'} column."
+                f"ERROR: Column key '{key}' is already defined as {'a required' if key in self.required_columns else 'an optional'} column."
             )
 
         if is_required:
@@ -179,6 +183,14 @@ class PresetColumnNames:
         """
         Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
         """
+        if (
+            "required_columns" not in self.__dict__
+            or "optional_columns" not in self.__dict__
+        ):
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
         if name in self.required_columns:
             return self.required_columns[name]
         if name in self.optional_columns:
@@ -189,7 +201,7 @@ class PresetColumnNames:
 
     def __str__(self) -> str:
         """Readable string representation of all column names."""
-        skip_colnames = ["mjdbin", "snr", "mask"]
+        skip_colnames = ["mjdbin", "fdf", "mask"]
 
         lines = ["--- Required Columns ---"]
         for k, v in self.required_columns.items():
@@ -729,7 +741,7 @@ class CutList:
     def can_apply_directly(self, name: str):
         return self.list[name].can_apply_directly()
 
-    def check_for_flag_duplicates(self):
+    def get_flag_duplicates(self):
         if len(self.list) < 1:
             return
 
@@ -1017,7 +1029,7 @@ class Supernova:
             for control_index in self.lcs
             if control_index > 0
         ]
-        all_controls = pdastrostatsclass()
+        all_controls = LightCurve(self.colnames_master)
         all_controls.t = pd.concat(controls, ignore_index=True)
         return all_controls
 
@@ -1166,7 +1178,11 @@ class Supernova:
     def apply_badday_cut(self, cut: Cut, previous_flags, flux2mag_sigmalimit=3.0):
         mjdbinsize = cut.params["mjd_bin_size"]
         avg_sn = AveragedSupernova(
-            tnsname=self.tnsname, mjd0=self.mjd0, filt=self.filt, mjdbinsize=mjdbinsize
+            self.colnames_master,
+            tnsname=self.tnsname,
+            mjd0=self.mjd0,
+            filt=self.filt,
+            mjdbinsize=mjdbinsize,
         )
         avg_sn.num_controls = self.num_controls
         for control_index in self.get_all_indices():
@@ -1208,7 +1224,7 @@ class Supernova:
 
     def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
-            control_index=control_index, filt=self.filt
+            self.colnames_master, control_index=control_index, filt=self.filt
         )
         self.lcs[control_index].load_lc(input_dir, self.tnsname, cleaned=cleaned)
 
@@ -1372,7 +1388,7 @@ class LightCurve(pdastrostatsclass):
         self.filt = filt
 
         self.colnames = colnames
-        self.colnames.add("dflux_new", self.colnames.dflux)
+        self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
@@ -1491,6 +1507,7 @@ class LightCurve(pdastrostatsclass):
         self, cut: Cut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
+            self.colnames,
             self.control_index,
             filt=self.filt,
             mjdbinsize=mjdbinsize,
@@ -1738,7 +1755,7 @@ class LightCurve(pdastrostatsclass):
         dropcols = []
         for col in [
             "Noffsetlc",
-            "uJy/duJy",
+            self.colnames.fdf,
             "__tmp_SN",
             "SNR",
             "SNRsum",
@@ -1822,6 +1839,9 @@ class LimCutsTable:
         self.good_ix, self.bad_ix = self.get_goodbad_indices(stn_bound)
 
     def get_goodbad_indices(self, stn_bound):
+        if not self.lc.colnames.fdf in self.lc.t.columns:
+            self.lc.calculate_fdf_column()
+
         good_ix = self.lc.ix_inrange(
             colnames=[self.lc.colnames.fdf],
             lowlim=-stn_bound,

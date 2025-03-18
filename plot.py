@@ -65,11 +65,11 @@ class PlotLimits:
             print("No light curve provided; skipping plot limits calculation...")
             return
 
-        if indices is None:
+        if indices is None or len(indices) < 2:
             indices = lc.getindices()
 
-        flux_min = lc.t.loc[indices, "uJy"].min()
-        flux_max = lc.t.loc[indices, "uJy"].max()
+        flux_min = lc.t.loc[indices, lc.colnames.flux].min()
+        flux_max = lc.t.loc[indices, lc.colnames.flux].max()
         offset = 0.05 * abs(flux_max - flux_min)
 
         if self.ylower is None:

@@ -946,7 +946,7 @@ def parse_config_cuts(args, config):
                     f"WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
                 )
 
-    duplicate_flags = cut_list.check_for_flag_duplicates()
+    duplicate_flags = cut_list.get_flag_duplicates()
     if len(duplicate_flags) > 0:
         raise RuntimeError(
             f"ERROR: Cuts in the config file contain duplicate flags: {duplicate_flags}."
