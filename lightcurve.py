@@ -19,6 +19,10 @@ DISC_DATE_BUFFER = 20
 
 DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
+# ATLAS template change dates
+TEMPLATE_CHANGE_1_MJD = 58417
+TEMPLATE_CHANGE_2_MJD = 58882
+
 """
 UTILITY
 """
@@ -958,6 +962,25 @@ class Supernova:
         # make sure SN and control lc MJDs match up exactly
         self.verify_mjds(verbose=verbose)
 
+    def apply_template_correction(
+        self,
+        maskval=None,
+        region1_offset=None,
+        region2_offset=None,
+        region3_offset=None,
+        num_measurements=40,
+    ):
+        if self.mjd0 is None:
+            raise RuntimeError("ERROR: Cannot apply template correction without MJD0")
+        return self.lcs[0].apply_template_correction(
+            self.mjd0,
+            maskval=maskval,
+            region1_offset=region1_offset,
+            region2_offset=region2_offset,
+            region3_offset=region3_offset,
+            num_measurements=num_measurements,
+        )
+
     def apply_cut(self, cut: Cut):
         if not cut.can_apply_directly():
             raise RuntimeError(f"ERROR: Cannot directly apply the following cut: {cut}")
@@ -1443,11 +1466,24 @@ class LightCurve(pdastrostatsclass):
             indices = self.getindices()
         return np.nanmedian(self.t.loc[indices, self.colnames.dflux])
 
-    def get_mean(self, colname, indices=None):
+    def get_mean(
+        self, colname: str, indices: List[int] = None, round_result: bool = False
+    ) -> float:
+        if indices is None:
+            indices = self.getindices()
+
         self.calcaverage_sigmacutloop(
             colname, indices=indices, Nsigma=3.0, median_firstiteration=True
         )
-        return self.statparams["mean"]
+        res = self.statparams["mean"]
+
+        if res is None:
+            print("WARNING: Could not converge on mean; taking median instead...")
+            res = np.median(self.t.loc[indices, colname])
+
+        if round_result:
+            return round(res, 2)
+        return res
 
     def get_stdev_flux(self, indices=None):
         self.calcaverage_sigmacutloop(
@@ -1757,9 +1793,145 @@ class LightCurve(pdastrostatsclass):
                 int(self.t.loc[indices[0], self.colnames.mask]) | flag
             )
 
-    def apply_template_correction(self):
-        # TODO
-        pass
+    def _clear_flux_offset_column(self):
+        if self.colnames.fluxoffset in self.t.columns:
+            print("Subtracting previous offset from flux column...")
+            self.t[self.colnames.flux] -= self.t[self.colnames.fluxoffset]
+        print("Setting current flux offset to 0...")
+        self.t[self.colnames.fluxoffset] = 0
+
+    def _update_flux_offset_column(self, offset, region_ix):
+        print(f"Adding offset {offset:0.2f} to flux offset column...")
+        if not self.colnames.fluxoffset in self.t.columns:
+            self.t[self.colnames.fluxoffset] = 0
+        self.t.loc[region_ix, self.colnames.fluxoffset] += offset
+
+    def _get_region_mean(self, region_ix, maskval=None) -> float:
+        indices = region_ix
+        if not maskval is None:
+            indices = self.ix_unmasked(
+                self.colnames.mask, maskval=maskval, indices=region_ix
+            )
+        return self.get_mean(self.colnames.flux, indices=indices, round_result=True)
+
+    def _add_offset(self, offset, region_ix):
+        print(f"Adding offset {offset:0.2f} to flux column...")
+        self.t.loc[region_ix, self.colnames.flux] += offset
+        self._update_flux_offset_column(offset, region_ix)
+
+    def _calculate_offset(self, ix1, ix2, num_measurements=40, maskval=None):
+        """Calculate the mean difference between two sets of measurements."""
+        mean1 = self._get_region_mean(ix1[-num_measurements:], maskval=maskval)
+        mean2 = self._get_region_mean(ix2[:num_measurements], maskval=maskval)
+        return mean2 - mean1
+
+    def _get_region_indices(self) -> Dict[str : List[int]]:
+        """Return indices for three regions based on MJD time intervals."""
+        return {
+            "1": self.ix_inrange(self.colnames.mjd, uplim=TEMPLATE_CHANGE_1_MJD),
+            "2": self.ix_inrange(
+                self.colnames.mjd,
+                lowlim=TEMPLATE_CHANGE_1_MJD,
+                uplim=TEMPLATE_CHANGE_2_MJD,
+            ),
+            "3": self.ix_inrange(self.colnames.mjd, lowlim=TEMPLATE_CHANGE_2_MJD),
+        }
+
+    def _get_offsets(
+        self,
+        mjd0,
+        region_ix_dict: Dict[str : List[int]],
+        maskval=None,
+        num_measurements=40,
+    ) -> Dict[str : Optional[float]]:
+        if mjd0 > 57600:
+            global_ix = (region_ix_dict["global"])[:num_measurements]
+        else:
+            global_ix = (region_ix_dict["global"])[-num_measurements:]
+
+        return {
+            "1": self._calculate_offset(
+                region_ix_dict["1"],
+                region_ix_dict["2"],
+                maskval=maskval,
+                num_measurements=num_measurements,
+            ),
+            "2": None,
+            "3": self._calculate_offset(
+                region_ix_dict["2"],
+                region_ix_dict["3"],
+                maskval=maskval,
+                num_measurements=num_measurements,
+            ),
+            "global": -1 * self._get_region_mean(global_ix, maskval=maskval),
+        }
+
+    def _apply_offsets(
+        self,
+        region_ix_dict: Dict[str : List[int]],
+        offset_dict: Dict[str : Optional[float]],
+    ):
+        output = []
+        for i in region_ix_dict.keys():
+            region_ix = region_ix_dict[i]
+            offset = offset_dict[i]
+            if len(region_ix) > 0 and offset is not None:
+                self._add_offset(offset, region_ix)
+                output.append(f"Corrective flux {offset:0.2f} uJy added to region {i}")
+        return output
+
+    def _manual_template_correction(
+        self,
+        region1_offset=None,
+        region2_offset=None,
+        region3_offset=None,
+    ):
+        self._clear_flux_offset_column()
+
+        region_ix_dict = self._get_region_indices()
+        offset_dict: Dict[str : Optional[float]] = {
+            "1": region1_offset,
+            "2": region2_offset,
+            "3": region3_offset,
+        }
+
+        return self._apply_offsets(region_ix_dict, offset_dict)
+
+    def _auto_template_correction(self, mjd0, maskval=None, num_measurements=40):
+        self._clear_flux_offset_column()
+
+        region_ix_dict = self._get_region_indices()
+        region_ix_dict["global"] = self.getindices()
+        offset_dict = self._get_offsets(
+            mjd0, region_ix_dict, maskval=maskval, num_measurements=num_measurements
+        )
+
+        return self._apply_offsets(region_ix_dict, offset_dict)
+
+    def apply_template_correction(
+        self,
+        mjd0: float,
+        maskval: int = None,
+        region1_offset: Optional[float] = None,
+        region2_offset: Optional[float] = None,
+        region3_offset: Optional[float] = None,
+        num_measurements: int = 40,
+    ):
+        self.colnames.add("fluxoffset", f"{self.colnames.flux}_offset")
+        if not (
+            region1_offset is None and region2_offset is None and region3_offset is None
+        ):
+            print("Proceeding with manual template correction...")
+            return self._manual_template_correction(
+                region1_offset=region1_offset,
+                region2_offset=region2_offset,
+                region3_offset=region3_offset,
+            )
+        else:
+            print("Proceeding with automatic template correction...")
+            return self._auto_template_correction(
+                mjd0, maskval=maskval, num_measurements=num_measurements
+            )
 
     def drop_extra_columns(self, verbose=False):
         dropcols = []

@@ -7,6 +7,8 @@ from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from lightcurve import (
+    TEMPLATE_CHANGE_1_MJD,
+    TEMPLATE_CHANGE_2_MJD,
     LimCutsTable,
     Cut,
     LightCurve,
@@ -53,10 +55,6 @@ SN_FLUX_COLORS = {
 }
 SN_FLAGGED_FLUX_COLOR = "red"
 CONTROL_FLUX_COLOR = "steelblue"
-
-# ATLAS template change dates
-TEMPLATE_CHANGE_1_MJD = 58417
-TEMPLATE_CHANGE_2_MJD = 58882
 
 
 class PlotLimits:
@@ -796,7 +794,7 @@ class Plot:
         ax1.errorbar(
             lc.t.loc[region1_ix, lc.colnames.mjd],
             lc.t.loc[region1_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region1_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region1_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[0],
             elinewidth=1,
@@ -819,7 +817,7 @@ class Plot:
         ax1.errorbar(
             lc.t.loc[region2_ix, lc.colnames.mjd],
             lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[1],
             elinewidth=1,
@@ -842,7 +840,7 @@ class Plot:
         ax1.errorbar(
             lc.t.loc[region3_ix, lc.colnames.mjd],
             lc.t.loc[region3_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region3_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region3_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[2],
             elinewidth=1,
@@ -880,7 +878,7 @@ class Plot:
         ax2.errorbar(
             lc.t.loc[region1_ix, lc.colnames.mjd],
             lc.t.loc[region1_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region1_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region1_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[0],
             elinewidth=1,
@@ -902,7 +900,7 @@ class Plot:
         ax2.errorbar(
             lc.t.loc[region2_ix, lc.colnames.mjd],
             lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[1],
             elinewidth=1,
@@ -944,7 +942,7 @@ class Plot:
         ax3.errorbar(
             lc.t.loc[region2_ix, lc.colnames.mjd],
             lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[1],
             elinewidth=1,
@@ -966,7 +964,7 @@ class Plot:
         ax3.errorbar(
             lc.t.loc[region3_ix, lc.colnames.mjd],
             lc.t.loc[region3_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region3_ix, lc.colnames.dflux],
+            yerr=lc.t.loc[region3_ix, lc.colnames.dflux_new],
             fmt="none",
             ecolor=colors[2],
             elinewidth=1,

@@ -104,9 +104,9 @@ class OutputReadMe:
     def add_filter_section(self, filt):
         self.f.write(f"\n\n## FILTER: {filt}")
 
-    def add_template_correction_section(self):
+    def add_template_correction_section(self, output):
         self.f.write(f"\n\n### ATLAS template change correction\n")
-        # TODO
+        self.f.write("\n".join(output))
 
     def add_uncert_est_section(
         self,
@@ -353,9 +353,28 @@ class CleanLoop:
         if cut_list.has("x2_cut"):
             self.x2_cut_info: ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
 
-    def apply_template_correction(self):
+    def apply_template_correction(
+        self,
+        maskval=None,
+        region1_offset=None,
+        region2_offset=None,
+        region3_offset=None,
+        num_measurements=40,
+        plot: bool = False,
+    ):
         print(f"\nApplying ATLAS template change correction:")
-        # TODO: add_template_correction_section
+        output = self.sn.apply_template_correction(
+            maskval=maskval,
+            region1_offset=region1_offset,
+            region2_offset=region2_offset,
+            region3_offset=region3_offset,
+            num_measurements=num_measurements,
+        )
+
+        self.f.add_template_correction_section(output)
+
+        if plot:
+            self.p.plot_template_correction(self.sn.lcs[0])
 
     def check_uncert_est(self, cut: Cut, apply_function: Callable, plot: bool = False):
         print(f"\nChecking true uncertainties estimation:")
