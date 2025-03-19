@@ -370,7 +370,7 @@ class CleanLoop:
             region3_offset=region3_offset,
             num_measurements=num_measurements,
         )
-
+        print("\n".join(output))
         self.f.add_template_correction_section(output)
 
         if plot:

@@ -19,7 +19,13 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import Coordinates, Credentials, SnInfoTable, FullLightCurve
+from lightcurve import (
+    Coordinates,
+    Credentials,
+    PresetColumnNames,
+    SnInfoTable,
+    FullLightCurve,
+)
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -509,7 +515,7 @@ class DownloadLoop:
         # add final RA, Dec, MJD0 to SN info table
         self.sninfo.update_row(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
 
-    def download_lcs(self, args, headers, tnsname):
+    def download_lcs(self, args, headers, colnames: PresetColumnNames, tnsname):
         print(f"\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n")
 
         self.lcs = {}
@@ -525,7 +531,7 @@ class DownloadLoop:
         self.lcs[0].download(
             headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
         )
-        self.lcs[0].save(self.input_dir, tnsname, overwrite=args.overwrite)
+        self.lcs[0].save(colnames, self.input_dir, tnsname, overwrite=args.overwrite)
 
         # save SN info table
         self.sninfo.save()
@@ -558,24 +564,31 @@ class DownloadLoop:
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
                 )
                 self.lcs[control_index].save(
-                    self.input_dir, tnsname, overwrite=args.overwrite
+                    colnames, self.input_dir, tnsname, overwrite=args.overwrite
                 )
                 self.ctrl_coords.update_row(control_index, self.lcs[control_index])
 
             # save control coordinates table
             self.ctrl_coords.save(self.input_dir, tnsname=tnsname)
 
-    def loop(self, args):
+    def loop(self, args, colnames: PresetColumnNames):
         print("\nConnecting to ATLAS API...")
         headers = self.connect_atlas()
         if headers is None:
             raise RuntimeError("ERROR: No token header!")
 
         for obj_index in range(len(args.tnsnames)):
-            self.download_lcs(args, headers, args.tnsnames[obj_index])
+            self.download_lcs(args, headers, colnames, args.tnsnames[obj_index])
 
 
 if __name__ == "__main__":
     args = define_args().parse_args()
+    config = load_config(args.config_file)
+
+    print(f"Loading ATLAS preset column names from config.ini...")
+    colnames = PresetColumnNames(config, "atlas")
+    # print(colnames.__str__())
+    # print("Success")
+
     download = DownloadLoop(args)
-    download.loop(args)
+    download.loop(args, colnames)

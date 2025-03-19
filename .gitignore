@@ -11,3 +11,4 @@ brightstars/
 atlas_lc.py
 download_atlas_lc.py
 settings.ini
+atlas_lc_template_correction.ipynb

@@ -126,11 +126,11 @@ class PresetColumnNames:
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"Column name for key '{key}' must be a non-empty string.")
 
-        if not overwrite and (
-            key in self.required_columns or key in self.optional_columns
-        ):
+        # if key exists but the name is different, raise an error
+        existing_name = self.required_columns.get(key) or self.optional_columns.get(key)
+        if existing_name and existing_name != name and not overwrite:
             raise RuntimeError(
-                f"ERROR: Column key '{key}' is already defined as {'a required' if key in self.required_columns else 'an optional'} column."
+                f"ERROR: Column key '{key}' is already defined with a different name '{existing_name}'."
             )
 
         if is_required:
@@ -1794,38 +1794,44 @@ class LightCurve(pdastrostatsclass):
             )
 
     def _clear_flux_offset_column(self):
+        self.colnames.add("fluxoffset", f"{self.colnames.flux}_offset", overwrite=True)
+
         if self.colnames.fluxoffset in self.t.columns:
             print("Subtracting previous offset from flux column...")
             self.t[self.colnames.flux] -= self.t[self.colnames.fluxoffset]
+
         print("Setting current flux offset to 0...")
         self.t[self.colnames.fluxoffset] = 0
 
-    def _update_flux_offset_column(self, offset, region_ix):
-        print(f"Adding offset {offset:0.2f} to flux offset column...")
-        if not self.colnames.fluxoffset in self.t.columns:
-            self.t[self.colnames.fluxoffset] = 0
-        self.t.loc[region_ix, self.colnames.fluxoffset] += offset
-
-    def _get_region_mean(self, region_ix, maskval=None) -> float:
+    def _get_region_mean(self, region_ix: List[int], maskval: int = None) -> float:
         indices = region_ix
-        if not maskval is None:
+        if not maskval is None and self.colnames.mask in self.t.columns:
             indices = self.ix_unmasked(
                 self.colnames.mask, maskval=maskval, indices=region_ix
             )
-        return self.get_mean(self.colnames.flux, indices=indices, round_result=True)
+        return self.get_mean(self.colnames.flux, indices=indices)
 
-    def _add_offset(self, offset, region_ix):
-        print(f"Adding offset {offset:0.2f} to flux column...")
-        self.t.loc[region_ix, self.colnames.flux] += offset
-        self._update_flux_offset_column(offset, region_ix)
+    def _add_offset(self, offset: int, region_ix: List[int]):
+        offset_array = np.full(len(region_ix), offset)
+        self.t.loc[region_ix, self.colnames.flux] += offset_array
 
-    def _calculate_offset(self, ix1, ix2, num_measurements=40, maskval=None):
+        if not self.colnames.fluxoffset in self.t.columns:
+            self.t[self.colnames.fluxoffset] = 0
+        self.t.loc[region_ix, self.colnames.fluxoffset] += offset_array
+
+    def _calculate_offset(
+        self,
+        ix1: List[int],
+        ix2: List[int],
+        num_measurements: int = 40,
+        maskval: int = None,
+    ) -> int:
         """Calculate the mean difference between two sets of measurements."""
         mean1 = self._get_region_mean(ix1[-num_measurements:], maskval=maskval)
         mean2 = self._get_region_mean(ix2[:num_measurements], maskval=maskval)
-        return mean2 - mean1
+        return round(mean2 - mean1)
 
-    def _get_region_indices(self) -> Dict[str : List[int]]:
+    def _get_region_indices(self):
         """Return indices for three regions based on MJD time intervals."""
         return {
             "1": self.ix_inrange(self.colnames.mjd, uplim=TEMPLATE_CHANGE_1_MJD),
@@ -1839,11 +1845,11 @@ class LightCurve(pdastrostatsclass):
 
     def _get_offsets(
         self,
-        mjd0,
-        region_ix_dict: Dict[str : List[int]],
-        maskval=None,
-        num_measurements=40,
-    ) -> Dict[str : Optional[float]]:
+        mjd0: float,
+        region_ix_dict: Dict,
+        maskval: int = None,
+        num_measurements: int = 40,
+    ) -> Dict:
         if mjd0 > 57600:
             global_ix = (region_ix_dict["global"])[:num_measurements]
         else:
@@ -1863,13 +1869,13 @@ class LightCurve(pdastrostatsclass):
                 maskval=maskval,
                 num_measurements=num_measurements,
             ),
-            "global": -1 * self._get_region_mean(global_ix, maskval=maskval),
+            "global": -1 * round(self._get_region_mean(global_ix, maskval=maskval)),
         }
 
     def _apply_offsets(
         self,
-        region_ix_dict: Dict[str : List[int]],
-        offset_dict: Dict[str : Optional[float]],
+        region_ix_dict: Dict,
+        offset_dict: Dict,
     ):
         output = []
         for i in region_ix_dict.keys():
@@ -1882,14 +1888,14 @@ class LightCurve(pdastrostatsclass):
 
     def _manual_template_correction(
         self,
-        region1_offset=None,
-        region2_offset=None,
-        region3_offset=None,
+        region1_offset: int = None,
+        region2_offset: int = None,
+        region3_offset: int = None,
     ):
         self._clear_flux_offset_column()
 
         region_ix_dict = self._get_region_indices()
-        offset_dict: Dict[str : Optional[float]] = {
+        offset_dict: Dict[str : Optional[int]] = {
             "1": region1_offset,
             "2": region2_offset,
             "3": region3_offset,
@@ -1897,7 +1903,9 @@ class LightCurve(pdastrostatsclass):
 
         return self._apply_offsets(region_ix_dict, offset_dict)
 
-    def _auto_template_correction(self, mjd0, maskval=None, num_measurements=40):
+    def _auto_template_correction(
+        self, mjd0: float, maskval: int = None, num_measurements: int = 40
+    ):
         self._clear_flux_offset_column()
 
         region_ix_dict = self._get_region_indices()
@@ -1912,12 +1920,12 @@ class LightCurve(pdastrostatsclass):
         self,
         mjd0: float,
         maskval: int = None,
-        region1_offset: Optional[float] = None,
-        region2_offset: Optional[float] = None,
-        region3_offset: Optional[float] = None,
+        region1_offset: Optional[int] = None,
+        region2_offset: Optional[int] = None,
+        region3_offset: Optional[int] = None,
         num_measurements: int = 40,
     ):
-        self.colnames.add("fluxoffset", f"{self.colnames.flux}_offset")
+        self.colnames.add("fluxoffset", f"{self.colnames.flux}_offset", overwrite=True)
         if not (
             region1_offset is None and region2_offset is None and region3_offset is None
         ):
@@ -2161,7 +2169,7 @@ class FullLightCurve:
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
 
             if self.mjd0 is None or np.isnan(self.mjd0):
-                self.mjd = get_tns_mjd0_from_json(json_data)
+                self.mjd0 = get_tns_mjd0_from_json(json_data)
                 print(
                     f"Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}"
                 )
@@ -2211,13 +2219,13 @@ class FullLightCurve:
         return total_len, filt_lens
 
     # divide the light curve by filter and save into separate files
-    def save(self, input_dir, tnsname, overwrite=False):
+    def save(self, colnames: PresetColumnNames, input_dir, tnsname, overwrite=False):
         if self.t is None:
             raise RuntimeError(
                 "ERROR: Cannot save light curve that hasn't been downloaded yet."
             )
 
-        lc = LightCurve(control_index=self.control_index)
+        lc = LightCurve(colnames, control_index=self.control_index)
         lc.set_df(self.t)
 
         # sort data by mjd
