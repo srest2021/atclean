@@ -647,12 +647,59 @@ class Plot:
         self,
         limcuts: LimCutsTable,
         cut: Cut,
-        cut_start: int,
-        cut_stop: int,
-        use_preSN_lc=False,
+        save: bool = False,
+        filename: str = "limcutstable",
     ):
-        # TODO
-        pass
+        loss_color = "darkmagenta"
+        contam_color = "teal"
+
+        fig, ax1 = plt.subplots(1, constrained_layout=True)
+        fig.set_figwidth(5.5)
+        fig.set_figheight(3)
+
+        ax1.set_title(f"Contamination and loss")
+
+        ax1.minorticks_on()
+        ax1.tick_params(direction="in", which="both")
+        if cut.params["use_pre_mjd0_lc"]:
+            ax1.set_ylabel(f"% pre-SN measurements")
+        else:
+            ax1.set_ylabel(f"% control measurements")
+        ax1.set_xlabel("Chi-square cut")
+        ax1.axhline(linewidth=1, color="k")
+
+        ax1.plot(
+            limcuts.t["PSF Chi-Square Cut"].values,
+            limcuts.t["Ploss"].values,
+            ms=3.5,
+            color=loss_color,
+            marker="o",
+            label="Loss",
+        )
+        ax1.plot(
+            limcuts.t["PSF Chi-Square Cut"].values,
+            limcuts.t["Pcontamination"].values,
+            ms=3.5,
+            color=contam_color,
+            marker="o",
+            label="Contamination",
+        )
+
+        ax1.axvline(cut.max_value, color="k", linestyle="dashed", label="Selected cut")
+
+        ax1.set_xlim(cut.params["min_cut"], cut.params["max_cut"])
+        ax1.set_ylim(
+            0, max(max(limcuts.t["Ploss"]), max(limcuts.t["Pcontamination"])) * 1.1
+        )
+
+        ax1.legend(
+            facecolor="white", framealpha=1, bbox_to_anchor=(1.02, 1), loc="upper left"
+        )
+
+        if save:
+            self.save_plot(filename)
+
+        return fig
 
     def plot_uncert_est(
         self,
@@ -1083,12 +1130,11 @@ class PlotPdf(Plot):
         self,
         limcuts: LimCutsTable,
         cut: Cut,
-        cut_start: int,
-        cut_stop: int,
-        use_preSN_lc=False,
+        save: bool = False,
+        filename: str = "limcutstable",
     ):
         print("Plotting LimCutsTable...")
-        fig = super().plot_limcuts(limcuts, cut, cut_start, cut_stop, use_preSN_lc)
+        fig = super().plot_limcuts(limcuts, cut, save, filename)
         self.pdf.savefig(fig)
 
     def plot_uncert_est(

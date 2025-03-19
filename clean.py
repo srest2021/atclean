@@ -509,6 +509,7 @@ class CleanLoop:
         )
 
         if plot:
+            self.p.plot_limcuts(limcuts, cut)
             self.p.plot_cut(
                 self.sn.lcs[0],
                 cut.flag,
