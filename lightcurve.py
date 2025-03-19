@@ -1641,7 +1641,7 @@ class FullLightCurve:
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
 
             if self.mjd0 is None or np.isnan(self.mjd0):
-                self.mjd = get_tns_mjd0_from_json(json_data)
+                self.mjd0 = get_tns_mjd0_from_json(json_data)
                 print(
                     f"Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}"
                 )
