@@ -739,6 +739,18 @@ class CutList:
                 if self.has(name):
                     del self.list[name]
 
+    def remove_by_flag(self, flag: int):
+        """
+        Removes any Cut object from self.list that has a matching Cut.flag value.
+        """
+        to_remove = [
+            name
+            for name, cut in self.list.items()
+            if cut.flag is not None and cut.flag == flag
+        ]
+        for name in to_remove:
+            del self.list[name]
+
     def has(self, name: str):
         return name in self.list
 
@@ -1244,6 +1256,10 @@ class Supernova:
         directory_path = Path(path)
         files = [f for f in directory_path.iterdir() if f.is_file()]
         return len(files)
+
+    def remove_flag(self, flag):
+        for control_index in self.get_all_indices():
+            self.lcs[control_index].remove_flag(flag)
 
     def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
@@ -1776,12 +1792,15 @@ class LightCurve(pdastrostatsclass):
         percent_cut = 100 * len(cut_ix) / len(all_ix)
         return percent_cut
 
+    def remove_flag(self, flag):
+        self.t[self.colnames.mask] = np.bitwise_and(
+            self.t[self.colnames.mask].astype(int), ~flag
+        )
+
     def update_mask_column(self, flag, indices, remove_old=True):
         if remove_old:
             # remove any old flags of the same value
-            self.t[self.colnames.mask] = np.bitwise_and(
-                self.t[self.colnames.mask].astype(int), ~flag
-            )
+            self.remove_flag(flag)
 
         if len(indices) > 1:
             flag_arr = np.full(self.t.loc[indices, self.colnames.mask].shape, flag)

@@ -18,7 +18,7 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
 
 - [Jupyter Notebooks](#jupyter-notebooks)
     - [`clean.ipynb`](#cleanipynb) (**WIP**): An in-depth walkthrough of our cleaning and binning process for a single SN and its control light curves. 
-    - [`atlas_template_correction.ipynb`](#atlas_lc_template_correctionipynb): A standalone walkthrough of our ATLAS template change correction.
+    - [`atlas_template_correction.ipynb`](#atlas_template_correctionipynb): A standalone walkthrough of our ATLAS template change correction.
     - [`simdetec_analysis.ipynb`](#simdetec_analysisipynb) (**WIP**): Part of our pre-SN outburst detection analysis. An in-depth walkthrough analysis of the generated SimDetecTables and efficiencies for a given SN and its control light curves.
 
 - [Dependencies](#dependencies)
@@ -492,7 +492,7 @@ Arguments will override default config file settings if specified.
 ### `clean.ipynb`
 **WIP**
 
-### `atlas_lc_template_correction.ipynb`
+### `atlas_template_correction.ipynb`
 **WIP**
 
 ### `simdetec_analysis.ipynb`
