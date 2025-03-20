@@ -137,6 +137,7 @@ class OutputReadMe:
 
     def add_uncert_cut_section(self, cut: Cut, percent_cut):
         self.f.write(f"\n\n### Uncertainty cut\n")
+        self.f.write(f"\nSelected uncertainty max value of {cut.max_value}\n")
         self.f.write(
             f"\nTotal percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -167,7 +168,7 @@ class OutputReadMe:
             f'\nPercent of SN light curve above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%'
         )
         self.f.write(
-            f'\nPercent of SN light curve above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%'
+            f'\nPercent of SN light curve above snr_max bound ({hex(cut.params["snr_flag"])}): {stn_percent_cut:0.2f}%'
         )
         self.f.write(
             f'\nPercent of SN light curve above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%'
@@ -286,7 +287,7 @@ class ChiSquareCutTable:
                     "filter",
                     "x2_cut",
                     "use_preSN_lc",
-                    "stn_bound",
+                    "snr_bound",
                     "pct_contamination",
                     "pct_loss",
                 ]
@@ -492,7 +493,7 @@ class CleanLoop:
             lc_temp = self.sn.get_all_controls()
             ix = lc_temp.t.index.values
 
-        limcuts = LimCutsTable(lc_temp, cut.params["stn_bound"], indices=ix)
+        limcuts = LimCutsTable(lc_temp, cut.params["snr_bound"], indices=ix)
         limcuts.calculate_table(
             cut.params["min_cut"], cut.params["max_cut"], cut.params["cut_step"]
         )
@@ -529,7 +530,7 @@ class CleanLoop:
             "filter": self.sn.filt,
             "x2_cut": cut.max_value,
             "use_pre_mjd0_lc": cut.params["use_pre_mjd0_lc"],
-            "stn_bound": cut.params["stn_bound"],
+            "snr_bound": cut.params["snr_bound"],
             "pct_contamination": round(data["Pcontamination"], 2),
             "pct_loss": round(data["Ploss"], 2),
         }
@@ -554,7 +555,7 @@ class CleanLoop:
             f'Percent of data above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%'
         )
         print(
-            f'Percent of data above stn_max bound ({hex(cut.params["stn_flag"])}): {stn_percent_cut:0.2f}%'
+            f'Percent of data above snr_max bound ({hex(cut.params["snr_flag"])}): {stn_percent_cut:0.2f}%'
         )
         print(
             f'Percent of data above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%'
@@ -887,7 +888,7 @@ def parse_config_cuts(args, config):
 
     if args.x2_cut:
         params = {
-            "stn_bound": float(config["x2_cut"]["stn_bound"]),
+            "snr_bound": float(config["x2_cut"]["snr_bound"]),
             "min_cut": int(config["x2_cut"]["min_cut"]),
             "max_cut": int(config["x2_cut"]["max_cut"]),
             "cut_step": int(config["x2_cut"]["cut_step"]),
@@ -909,8 +910,8 @@ def parse_config_cuts(args, config):
             ),
             "x2_max": float(config["controls_cut"]["x2_max"]),
             "x2_flag": hexstring_to_int(config["controls_cut"]["x2_flag"]),
-            "stn_max": float(config["controls_cut"]["stn_max"]),
-            "stn_flag": hexstring_to_int(config["controls_cut"]["stn_flag"]),
+            "snr_max": float(config["controls_cut"]["snr_max"]),
+            "snr_flag": hexstring_to_int(config["controls_cut"]["snr_flag"]),
             "Nclip_max": int(config["controls_cut"]["Nclip_max"]),
             "Nclip_flag": hexstring_to_int(config["controls_cut"]["Nclip_flag"]),
             "Ngood_min": int(config["controls_cut"]["Ngood_min"]),

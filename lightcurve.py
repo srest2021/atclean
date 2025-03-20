@@ -947,7 +947,7 @@ class Supernova:
     def prep_for_cleaning(self, verbose=False):
         if verbose:
             print(
-                'Adding blank "Mask" columns, replacing infs with NaNs, and calculating flux/dflux...'
+                f"Adding blank '{self.colnames_master.mask}' columns, replacing infs with NaNs, and calculating flux/dflux..."
             )
 
         for control_index in self.get_all_indices():
@@ -1125,7 +1125,7 @@ class Supernova:
                 cut.flag
                 | cut.params["questionable_flag"]
                 | cut.params["x2_flag"]
-                | cut.params["stn_flag"]
+                | cut.params["snr_flag"]
                 | cut.params["Nclip_flag"]
                 | cut.params["Ngood_flag"]
             ),
@@ -1152,7 +1152,7 @@ class Supernova:
             100
             * len(
                 self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["stn_flag"]
+                    self.colnames_master.mask, maskval=cut.params["snr_flag"]
                 )
             )
             / len_ix
@@ -1456,7 +1456,7 @@ class LightCurve(pdastrostatsclass):
 
         # calculate flux/dflux
         if verbose:
-            print("Calculating flux/dflux...")
+            print(f"Calculating flux/dflux in for '{self.colnames.fdf}' column...")
         self.t[self.colnames.fdf] = (
             self.t[self.colnames.flux] / self.t[self.colnames.dflux_new]
         )
@@ -1505,7 +1505,7 @@ class LightCurve(pdastrostatsclass):
             colnames=["c2_X2norm"], lowlim=cut.params["x2_max"], exclude_lowlim=True
         )
         flag_stn_ix = self.ix_inrange(
-            colnames=["c2_abs_stn"], lowlim=cut.params["stn_max"], exclude_lowlim=True
+            colnames=["c2_abs_stn"], lowlim=cut.params["snr_max"], exclude_lowlim=True
         )
         flag_nclip_ix = self.ix_inrange(
             colnames=["c2_Nclip"], lowlim=cut.params["Nclip_max"], exclude_lowlim=True
@@ -1514,7 +1514,7 @@ class LightCurve(pdastrostatsclass):
             colnames=["c2_Ngood"], uplim=cut.params["Ngood_min"], exclude_uplim=True
         )
         self.update_mask_column(cut.params["x2_flag"], flag_x2_ix)
-        self.update_mask_column(cut.params["stn_flag"], flag_stn_ix)
+        self.update_mask_column(cut.params["snr_flag"], flag_stn_ix)
         self.update_mask_column(cut.params["Nclip_flag"], flag_nclip_ix)
         self.update_mask_column(cut.params["Ngood_flag"], flag_ngood_ix)
 
@@ -1523,7 +1523,7 @@ class LightCurve(pdastrostatsclass):
         unmasked_ix = self.ix_unmasked(
             self.colnames.mask,
             maskval=cut.params["x2_flag"]
-            | cut.params["stn_flag"]
+            | cut.params["snr_flag"]
             | cut.params["Nclip_flag"]
             | cut.params["Ngood_flag"],
         )
@@ -2018,7 +2018,7 @@ class LightCurve(pdastrostatsclass):
 
 
 class LimCutsTable:
-    def __init__(self, lc: LightCurve, stn_bound, indices=None):
+    def __init__(self, lc: LightCurve, snr_bound, indices=None):
         self.t = None
 
         self.lc = lc
@@ -2026,16 +2026,16 @@ class LimCutsTable:
             indices = self.lc.getindices()
         self.indices = indices
 
-        self.good_ix, self.bad_ix = self.get_goodbad_indices(stn_bound)
+        self.good_ix, self.bad_ix = self.get_goodbad_indices(snr_bound)
 
-    def get_goodbad_indices(self, stn_bound):
+    def get_goodbad_indices(self, snr_bound):
         if not self.lc.colnames.fdf in self.lc.t.columns:
             self.lc.calculate_fdf_column()
 
         good_ix = self.lc.ix_inrange(
             colnames=[self.lc.colnames.fdf],
-            lowlim=-stn_bound,
-            uplim=stn_bound,
+            lowlim=-snr_bound,
+            uplim=snr_bound,
             indices=self.indices,
         )
         bad_ix = AnotB(self.indices, good_ix)
