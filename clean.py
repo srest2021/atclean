@@ -886,7 +886,7 @@ def parse_config_cuts(args, config, colnames):
 
     if args.uncert_cut:
         uncert_cut = Cut(
-            column=colnames.flux,
+            column=colnames.dflux,
             max_value=float(config["uncert_cut"]["max_value"]),
             flag=hexstring_to_int(config["uncert_cut"]["flag"]),
         )
