@@ -865,7 +865,7 @@ def find_config_custom_cuts(config: ConfigParser):
     return custom_cuts
 
 
-def parse_config_cuts(args, config):
+def parse_config_cuts(args, config, colnames):
     cut_list = CutList()
     if args.custom_cuts:
         config_custom_cuts = find_config_custom_cuts(config)
@@ -886,7 +886,7 @@ def parse_config_cuts(args, config):
 
     if args.uncert_cut:
         uncert_cut = Cut(
-            column="duJy",
+            column=colnames.flux,
             max_value=float(config["uncert_cut"]["max_value"]),
             flag=hexstring_to_int(config["uncert_cut"]["flag"]),
         )
@@ -902,7 +902,7 @@ def parse_config_cuts(args, config):
             "use_pre_mjd0_lc": config["x2_cut"]["use_pre_mjd0_lc"] == "True",
         }
         x2_cut = Cut(
-            column="chi/N",
+            column=colnames.chisquare,
             max_value=float(config["x2_cut"]["max_value"]),
             flag=hexstring_to_int(config["x2_cut"]["flag"]),
             params=params,
@@ -1154,7 +1154,7 @@ if __name__ == "__main__":
     )
     print(f"Number of control light curves to clean: {num_controls}")
 
-    cut_list = parse_config_cuts(args, config)
+    cut_list = parse_config_cuts(args, config, colnames)
 
     print()
     credentials = Credentials(

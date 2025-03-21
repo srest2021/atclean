@@ -505,6 +505,7 @@ class DownloadLoop:
             self.lcs[0] = FullLightCurve(0)
 
         # try to query TNS for any missing data
+        self.credentials.validate_tns_credentials()
         self.lcs[0].get_tns_data(
             tnsname,
             self.credentials.tns_api_key,

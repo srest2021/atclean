@@ -233,6 +233,7 @@ class Credentials:
         self.tns_id = parse_config_value(tns_id)
         self.tns_bot_name = parse_config_value(tns_bot_name)
 
+    def validate_tns_credentials(self):
         tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
         not_none_count = sum(param is not None for param in tns_params)
         if 0 < not_none_count < 3:
@@ -667,6 +668,7 @@ def get_mjd0_from_tns(
     else:
         # get MJD0 from TNS
         print(f"\nQuerying TNS for SN {tnsname} discovery date...")
+        credentials.validate_tns_credentials()
         json_data = query_tns(
             tnsname,
             credentials.tns_api_key,
@@ -1773,7 +1775,7 @@ class LightCurve(pdastrostatsclass):
     def apply_cut(self, column_name, flag, min_value=None, max_value=None):
         if not column_name in self.t.columns:
             raise RuntimeError(
-                f"ERROR: No column name '{column_name}' exists in light curve; cannot apply custom cut"
+                f"ERROR: No column name '{column_name}' exists in light curve; cannot apply cut"
             )
 
         all_ix = self.getindices()

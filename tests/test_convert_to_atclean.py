@@ -67,6 +67,8 @@ class TestConvertLightCurve(unittest.TestCase):
             "test_dir", all_columns_to_copy=all_columns_to_copy, overwrite=True
         )
         self.assertNotIn("NonExistentColumn", self.lc.t.columns)
+        self.assertNotIn("RA", self.lc.t.columns)
+        self.assertNotIn("Dec", self.lc.t.columns)
 
 
 class TestConvertLoop(unittest.TestCase):

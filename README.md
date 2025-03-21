@@ -237,9 +237,9 @@ Arguments will override default config file settings if specified.
 - Specify RA and Dec: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.csv -p rubin -o --ra 210.91067124999998 --dec 54.31165527777777`
 - Convert ATLAS SN and control light curves: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.txt path/to/2023ixf_control1.txt path/to/2023ixf_control2.txt -i 0 1 2 -o`
 
-Use the following runnable command to convert an example Rubin light curve in `extern/rubin_example.csv` to ATClean-readable format:
+Use the following runnable command to convert an example Rubin light curve at `extern/rubin_example.csv` to ATClean-readable format:
 
-    convert_to_atclean.py example_SN -f extern/rubin_example.csv -p rubin -o
+    ./convert_to_atclean.py example_SN -f extern/rubin_example.csv -p rubin -o
 
 ### `clean.py`
 
@@ -474,7 +474,7 @@ Arguments will override default config file settings if specified.
 
 This script allows you to generate a summary PDF file of diagnostic plots based on existing cleaned and/or averaged light curves.
 
-To instead generate this summary PDF file while running the cleaning script, add `-p` to your `clean.py` command. An example is available [here](#example-command-plot).
+To instead generate this summary PDF file while running the cleaning script, add `--plot` to your `clean.py` command. 
 
 #### Arguments
 Arguments will override default config file settings if specified.
