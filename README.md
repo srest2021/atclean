@@ -8,9 +8,9 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
 
 - [Python Scripts](#python-scripts)
     - [Install dependencies](#install-dependencies): Install the necessary dependencies.
-    - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert.py`, `download.py`, and `clean.py` scripts.
+    - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert_to_atclean.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
-    - [`convert.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
+    - [`convert_to_atclean.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
     - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
     - [`generate_sim_tables.py`](#generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
@@ -31,12 +31,12 @@ View [Dependencies](#dependencies) for a comprehensive list of dependencies. Run
 
 ### Setup in `config.ini`
 
-Open the `config.ini` file, which contains configuration for input/output directory paths, `convert.py`, `download.py`, and `clean.py`. The following toggles describe each field section by section. Bolded fields denote fields that we urge the user to change before attempting to use the scripts.
+Open the `config.ini` file, which contains configuration for input/output directory paths, `convert_to_atclean.py`, `download.py`, and `clean.py`. The following toggles describe each field section by section. Bolded fields denote fields that we urge the user to change before attempting to use the scripts.
 
 Note that these configurations may also be overridden by command line arguments.
 
 #### Input/output directory paths: `dir` config section
-- **`atclean_input`**: This parameter specifies the path to the directory where light curves that are in ATClean-readable format are stored. These files have either been directly downloaded from the ATLAS server by `download.py` or converted from their raw formats by `convert.py`.
+- **`atclean_input`**: This parameter specifies the path to the directory where light curves that are in ATClean-readable format are stored. These files have either been directly downloaded from the ATLAS server by `download.py` or converted from their raw formats by `convert_to_atclean.py`.
 
 - **`output`**: This parameter designates the path to the directory where all output data, including cleaned and binned light curves, plots, efficiency tables, and other results, will be saved. This directory serves as the main repository for the results produced by the ATClean pipeline.
 
@@ -169,7 +169,7 @@ Arguments will override default config file settings if specified.
 - Change the center location of the control light curve circle pattern: `./download.py 2020lse -c --closebright 10:41:02.290,-27:05:00.52 -o`
 - Specify control light curve coordinates `./download.py 2020lse -c --ctrl_coords /path/to/control_coordinates_table.txt -o`
 
-### `convert.py`
+### `convert_to_atclean.py`
 
 **WIP**
 
