@@ -183,7 +183,7 @@ Functionality:
 * Converts light curve data from different surveys (e.g., Rubin, TESS) into a standardized format using the specified preset configuration (column_name_preset.<SURVEY_NAME> in `config.ini`).
 * Allows users to retain additional columns via the `extra_columns` field in `config.ini`.
 * Searches for RA, Dec, and discovery date information from the command line and the light curves' RA and Dec columns. Saves this information to `snlist.txt` if found. 
-* Outputs files in a structured format under the directory specified by the `atclean_input` field in `config.ini`.
+* Outputs files in under the directory specified by the `atclean_input` field in `config.ini`. Files will adhere to the ATClean filename scheme, will be split by filter, and undergo several data preprocessing steps. 
 
 #### `column_name_preset` config sections in `config.ini`
 
@@ -230,6 +230,10 @@ Arguments will override default config file settings if specified.
 - Convert a single Rubin light curve CSV file: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.csv -p rubin -o`
 - Specify RA and Dec: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.csv -p rubin -o --ra 210.91067124999998 --dec 54.31165527777777`
 - Convert ATLAS SN and control light curves: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.txt path/to/2023ixf_control1.txt path/to/2023ixf_control2.txt -i 0 1 2 -o`
+
+Use the following runnable command to convert an example Rubin light curve in `extern/rubin_example.csv` to ATClean-readable format:
+
+    convert_to_atclean.py example_SN -f extern/rubin_example.csv -p rubin -o
 
 ### `clean.py`
 

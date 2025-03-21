@@ -41,14 +41,14 @@ class ConvertLightCurve(LightCurve):
         colnames: PresetColumnNames,
         control_index: int = 0,
     ):
-        LightCurve.__init__(self, control_index)
+        LightCurve.__init__(self, colnames, control_index)
         self.obj_name: str = obj_name
-        self.colnames: PresetColumnNames = colnames
+        # self.colnames: PresetColumnNames = colnames
 
     def load_raw_t(self, filename: str):
         """Load raw light curve data from file (CSV or whitespace-separated)."""
         print(
-            f"\n# Loading raw light curve (control index {self.control_index}) at {filename}..."
+            f"\nLoading raw light curve (control index {self.control_index}) at {filename}..."
         )
         if filename.endswith(".csv"):
             self.t = pd.read_csv(filename)
@@ -167,8 +167,11 @@ class ConvertLightCurve(LightCurve):
             self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
         # only keep necessary columns
-        if not all_columns_to_copy is None:
-            self.t = self.t[all_columns_to_copy]
+        if all_columns_to_copy is not None:
+            existing_columns = [
+                col for col in all_columns_to_copy if col in self.t.columns
+            ]
+            self.t = self.t[existing_columns]
 
         # save
         if self.colnames.filt is None:
