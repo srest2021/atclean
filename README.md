@@ -10,14 +10,14 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
     - [Install dependencies](#install-dependencies): Install the necessary dependencies.
     - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert_to_atclean.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
-    - [`convert_to_atclean.py`](#convertpy) (**WIP**): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
+    - [`convert_to_atclean.py`](#convertpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
     - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
     - [`generate_sim_tables.py`](#generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
     - [`generate_detec_tables.py`](#generate_detec_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. For each row in each SimTable, add the simulation to a random control light curve and record its max FOM and MJD, then update the rows and save as SimDetecTables. Optionally calculate efficiencies using specified FOM detection limits.
 
 - [Jupyter Notebooks](#jupyter-notebooks)
-    - [`clean.ipynb`](#cleanipynb) (**WIP**): An in-depth walkthrough of our cleaning and binning process for a single SN and its control light curves. 
+    - [`clean.ipynb`](#cleanipynb): An in-depth walkthrough of our cleaning and binning process for a single SN and its control light curves. 
     - [`atlas_template_correction.ipynb`](#atlas_template_correctionipynb): A standalone walkthrough of our ATLAS template change correction.
     - [`simdetec_analysis.ipynb`](#simdetec_analysisipynb) (**WIP**): Part of our pre-SN outburst detection analysis. An in-depth walkthrough analysis of the generated SimDetecTables and efficiencies for a given SN and its control light curves.
 
@@ -41,6 +41,12 @@ Note that these configurations may also be overridden by command line arguments.
 - **`output`**: This parameter designates the path to the directory where all output data, including cleaned and binned light curves, plots, efficiency tables, and other results, will be saved. This directory serves as the main repository for the results produced by the ATClean pipeline.
 
 - `sninfo_filename`: This parameter provides the name of the SN info file located inside the output directory. This space-separated `.txt` file contains essential information about SNe, including the TNS name and optionally the RA, Dec, and MJD0 (MJD at which the transient begins). This file may be provided manually with the correct column names (`tnsname`, `ra`, `dec`, and `mjd0`, with blank fields denoted by `NaN`) or generated and updated automatically if TNS credentials are provided.
+
+#### Column name presets for ATLAS, Rubin, and Tess: `column_name_preset.<SURVEY NAME>` config sections
+
+These sections specify the arbitrary column names for the supported surveys. Column names are customizable and need to be accessed in `convert_to_atclean.py`, `clean.py`, etc. You can specify which preset to use via the `-p` or `--preset` argument (default is `atlas`). We recommend that you leave the ATLAS column name preset untouched!
+
+Columns required for the scripts to run are MJD, flux, and dflux (i.e., flux error or uncertainty). Optional columns like chi-square, filter, magnitude, etc. can be `None`, but the script will throw an error if a process you run requires it. When using `convert_to_atclean.py` to convert a file to ATClean-readable format, the `extra_columns` field allows you to keep any other columns relevant to you that may not be used in ATClean scripts.
 
 #### Credentials for TNS API and ATLAS server: `credentials` config section
 
@@ -171,54 +177,92 @@ Arguments will override default config file settings if specified.
 
 ### `convert_to_atclean.py`
 
-**WIP**
+This script converts non-ATLAS light curves (and optionally their control light curves) into an ATClean-readable format. The resulting files can then be processed by other ATClean scripts, such as `clean.py` and `plotloop.py`.
+
+Functionality:
+* Converts light curve data from different surveys (e.g., Rubin, TESS) into a standardized format using the specified preset configuration (column_name_preset.<SURVEY_NAME> in `config.ini`).
+* Allows users to retain additional columns via the `extra_columns` field in `config.ini`.
+* Searches for RA, Dec, and discovery date information from the command line and the light curves' RA and Dec columns. Saves this information to `snlist.txt` if found. 
+* Outputs files in a structured format under the directory specified by the `atclean_input` field in `config.ini`.
 
 #### `column_name_preset` config sections in `config.ini`
 
-**WIP**
-<!-- 
-- `mjd_column_name`: The name of the column in the raw input data that contains MJD values.
-
-- `flux_column_name`: The name of the column in the raw input data that contains flux values.
-
-- `uncertainty_column_name`: The name of the column in the raw input data that contains flux error or uncertainty values.
-
-- `chisquare_column_name` (optional, can be set to `None`): The name of the column in the raw input data that contains chi-square values.
-
-- `filter_column_name` (optional, can be set to `None` for one filter): The name of the column in the raw input data that contains filter values.
-
-- `filters`: A comma-separated list of filters as they appear in the filter column. If only one filter is used, provide a short identifier for that filter to be used in the filenames (for example, `tess` for TESS light curves). This parameter helps in distinguishing data from different filters or surveys. -->
+Visit [Setup in `config.ini`](#setup-in-configini) to read more about these sections.
 
 #### Arguments
-**WIP**
+Arguments will override default config file settings if specified.
+- First provide the name of the object to convert. 
+- `-p`, `--preset`: Specifies the column name preset from the config file (e.g., `atlas`, `rubin`, `tess`).
+    - Type: str
+    - Default: `atlas`
+    - Usage: `-p rubin` or `--preset tess`
+- `--mjd0`: The start date of the SN in MJD.
+    - Type: float
+    - Default: `None` 
+    - Usage: `--mjd0 58800.0`
+- `--ra`: The Right Ascension (RA) of the SN in degrees or HMS.
+    - Type: float
+    - Default: `None`
+    - Usage: `--ra 210.91067124999998`
+- `--dec`: The Declination (Dec) of the SN in degrees or DMS.
+    - Type: float
+    - Default: `None`
+    - Usage: `--dec 54.31165527777777`
+- `-f`, `--filenames`: Specifies one or more file paths to convert.
+    - Type: str (one or more)
+    - Required: Yes
+    - Usage: `-f path/to/sn_lc.txt path/to/control_lc1.txt path/to/control_lc2.txt`
+- `-i`, `--control_indices`: Specifies one or more ordered control indices, each corresponding to a file path in `-f`.
+    - Type: int (one or more)
+    - Default: `[0]`
+    - Usage: `-i 0 1 2`
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+- `-o`, `--overwrite`: If specified, existing files with the same name will be overwritten.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-o` or `--overwrite`
 
 #### Example commands
-**WIP**
+- Convert a single ATLAS light curve: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.txt -o`
+- Convert a single Rubin light curve CSV file: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.csv -p rubin -o`
+- Specify RA and Dec: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.csv -p rubin -o --ra 210.91067124999998 --dec 54.31165527777777`
+- Convert ATLAS SN and control light curves: `convert_to_atclean.py 2023ixf -f path/to/2023ixf_lc.txt path/to/2023ixf_control1.txt path/to/2023ixf_control2.txt -i 0 1 2 -o`
 
 ### `clean.py`
 
-This script allows you to run a series of customized cuts and binning on ATClean-readable files located in directory specified by the  `atclean_input` field in `config.ini`. All cleaned and/or binned light curve files will be storied in the directory specified by the `output` field in `config.ini`.
+This script allows you to run a series of customized cuts and binning on ATClean-readable files located in directory specified by the  `atclean_input` field in `config.ini`. All cleaned and binned light curve, plots, and an informative output README file will be storied in the directory specified by the `output` field in `config.ini`.
 
 Configuration for each cut, as well as an option to add custom cuts for other columns, is located in `config.ini`. Arguments are used to determine which cuts are actually applied.
 
 #### True uncertainties estimation: `uncert_est` config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 We also attempt to account for an extra noise source in the data by estimating the true typical uncertainty, deriving the additional systematic uncertainty, and applying this extra noise to a new uncertainty column. This new uncertainty column will be used in the cuts following this section.
 
 - `temp_x2_max_value`: A temporary, very high chi-square cut value used to eliminate the most egregious outliers from the data. This is an initial step in uncertainty estimation to ensure grossly incorrect data points are removed.
 
 To read more about how we calculate the true uncertainties, please refer to Section 3.1.2 of our paper (link at the top of this documentation).
+</details>
 
 #### Uncertainty cut: `uncert_cut` config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 The uncertainty cut flags any measurements with $\delta \mu \text{Jy}$ > `max_value` (currently set to a default value of 160, or the the typical uncertainty of bright stars just below the saturation limit). 
 
 - `max_value`: The maximum allowable value for the uncertainties (`duJy` column). Measurements with uncertainties above this threshold will be flagged.
 
 - `flag`: The flag value *in hex* assigned to measurements that exceed the maximum allowable uncertainty.
+</details>
 
 #### PSF chi-square cut: `x2_cut` config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 The PSF chi-square cut flags any measurements with $\chi^2_\text{PSF}$ > `max_value`.
 
 - `max_value`: The maximum allowable value for the PSF chi-squares (`chi/N` column). Measurements with a chi-square above this threshold will be flagged.
@@ -240,9 +284,12 @@ We use two factors, <strong>contamination</strong> and <strong>loss</strong>, to
 To read more about how we calculate contamination and loss, please refer to Section 3.1.3 of our paper (link at the top of this documentation).
 
 <strong>Warning:</strong> For very bright SNe, the chi-square values may increase during the SN even for good measurements due to imperfection in PSF fitting. Therefore, we recommend that the user double-check the chi-square values or the output plots to verify that the cut is working as intended, and change `max_value` if needed.
+</details>
 
 #### Control light curve cut: `controls_cut` config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 The control light curve cut uses a set of quality control light curves to determine the reliability of each SN measurement. Since we know that control light curve flux must be consistent with 0, any lack of consistency may indicate something wrong with the SN measurement at this epoch. 
 
 Note that this cut may not greatly affect certain SNe depending on the quality of the light curve. Its main purpose is to account for inconsistent flux in the case of systematic interference from bright objects, etc. that also affect the area around the SN. Therefore, normal SN light curves will usually see <1%-2% of data flagged as bad in this cut.
@@ -272,9 +319,12 @@ The following criteria are used on the calculated statistics of each epoch, *not
     - `Ngood_flag`: The flag value *in hex* assigned to epochs with the number of good control measurements falling below `Ngood_min`.
 
 To read more about how we determine which epochs are "bad" or "questionable", please refer to Section 3.1.4 of our paper (link at the top of this documentation).
+</details>
 
 #### Additional static cuts: custom cuts config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 Custom cuts run during cleaning allow you to define additional filtering criteria based on specific column values. We provide an example template for specifying custom cuts below. 
 
 ```
@@ -294,9 +344,12 @@ Note that the section title of the cut (in the above example, `[example_cut]`) m
 - `min_value`: The minimum allowable value for the specified column. Measurements with values falling below this threshold will be flagged. This parameter can be set to `None` if no lower limit is required.
 
 - `flag`: The flag value *in hex* assigned to measurements that do not meet the defined criteria. Flag values of `0x1000000` and above are available for use in custom cuts.
+</details>
 
 #### Averaging light curves and the bad day cut: `averaging` config section in `config.ini`
 
+<details>
+<summary>Click to read more</summary>
 Our goal with the averaging procedure is to identify and cut out bad days. For both the SN and control locations, we bin the light curve and perform a $3\sigma$-clipped average on the unflagged measurements in each bin. We use the calculated average and its error as flux and uncertainty values in the averaged light curves.
 
 - `bad_flag`: The flag value *in hex* assigned to measurements identified as "bad".
@@ -316,10 +369,15 @@ The following criteria are used on the calculated statistics of each bin, *not t
 - `Ngood_min`: The threshold of good measurements for a bin. 
 
 To read more about how we determine which bins are "bad", please refer to Section 3.3 of our paper (link at the top of this documentation).
+</details>
 
 #### Arguments
 Arguments will override default config file settings if specified.
-- First provide TNS name(s) of the object(s) to download. 
+- First provide TNS name(s) of the object(s) to clean. 
+- `-p`, `--preset`: Specifies the column name preset from the config file (e.g., `atlas`, `rubin`, `tess`).
+    - Type: str
+    - Default: `atlas`
+    - Usage: `-p rubin` or `--preset tess`
 - `--sninfo_file`: Specifies the SN info file name. 
     - Type: str
     - Default: `None` (i.e., the `sninfo_filename` field in `config.ini`)
@@ -411,6 +469,10 @@ To instead generate this summary PDF file while running the cleaning script, add
 #### Arguments
 Arguments will override default config file settings if specified.
 - First provide TNS name(s) of the object(s) to download. 
+- `-p`, `--preset`: Specifies the column name preset from the config file (e.g., `atlas`, `rubin`, `tess`).
+    - Type: str
+    - Default: `atlas`
+    - Usage: `-p rubin` or `--preset tess`
 - `--config_file`: Specifies the file name of the .ini file with settings for this script.
     - Type: str
     - Default: `config.ini`
@@ -490,7 +552,7 @@ Arguments will override default config file settings if specified.
 ## Jupyter Notebooks
 
 ### `clean.ipynb`
-**WIP**
+Perform the same procedures that [`clean.py`](#cleanpy) can, in a more user-friendly and step-by-step format. This notebook works on a single ATClean-readable SN and its control light curves. After cleaning and binning, the light curves and an informative output README are saved to user-specified output directories.
 
 ### `atlas_template_correction.ipynb`
 **WIP**

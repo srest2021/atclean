@@ -29,6 +29,13 @@ from download import (
 from plot import PlotPdf
 
 
+def reformat_dir(directory: str, tnsname: str):
+    """Removes tnsname and trailing slash from the end of directory path if present."""
+    if directory.endswith(tnsname):
+        return directory[: -len(tnsname)].rstrip(os.sep)
+    return directory
+
+
 def hexstring_to_int(hexstring):
     return int(hexstring, 16)
 

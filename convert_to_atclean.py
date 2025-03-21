@@ -341,7 +341,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--filenames",
         nargs="+",
         type=str,
-        help="one or more file names in raw_input directory to convert",
+        help="one or more file paths to convert",
     )
     parser.add_argument(
         "-i",
