@@ -70,6 +70,12 @@ To set up a TNS bot and get an API key, login to TNS, then navigate [here](https
 
 Navigate to your cloned repository and run the following command to add executable permission to all `.py` files: `chmod a+x *.py`.
 
+### Tests
+
+To run tests, run the following command from inside the `atclean` directory:
+
+    python -m unittest discover -s tests
+
 ### `download.py`
 
 This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). All downloaded files will be storied in the directory specified by the `atclean_input` field in `config.ini`. Make sure to add your ATLAS username and password to the `credentials` section in `config.ini`. 

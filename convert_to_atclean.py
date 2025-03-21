@@ -68,7 +68,7 @@ class ConvertLightCurve(LightCurve):
 
     def check_single_value_column(self, col_name: str):
         """Ensure a column contains only a single unique value (e.g., RA/Dec consistency check)."""
-        if col_name and self.t[col_name].nunique() != 1:
+        if col_name and not self.t[col_name].empty and self.t[col_name].nunique() != 1:
             raise RuntimeError(
                 f"ERROR: Different values found in {col_name} column (control index {self.control_index})"
             )
@@ -80,10 +80,10 @@ class ConvertLightCurve(LightCurve):
             # if RA and Dec columns present, get coords from there
             if not self.colnames.ra is None:
                 self.check_single_value_column(self.colnames.ra)
-                coords.set_RA(self.t.loc[0, self.colnames.ra])
+                coords.set_RA(self.t[self.colnames.ra].iloc[0])
             if not self.colnames.dec is None:
                 self.check_single_value_column(self.colnames.dec)
-                coords.set_Dec(self.t.loc[0, self.colnames.dec])
+                coords.set_Dec(self.t[self.colnames.dec].iloc[0])
         return coords
 
     def get_coords(self, arg_ra=None, arg_dec=None) -> Coordinates:
@@ -212,7 +212,7 @@ class ConvertLoop:
             )
         if len(filenames) != len(control_indices):
             raise RuntimeError(
-                f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(args.filenames)}): {args.filenames}\n\tcontrol indices (len {len(args.control_indices)}): {args.control_indices}"
+                f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(filenames)}): {filenames}\n\tcontrol indices (len {len(control_indices)}): {control_indices}"
             )
 
         for control_index in control_indices:
