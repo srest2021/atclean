@@ -67,7 +67,7 @@ class ConvertLightCurve(LightCurve):
         """Ensure a column contains only a single unique value (e.g., RA/Dec consistency check)."""
         if col_name and not self.t[col_name].empty and self.t[col_name].nunique() != 1:
             raise RuntimeError(
-                f"ERROR: Different values found in {col_name} column (control index {self.control_index})"
+                f"Different values found in {col_name} column (control index {self.control_index})"
             )
 
     def find_coords_in_t(self) -> Coordinates:
@@ -205,11 +205,11 @@ class ConvertLoop:
     def validate_args(filenames, control_indices):
         if len(filenames) < 1:
             raise RuntimeError(
-                "ERROR: Please provide at least one file name using the -f argument"
+                "Please provide at least one file name using the -f argument"
             )
         if len(filenames) != len(control_indices):
             raise RuntimeError(
-                f"ERROR: Each file name must have a corresponding control index \n\tfile names (len {len(filenames)}): {filenames}\n\tcontrol indices (len {len(control_indices)}): {control_indices}"
+                f"Each file name must have a corresponding control index \n\tfile names (len {len(filenames)}): {filenames}\n\tcontrol indices (len {len(control_indices)}): {control_indices}"
             )
 
         for control_index in control_indices:
@@ -376,7 +376,7 @@ if __name__ == "__main__":
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
         raise RuntimeError(
-            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
 
     print(f"\nLoading {args.preset} preset column names from config.ini...")

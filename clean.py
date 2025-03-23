@@ -3,22 +3,15 @@
 from configparser import ConfigParser
 import os
 import re
-from typing import Callable, List
+from typing import Callable, Dict, List
 import sys, argparse
 import pandas as pd
 import numpy as np
 from copy import deepcopy
 from lightcurve import (
-    DEFAULT_CUT_NAMES,
-    Cut,
-    CutList,
     LimCutsTable,
-    PresetColumnNames,
-    SnInfoTable,
     Supernova,
     AveragedSupernova,
-    get_allowed_presets,
-    get_mjd0_from_tns,
 )
 from download import (
     Credentials,
@@ -27,17 +20,23 @@ from download import (
     parse_comma_separated_string,
 )
 from plot import PlotPdf
-
-
-def reformat_dir(directory: str, tnsname: str):
-    """Removes tnsname and trailing slash from the end of directory path if present."""
-    if directory.endswith(tnsname):
-        return directory[: -len(tnsname)].rstrip(os.sep)
-    return directory
-
-
-def hexstring_to_int(hexstring):
-    return int(hexstring, 16)
+from utils import (
+    CONFIG_CUT_NAMES,
+    BadDayCut,
+    ChiSquareCut,
+    ControlLightCurveCut,
+    CustomCut,
+    UncertaintyCut,
+    UncertaintyEstimation,
+    hexstring_to_int,
+    Cut,
+    CutList,
+    SnInfoTable,
+    get_allowed_presets,
+    get_mjd0_from_tns,
+    PresetColumnNames,
+    parse_config_str,
+)
 
 
 class OutputReadMe:
@@ -53,11 +52,8 @@ class OutputReadMe:
         print("Success")
 
     def begin(self, num_controls=0):
-        badday_cut = self.cut_list.get("badday_cut")
-        if badday_cut:
-            mjdbinsize = badday_cut.params["mjd_bin_size"]
-        else:
-            mjdbinsize = 1.0
+        badday_cut = self.cut_list.get(BadDayCut.name())
+        mjdbinsize = 1.0 if badday_cut is None else badday_cut.mjd_bin_size
 
         self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
         self.f.write(
@@ -73,11 +69,11 @@ class OutputReadMe:
         self.f.write(
             f"\n\t- Cleaned SN light curves: {self.tnsname}.o.clean.lc.txt and {self.tnsname}.c.clean.lc.txt"
         )
-        if self.cut_list.has("badday_cut"):
+        if self.cut_list.has(BadDayCut.name()):
             self.f.write(
                 f"\n\t- Averaged light curves (for MJD bin size {mjdbinsize:0.2f} days): {self.tnsname}.o.{mjdbinsize:0.2f}days.lc.txt and {self.tnsname}.c.{mjdbinsize:0.2f}days.lc.txt"
             )
-        if self.cut_list.has("controls_cut"):
+        if self.cut_list.has(ControlLightCurveCut.name()):
             self.f.write(
                 f"\n\t- Control light curves, where X=001,...,{num_controls:03d}: {self.tnsname}_iX.o.lc.txt and {self.tnsname}_iX.c.lc.txt"
             )
@@ -85,28 +81,26 @@ class OutputReadMe:
         self.f.write(
             f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): '
         )
-        if self.cut_list.has("uncert_cut"):
+        if self.cut_list.has(UncertaintyCut.name()):
             self.f.write(
-                f'\n\t- Uncertainty cut: {hex(self.cut_list.get("uncert_cut").flag)}'
+                f"\n\t- Uncertainty cut: {hex(self.cut_list.get(UncertaintyCut.name()).flag)}"
             )
-        if self.cut_list.has("x2_cut"):
+        if self.cut_list.has(ChiSquareCut.name()):
             self.f.write(
-                f'\n\t- Chi-square cut: {hex(self.cut_list.get("x2_cut").flag)}'
+                f"\n\t- Chi-square cut: {hex(self.cut_list.get(ChiSquareCut.name()).flag)}"
             )
-        if self.cut_list.has("controls_cut"):
+        if self.cut_list.has(ControlLightCurveCut.name()):
             self.f.write(
-                f'\n\t- Control light curve cut: {hex(self.cut_list.get("controls_cut").flag)}'
+                f"\n\t- Control light curve cut: {hex(self.cut_list.get(ControlLightCurveCut.name()).flag)}"
             )
-        if self.cut_list.has("badday_cut"):
+        if badday_cut is not None:
             self.f.write(
-                f'\n\t- Bad day (for averaged light curves only): {hex(self.cut_list.get("badday_cut").flag)}'
+                f"\n\t- Bad day (for averaged light curves only): {hex(badday_cut.flag)}"
             )
 
         custom_cuts = self.cut_list.get_custom_cuts()
-        for name in custom_cuts:
-            self.f.write(
-                f'\n\t- Custom cut {name[-1]} on "{self.cut_list.get(name).column}" column: {hex(self.cut_list.get(name).flag)}'
-            )
+        for cut in custom_cuts.values():
+            self.f.write(f'\n\t- Custom cut on "{cut.column}" column: {hex(cut.flag)}')
 
     def add_filter_section(self, filt):
         self.f.write(f"\n\n## FILTER: {filt}")
@@ -142,7 +136,7 @@ class OutputReadMe:
                 "\nTrue uncertainties estimation not needed; procedure skipped."
             )
 
-    def add_uncert_cut_section(self, cut: Cut, percent_cut):
+    def add_uncert_cut_section(self, cut: UncertaintyCut, percent_cut):
         self.f.write(f"\n\n### Uncertainty cut\n")
         self.f.write(f"\nSelected uncertainty max value of {cut.max_value}\n")
         self.f.write(
@@ -150,7 +144,7 @@ class OutputReadMe:
         )
 
     def add_x2_cut_section(
-        self, cut: Cut, percent_contamination, percent_loss, percent_cut
+        self, cut: ChiSquareCut, percent_contamination, percent_loss, percent_cut
     ):
         self.f.write(f"\n\n### Chi-square cut\n")
         self.f.write(
@@ -162,7 +156,7 @@ class OutputReadMe:
 
     def add_controls_cut_section(
         self,
-        cut: Cut,
+        cut: ControlLightCurveCut,
         x2_percent_cut,
         stn_percent_cut,
         Nclip_percent_cut,
@@ -172,16 +166,16 @@ class OutputReadMe:
     ):
         self.f.write(f"\n\n### Control light curve cut\n")
         self.f.write(
-            f'\nPercent of SN light curve above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%'
+            f"\nPercent of SN light curve above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
         )
         self.f.write(
-            f'\nPercent of SN light curve above snr_max bound ({hex(cut.params["snr_flag"])}): {stn_percent_cut:0.2f}%'
+            f"\nPercent of SN light curve above snr_max bound ({hex(cut.snr_flag)}): {stn_percent_cut:0.2f}%"
         )
         self.f.write(
-            f'\nPercent of SN light curve above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%'
+            f"\nPercent of SN light curve above Nclip_max bound ({hex(cut.Nclip_flag)}): {Nclip_percent_cut:0.2f}%"
         )
         self.f.write(
-            f'\nPercent of SN light curve below Ngood_min bound ({hex(cut.params["Ngood_flag"])}): {Ngood_percent_cut:0.2f}%'
+            f"\nPercent of SN light curve below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
         )
         self.f.write(
             f'\nTotal percent of SN light curve flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%'
@@ -195,7 +189,7 @@ class OutputReadMe:
             f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.'
         )
         self.f.write(
-            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}"
+            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
 
         self.f.write(f"\n\n### Bad day cut (averaging)\n")
@@ -205,8 +199,8 @@ class OutputReadMe:
             f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
         )
 
-    def add_custom_cut_section(self, name, cut: Cut, percent_cut):
-        self.f.write(f"\n\n### Custom cut {name[-1]}\n")
+    def add_custom_cut_section(self, cut: CustomCut, percent_cut):
+        self.f.write(f"\n\n### {cut.name}\n")
         self.f.write(
             f"\nTotal percent of SN light curve flagged ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
@@ -255,7 +249,7 @@ class UncertEstTable:
             )[0]
             if len(matching_ix) > 1:
                 raise RuntimeError(
-                    f"ERROR: true uncertainties estimation table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}"
+                    f"true uncertainties estimation table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}"
                 )
 
             if len(matching_ix) > 0:
@@ -310,7 +304,7 @@ class ChiSquareCutTable:
             )[0]
             if len(matching_ix) > 1:
                 raise RuntimeError(
-                    f"ERROR: chi-square cut table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}"
+                    f"chi-square cut table has {len(matching_ix)} matching rows for TNS name {tnsname} and filter {filt}"
                 )
 
             if len(matching_ix) > 0:
@@ -358,7 +352,7 @@ class CleanLoop:
             self.output_dir, filename=sninfo_filename
         )
         self.uncert_est_info: UncertEstTable = UncertEstTable(self.output_dir)
-        if cut_list.has("x2_cut"):
+        if cut_list.has(ChiSquareCut.name()):
             self.x2_cut_info: ChiSquareCutTable = ChiSquareCutTable(self.output_dir)
 
     def apply_template_correction(
@@ -384,7 +378,9 @@ class CleanLoop:
         if plot:
             self.p.plot_template_correction(self.sn.lcs[0])
 
-    def check_uncert_est(self, cut: Cut, apply_function: Callable, plot: bool = False):
+    def check_uncert_est(
+        self, cut: UncertaintyEstimation, apply_function: Callable, plot: bool = False
+    ):
         print(f"\nChecking true uncertainties estimation:")
 
         stats = self.sn.get_uncert_est_stats(cut)
@@ -421,7 +417,7 @@ class CleanLoop:
                         self.p.get_lims(
                             lc=self.sn.lcs[0],
                             indices=self.sn.lcs[0].get_good_indices(
-                                self.cut_list.get("uncert_cut").flag
+                                self.cut_list.get(UncertaintyCut.name()).flag
                             ),
                         ),
                     )
@@ -448,7 +444,7 @@ class CleanLoop:
         }
         return apply, uncert_est_info_row
 
-    def apply_uncert_cut(self, cut: Cut, plot: bool = False):
+    def apply_uncert_cut(self, cut: UncertaintyCut, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying uncertainty cut ({cut}):")
@@ -470,7 +466,7 @@ class CleanLoop:
                 title="Uncertainty cut",
             )
 
-    def apply_x2_cut(self, cut: Cut, plot: bool = False):
+    def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
         if cut is None:
             return
 
@@ -481,29 +477,27 @@ class CleanLoop:
             )
             return
 
-        if cut.params["use_pre_mjd0_lc"]:
+        if cut.use_pre_mjd0_lc:
             print("Using pre-MJD0 light curve to determine contamination and loss")
             if self.sn.mjd0 is None:
                 raise RuntimeError(
-                    "ERROR: MJD0 cannot be None. Please provide MJD0 throught the SN info table or --mjd0 argument, or set the use_pre_MJD0_lc field in the config file to False."
+                    "MJD0 cannot be None. Please provide MJD0 throught the SN info table or --mjd0 argument, or set the use_pre_MJD0_lc field in the config file to False."
                 )
             lc_temp = deepcopy(self.sn.lcs[0])
             ix = lc_temp.ix_inrange(lc_temp.colnames.mjd, uplim=self.sn.mjd0)
             if len(ix) < 1:
-                raise RuntimeError("ERROR: no pre-MJD0 light curve available")
+                raise RuntimeError("no pre-MJD0 light curve available")
         else:
             print("Using control light curves to determine contamination and loss")
             if self.sn.num_controls < 1:
                 raise RuntimeError(
-                    "ERROR: No control light curves loaded. Use the --num_controls argument to load control light curves, or change the [x2_cut][use_pre_mjd0_lc] field to True."
+                    "No control light curves loaded. Use the --num_controls argument to load control light curves, or change the [x2_cut][use_pre_mjd0_lc] field to True."
                 )
             lc_temp = self.sn.get_all_controls()
             ix = lc_temp.t.index.values
 
-        limcuts = LimCutsTable(lc_temp, cut.params["snr_bound"], indices=ix)
-        limcuts.calculate_table(
-            cut.params["min_cut"], cut.params["max_cut"], cut.params["cut_step"]
-        )
+        limcuts = LimCutsTable(lc_temp, cut.snr_bound, indices=ix)
+        limcuts.calculate_table(cut.min_cut, cut.max_cut, cut.cut_step)
         print("Success")
 
         data = limcuts.calculate_row(cut.max_value)
@@ -536,14 +530,16 @@ class CleanLoop:
             "tnsname": self.sn.tnsname,
             "filter": self.sn.filt,
             "x2_cut": cut.max_value,
-            "use_pre_mjd0_lc": cut.params["use_pre_mjd0_lc"],
-            "snr_bound": cut.params["snr_bound"],
+            "use_pre_mjd0_lc": cut.use_pre_mjd0_lc,
+            "snr_bound": cut.snr_bound,
             "pct_contamination": round(data["Pcontamination"], 2),
             "pct_loss": round(data["Ploss"], 2),
         }
         return x2_info_row
 
-    def apply_controls_cut(self, cut: Cut, previous_flags: int, plot: bool = False):
+    def apply_controls_cut(
+        self, cut: ControlLightCurveCut, previous_flags: int, plot: bool = False
+    ):
         if cut is None:
             return
         print(f"\nApplying control light curve cut ({cut}):")
@@ -559,16 +555,16 @@ class CleanLoop:
         print("Success")
 
         print(
-            f'Percent of data above x2_max bound ({hex(cut.params["x2_flag"])}): {x2_percent_cut:0.2f}%'
+            f"Percent of data above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
         )
         print(
-            f'Percent of data above snr_max bound ({hex(cut.params["snr_flag"])}): {stn_percent_cut:0.2f}%'
+            f"Percent of data above snr_max bound ({hex(cut.snr_flag)}): {stn_percent_cut:0.2f}%"
         )
         print(
-            f'Percent of data above Nclip_max bound ({hex(cut.params["Nclip_flag"])}): {Nclip_percent_cut:0.2f}%'
+            f"Percent of data above Nclip_max bound ({hex(cut.Nclip_flag)}): {Nclip_percent_cut:0.2f}%"
         )
         print(
-            f'Percent of data below Ngood_min bound ({hex(cut.params["Ngood_flag"])}): {Ngood_percent_cut:0.2f}%'
+            f"Percent of data below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
         )
         print(
             f'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%'
@@ -597,7 +593,7 @@ class CleanLoop:
                 title="Control light curve cut",
             )
 
-    def apply_badday_cut(self, cut: Cut, previous_flags, plot: bool = False):
+    def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
         if cut is None:
             return
         print(f"\nApplying bad day cut (averaging) ({cut}):")
@@ -607,7 +603,7 @@ class CleanLoop:
         print("Success")
 
         print(
-            f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_flags())}): {percent_cut:0.2f}"
+            f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
         self.f.add_badday_cut_section(percent_cut)
 
@@ -628,7 +624,7 @@ class CleanLoop:
                 self.avg_sn, cut.flag, lims, plot_controls=True, plot_flagged=False
             )
 
-    def apply_custom_cut(self, name, cut: Cut, plot: bool = False):
+    def apply_custom_cut(self, name, cut: CustomCut, plot: bool = False):
         cut = self.cut_list.get(name)
         print(f"\nApplying custom cut ({cut})...")
         percent_cut = self.sn.apply_cut(cut)
@@ -637,7 +633,7 @@ class CleanLoop:
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
-        self.f.add_custom_cut_section(name, cut, percent_cut)
+        self.f.add_custom_cut_section(cut, percent_cut)
 
         if plot:
             self.p.plot_cut(
@@ -647,14 +643,14 @@ class CleanLoop:
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
-                title=f"Custom cut {name}",
+                title=cut.name(),
             )
 
     def find_all_filts(self, directory, tnsname):
         subdir = os.path.join(directory, tnsname)
         if not os.path.isdir(subdir):
             raise RuntimeError(
-                f"ERROR: Cannot search for filters because the path does not exist: {subdir}"
+                f"Cannot search for filters because the path does not exist: {subdir}"
             )
 
         filts = set()
@@ -675,9 +671,7 @@ class CleanLoop:
                 filts.add(filt)
 
         if len(filts) < 1:
-            raise RuntimeError(
-                f"ERROR: Could not find filters from the files in {subdir}"
-            )
+            raise RuntimeError(f"Could not find filters from the files in {subdir}")
 
         return filts
 
@@ -698,7 +692,7 @@ class CleanLoop:
         try:
             self.sn.load_all(self.input_dir, num_controls=num_controls)
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+            raise RuntimeError(f"Could not load light curves: {str(e)}")
 
         # prepare the light curves for cleaning
         print()
@@ -721,25 +715,29 @@ class CleanLoop:
             self.apply_template_correction()
 
         # uncertainty cut
-        self.apply_uncert_cut(self.cut_list.get("uncert_cut"), plot=plot)
+        self.apply_uncert_cut(self.cut_list.get(UncertaintyCut.name()), plot=plot)
 
         # true uncertainties estimation
         _, uncert_est_info_row = self.check_uncert_est(
-            self.cut_list.get("uncert_est"),
+            self.cut_list.get(UncertaintyEstimation.name()),
             apply_function=apply_uncert_est_function,
             plot=plot,
         )
         self.uncert_est_info.add_row(uncert_est_info_row)
 
         # chi-square cut
-        x2_info_row = self.apply_x2_cut(self.cut_list.get("x2_cut"), plot=plot)
-        if self.cut_list.has("x2_cut"):
+        x2_info_row = self.apply_x2_cut(
+            self.cut_list.get(ChiSquareCut.name()), plot=plot
+        )
+        if self.cut_list.has(ChiSquareCut.name()):
             self.x2_cut_info.add_row(x2_info_row)
 
         # control light curve cut
         self.apply_controls_cut(
-            self.cut_list.get("controls_cut"),
-            previous_flags=self.cut_list.get_previous_flags("controls_cut"),
+            self.cut_list.get(ControlLightCurveCut.name()),
+            previous_flags=self.cut_list.get_previous_flags(
+                ControlLightCurveCut.name()
+            ),
             plot=plot,
         )
 
@@ -749,7 +747,7 @@ class CleanLoop:
             self.apply_custom_cut(name, cut, plot=plot)
 
         # plot the cleaned light curves so far
-        previous_flags = self.cut_list.get_previous_flags("badday_cut")
+        previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
         if plot:
             lims = self.p.get_lims(
                 lc=self.sn.lcs[0],
@@ -764,7 +762,7 @@ class CleanLoop:
 
         # bad day cut (averaging)
         self.apply_badday_cut(
-            self.cut_list.get("badday_cut"),
+            self.cut_list.get(BadDayCut.name()),
             previous_flags=previous_flags,
             plot=plot,
         )
@@ -772,15 +770,15 @@ class CleanLoop:
         # save cleaned SN and control light curves
         self.sn.save_all(self.output_dir, overwrite=self.overwrite)
 
-        if self.cut_list.has("badday_cut"):
+        if self.cut_list.has(BadDayCut.name()):
             # save averaged SN and control light curves
             self.avg_sn.save_all(self.output_dir, overwrite=self.overwrite)
 
-        if self.cut_list.has("uncert_est"):
+        if self.cut_list.has(UncertaintyEstimation.name()):
             # save uncertainty estimation table
             self.uncert_est_info.save()
 
-        if self.cut_list.has("x2_cut"):
+        if self.cut_list.has(ChiSquareCut.name()):
             # save chi-square cut table
             self.x2_cut_info.save()
 
@@ -816,8 +814,8 @@ class CleanLoop:
             if mjd0 is None and (
                 plot
                 or (
-                    cut_list.get("x2_cut")
-                    and cut_list.get("x2_cut").params["use_pre_mjd0_lc"]
+                    cut_list.has(ChiSquareCut.name())
+                    and cut_list.get(ChiSquareCut.name()).use_pre_mjd0_lc
                 )
             ):
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
@@ -846,14 +844,14 @@ class CleanLoop:
                 )
 
 
-def find_config_custom_cuts(config: ConfigParser):
+def find_config_custom_cuts(config: ConfigParser) -> List:
     print("\nSearching config file for custom cuts...")
 
-    required_keys = {"column", "flag"}
+    required_keys = {"column", "flag", "max_value", "min_value"}
     custom_cuts = []
 
     for key in config:
-        if key.endswith("_cut") and not key in DEFAULT_CUT_NAMES:
+        if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
             if not required_keys.issubset(config[key].keys()):
                 print(
                     f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys})"
@@ -877,83 +875,75 @@ def parse_config_cuts(args, config, colnames):
     print(
         f"- True uncertainties estimation check: temporary chi-square cut at {temp_x2_max_value}"
     )
-    params = {
-        "temp_x2_max_value": temp_x2_max_value,
-        "uncert_cut_flag": hexstring_to_int(config["uncert_cut"]["flag"]),
-    }
-    uncert_est = Cut(params=params)
-    cut_list.add(uncert_est, "uncert_est")
+    uncert_est = UncertaintyEstimation(
+        temp_x2_max_value,
+        hexstring_to_int(config["uncert_cut"]["flag"]),
+    )
+    cut_list.add(uncert_est)
 
     if args.uncert_cut:
-        uncert_cut = Cut(
-            column=colnames.dflux,
-            max_value=float(config["uncert_cut"]["max_value"]),
+        uncert_cut = UncertaintyCut(
+            colnames.dflux,
             flag=hexstring_to_int(config["uncert_cut"]["flag"]),
+            max_value=float(config["uncert_cut"]["max_value"]),
         )
-        cut_list.add(uncert_cut, "uncert_cut")
+        cut_list.add(uncert_cut)
         print(f"- Uncertainty cut: {uncert_cut}")
 
     if args.x2_cut:
-        params = {
-            "snr_bound": float(config["x2_cut"]["snr_bound"]),
-            "min_cut": int(config["x2_cut"]["min_cut"]),
-            "max_cut": int(config["x2_cut"]["max_cut"]),
-            "cut_step": int(config["x2_cut"]["cut_step"]),
-            "use_pre_mjd0_lc": config["x2_cut"]["use_pre_mjd0_lc"] == "True",
-        }
-        x2_cut = Cut(
-            column=colnames.chisquare,
-            max_value=float(config["x2_cut"]["max_value"]),
+        x2_cut = ChiSquareCut(
+            colnames.chisquare,
             flag=hexstring_to_int(config["x2_cut"]["flag"]),
-            params=params,
+            max_value=float(config["x2_cut"]["max_value"]),
+            snr_bound=float(config["x2_cut"]["snr_bound"]),
+            min_cut=int(config["x2_cut"]["min_cut"]),
+            max_cut=int(config["x2_cut"]["max_cut"]),
+            cut_step=int(config["x2_cut"]["cut_step"]),
+            use_pre_mjd0_lc=parse_config_str(config["x2_cut"]["use_pre_mjd0_lc"]),
         )
-        cut_list.add(x2_cut, "x2_cut")
+        cut_list.add(x2_cut)
         print(f"- Chi-square cut: {x2_cut}")
 
     if args.controls_cut:
-        params = {
-            "questionable_flag": hexstring_to_int(
+        controls_cut = ControlLightCurveCut(
+            flag=hexstring_to_int(config["controls_cut"]["bad_flag"]),
+            questionable_flag=hexstring_to_int(
                 config["controls_cut"]["questionable_flag"]
             ),
-            "x2_max": float(config["controls_cut"]["x2_max"]),
-            "x2_flag": hexstring_to_int(config["controls_cut"]["x2_flag"]),
-            "snr_max": float(config["controls_cut"]["snr_max"]),
-            "snr_flag": hexstring_to_int(config["controls_cut"]["snr_flag"]),
-            "Nclip_max": int(config["controls_cut"]["Nclip_max"]),
-            "Nclip_flag": hexstring_to_int(config["controls_cut"]["Nclip_flag"]),
-            "Ngood_min": int(config["controls_cut"]["Ngood_min"]),
-            "Ngood_flag": hexstring_to_int(config["controls_cut"]["Ngood_flag"]),
-        }
-        controls_cut = Cut(
-            flag=hexstring_to_int(config["controls_cut"]["bad_flag"]), params=params
+            x2_max=float(config["controls_cut"]["x2_max"]),
+            x2_flag=hexstring_to_int(config["controls_cut"]["x2_flag"]),
+            snr_max=float(config["controls_cut"]["snr_max"]),
+            snr_flag=hexstring_to_int(config["controls_cut"]["snr_flag"]),
+            Nclip_max=int(config["controls_cut"]["Nclip_max"]),
+            Nclip_flag=hexstring_to_int(config["controls_cut"]["Nclip_flag"]),
+            Ngood_min=int(config["controls_cut"]["Ngood_min"]),
+            Ngood_flag=hexstring_to_int(config["controls_cut"]["Ngood_flag"]),
         )
-        cut_list.add(controls_cut, "controls_cut")
+        cut_list.add(controls_cut)
         print(f"- Control light curve cut: {controls_cut}")
 
     if args.averaging:
-        params = {
-            "mjd_bin_size": (
+        badday_cut = BadDayCut(
+            flag=hexstring_to_int(config["averaging"]["flag"]),
+            mjd_bin_size=(
                 float(config["averaging"]["mjd_bin_size"])
                 if args.mjd_bin_size is None
                 else args.mjd_bin_size
             ),
-            "x2_max": float(config["averaging"]["x2_max"]),
-            "Nclip_max": int(config["averaging"]["Nclip_max"]),
-            "Ngood_min": int(config["averaging"]["Ngood_min"]),
-            "ixclip_flag": hexstring_to_int(config["averaging"]["ixclip_flag"]),
-            "smallnum_flag": hexstring_to_int(config["averaging"]["smallnum_flag"]),
-        }
-        badday_cut = Cut(
-            flag=hexstring_to_int(config["averaging"]["flag"]), params=params
+            x2_max=float(config["averaging"]["x2_max"]),
+            Nclip_max=int(config["averaging"]["Nclip_max"]),
+            Ngood_min=int(config["averaging"]["Ngood_min"]),
+            ixclip_flag=hexstring_to_int(config["averaging"]["ixclip_flag"]),
+            smallnum_flag=hexstring_to_int(config["averaging"]["smallnum_flag"]),
         )
-        cut_list.add(badday_cut, "badday_cut")
+        cut_list.add(badday_cut)
         print(f"- Bad day cut (averaging): {badday_cut}")
 
     if args.custom_cuts:
         for i in range(len(config_custom_cuts)):
             cut_settings = config_custom_cuts[i]
             try:
-                custom_cut = Cut(
+                custom_cut = CustomCut(
                     column=cut_settings["column"],
                     flag=hexstring_to_int(cut_settings["flag"]),
                     min_value=(
@@ -967,8 +957,8 @@ def parse_config_cuts(args, config, colnames):
                         else None
                     ),
                 )
-                cut_list.add(custom_cut, f"custom_cut_{i}")
-                print(f"- Custom cut {i}: {custom_cut}")
+                cut_list.add(custom_cut)
+                print(f"- Custom cut {i}: {custom_cut.name()}")
             except Exception as e:
                 print(
                     f"WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
@@ -976,8 +966,8 @@ def parse_config_cuts(args, config, colnames):
 
     duplicate_flags = cut_list.get_flag_duplicates()
     if len(duplicate_flags) > 0:
-        raise RuntimeError(
-            f"ERROR: Cuts in the config file contain duplicate flags: {duplicate_flags}."
+        raise ValueError(
+            f"Cuts in the config file contain duplicate flags: {duplicate_flags}."
         )
     return cut_list
 
@@ -1108,17 +1098,15 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
 
     if len(args.tnsnames) < 1:
-        raise RuntimeError("ERROR: Please specify at least one TNS name to clean.")
+        raise RuntimeError("Please specify at least one TNS name to clean.")
     if len(args.tnsnames) > 1 and not args.mjd0 is None:
-        raise RuntimeError(
-            f"ERROR: Cannot specify one MJD0 {args.mjd0} for a batch of SNe."
-        )
+        raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to clean: {args.tnsnames}")
 
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
         raise RuntimeError(
-            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
     print(f"\nLoading {args.preset} preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)

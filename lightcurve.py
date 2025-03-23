@@ -63,7 +63,7 @@ class Supernova:
             return self.lcs[control_index].t
         except:
             raise RuntimeError(
-                f"ERROR: Cannot get control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
+                f"Cannot get control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
 
     def get_tns_data(self, api_key, tns_id, bot_name):
@@ -136,7 +136,7 @@ class Supernova:
                         )
                         if len(matching_ix) != 1:
                             raise RuntimeError(
-                                f"ERROR: Couldn't find MJD={mjd} in MJD column, but should be there!"
+                                f"Couldn't find MJD={mjd} in MJD column, but should be there!"
                             )
                         ix_to_skip.extend(matching_ix)
                     ix = AnotB(self.lcs[control_index].getindices(), ix_to_skip)
@@ -180,7 +180,7 @@ class Supernova:
         num_measurements=40,
     ):
         if self.mjd0 is None:
-            raise RuntimeError("ERROR: Cannot apply template correction without MJD0")
+            raise RuntimeError("Cannot apply template correction without MJD0")
         return self.lcs[0].apply_template_correction(
             self.mjd0,
             maskval=maskval,
@@ -276,7 +276,7 @@ class Supernova:
                 self.lcs[control_index].t[self.colnames_master.mjd],
             ):
                 raise RuntimeError(
-                    f"ERROR: SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds()."
+                    f"SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds()."
                 )
             else:
                 uJy[i - 1, :] = self.lcs[control_index].t[self.colnames_master.flux]
@@ -936,10 +936,10 @@ class LightCurve(pdastrostatsclass):
 
     def apply_cut(self, cut: Cut):
         if not cut.can_apply_directly():
-            raise RuntimeError(f"ERROR: Cannot directly apply the following cut: {cut}")
+            raise RuntimeError(f"Cannot directly apply the following cut: {cut}")
         if not cut.column in self.t.columns:
             raise RuntimeError(
-                f"ERROR: No column name '{cut.column}' exists in light curve; cannot apply cut"
+                f"No column name '{cut.column}' exists in light curve; cannot apply cut"
             )
 
         all_ix = self.getindices()
@@ -1163,7 +1163,7 @@ class LightCurve(pdastrostatsclass):
 
         for column_name in required_column_names:
             if not column_name in self.t.columns:
-                raise RuntimeError(f"ERROR: Missing required column: {column_name}")
+                raise RuntimeError(f"Missing required column: {column_name}")
 
     def load_lc(self, input_dir, tnsname, cleaned=False):
         filename = get_filename(
@@ -1369,9 +1369,7 @@ class FullLightCurve:
         )
 
         if min_mjd > max_mjd:
-            raise RuntimeError(
-                f"ERROR: max MJD {max_mjd} cannot be than min MJD {min_mjd}."
-            )
+            raise RuntimeError(f"max MJD {max_mjd} cannot be than min MJD {min_mjd}.")
 
         while True:
             try:
@@ -1402,7 +1400,7 @@ class FullLightCurve:
     def save(self, colnames: PresetColumnNames, input_dir, tnsname, overwrite=False):
         if self.t is None:
             raise RuntimeError(
-                "ERROR: Cannot save light curve that hasn't been downloaded yet."
+                "Cannot save light curve that hasn't been downloaded yet."
             )
 
         lc = LightCurve(colnames, control_index=self.control_index)
@@ -1567,9 +1565,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         if indices is None:
             indices = self.getindices()
         if len(indices) < 1:
-            raise RuntimeError(
-                "ERROR: not enough measurements to apply simulated gaussian"
-            )
+            raise RuntimeError("not enough measurements to apply simulated gaussian")
         good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
 
         self.remove_rolling_sum()
@@ -1635,7 +1631,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             cur_sigma_kern = self.cur_sigma_kern
         if cur_sigma_kern is None:
             raise RuntimeError(
-                "ERROR: No current sigma kern passed as argument or stored during previously applied rolling sum."
+                "No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
         if remove_old:

@@ -57,9 +57,7 @@ def load_config(config_file):
         print(f"\nLoading config file at {config_file}...")
         cfg.read(config_file)
     except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Could not load config file at {config_file}: {str(e)}"
-        )
+        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
     return cfg
 
 
@@ -82,7 +80,7 @@ class ControlCoordinatesTable:
             print("Success")
         except Exception as e:
             raise RuntimeError(
-                f"ERROR: Could not load control coordinates table at {filename}: {str(e)}"
+                f"Could not load control coordinates table at {filename}: {str(e)}"
             )
 
         self.num_controls = len(self.t)
@@ -101,7 +99,7 @@ class ControlCoordinatesTable:
         ix = np.where(self.t["control_index"] == control_index)[0]
         if len(ix) > 1:
             raise RuntimeError(
-                f"ERROR: Cannot update row in control coordinates table for control index {control_index}: duplicate rows."
+                f"Cannot update row in control coordinates table for control index {control_index}: duplicate rows."
             )
         index = ix[0]
 
@@ -254,7 +252,7 @@ class ControlCoordinatesTable:
         if filename is None:
             if tnsname is None:
                 raise RuntimeError(
-                    "ERROR: Please provide either a filename or a TNS name to save the control coordinates table."
+                    "Please provide either a filename or a TNS name to save the control coordinates table."
                 )
             filename = f"{directory}/{tnsname}/{tnsname}_control_coords.txt"
         else:
@@ -362,9 +360,7 @@ class DownloadLoop:
         self.tnsnames = args.tnsnames
         print(f"List of transients to download from ATLAS: {self.tnsnames}")
         if len(self.tnsnames) < 1:
-            raise RuntimeError(
-                "ERROR: Please specify at least one TNS name to download."
-            )
+            raise RuntimeError("Please specify at least one TNS name to download.")
         if len(self.tnsnames) > 1 and (
             not args.coords is None
             or not args.mjd0 is None
@@ -447,7 +443,7 @@ class DownloadLoop:
                     print(f' with radius of {self.ctrl_coords.radius}" from center')
         elif args.ctrl_coords or args.closebright or args.num_controls or args.radius:
             raise RuntimeError(
-                "ERROR: Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
+                "Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
             )
 
     def connect_atlas(self):
@@ -471,11 +467,11 @@ class DownloadLoop:
         parsed_coords = parse_comma_separated_string(arg_coords)
         if len(parsed_coords) > 2:
             raise RuntimeError(
-                "ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
+                "Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
             )
         if len(parsed_coords) < 2:
             raise RuntimeError(
-                "ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
+                "Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
             )
         return parsed_coords[0], parsed_coords[1]
 
@@ -519,7 +515,7 @@ class DownloadLoop:
             self.construct_full_lc(args, tnsname)
         except Exception as e:
             print(
-                f"ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN..."
+                f"Could not construct light curve object: {str(e)}. Skipping to next SN..."
             )
             return
 
@@ -571,7 +567,7 @@ class DownloadLoop:
         print("\nConnecting to ATLAS API...")
         headers = self.connect_atlas()
         if headers is None:
-            raise RuntimeError("ERROR: No token header!")
+            raise RuntimeError("No token header!")
 
         for obj_index in range(len(args.tnsnames)):
             self.download_lcs(args, headers, colnames, args.tnsnames[obj_index])

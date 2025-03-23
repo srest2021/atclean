@@ -105,11 +105,11 @@ class AsymmetricGaussian(Simulation):
         """
         if sigma_sim_plus is None or sigma_sim_minus is None:
             raise RuntimeError(
-                "ERROR: sim_sigma_plus and sim_sigma_minus required to get flux of simulated asymmetric Gaussian."
+                "sim_sigma_plus and sim_sigma_minus required to get flux of simulated asymmetric Gaussian."
             )
         if peak_mjd is None:
             raise RuntimeError(
-                "ERROR: Peak MJD required to get flux of simulated asymmetric Gaussian."
+                "Peak MJD required to get flux of simulated asymmetric Gaussian."
             )
 
         self.new(sigma_sim_plus, sigma_sim_minus, peak_appmag)
@@ -212,7 +212,7 @@ class Model(Simulation):
 
         if mag_colname is False and flux_colname is False:
             raise RuntimeError(
-                f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
+                f"Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
             )
 
         try:
@@ -222,7 +222,7 @@ class Model(Simulation):
                 header = None
             self.t = pd.read_table(filename, delim_whitespace=True, header=header)
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load model at {filename}: {str(e)}")
+            raise RuntimeError(f"Could not load model at {filename}: {str(e)}")
 
         if mjd_colname is False:
             # create MJD column and make it the first column
@@ -275,7 +275,7 @@ class Model(Simulation):
         """
         self.peak_appmag = peak_appmag
         if peak_mjd is None:
-            raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
+            raise RuntimeError("Peak MJD required to construct simulated model.")
 
         # get original peak appmag index
         peak_idx = self.t["m"].idxmin()
@@ -354,9 +354,7 @@ class SimDetecTable(SimTable):
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Could not load SimDetecTable at {filename}: {str(e)}"
-            )
+            raise RuntimeError(f"Could not load SimDetecTable at {filename}: {str(e)}")
 
     def load_from_sim_table(self, model_name: str, sim_tables_dir: str):
         """
@@ -547,7 +545,7 @@ class EfficiencyTable(pdastrostatsclass):
                 res[self.sigma_kerns[i]] = fom_limits[i]
         elif len(fom_limits) != len(self.sigma_kerns):
             raise RuntimeError(
-                "ERROR: Each entry in sigma_kerns must have a matching list in fom_limits"
+                "Each entry in sigma_kerns must have a matching list in fom_limits"
             )
         else:
             res = fom_limits
@@ -592,7 +590,7 @@ class EfficiencyTable(pdastrostatsclass):
                     )
                 except Exception as e:
                     raise RuntimeError(
-                        f"ERROR: Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
+                        f"Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
                     )
                 self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
 
@@ -658,7 +656,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         if not isinstance(other, EfficiencyTable):
             raise RuntimeError(
-                f"ERROR: Cannot merge EfficiencyTable with object type: {type(other)}"
+                f"Cannot merge EfficiencyTable with object type: {type(other)}"
             )
 
         self.sigma_kerns += other.sigma_kerns
@@ -674,7 +672,7 @@ class EfficiencyTable(pdastrostatsclass):
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
             raise RuntimeError(
-                f"ERROR: Could not load efficiency table at {filename}: {str(e)}"
+                f"Could not load efficiency table at {filename}: {str(e)}"
             )
 
     def save(self, detec_tables_dir: str, model_name: str):
@@ -715,11 +713,11 @@ class SimDetecLoop(ABC):
         """
         if model_name is None or (sim_tables_dir is None and detec_tables_dir is None):
             raise RuntimeError(
-                "ERROR: Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
+                "Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
             )
         if not sim_tables_dir is None and not detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
         self.peak_appmags = set()
@@ -788,11 +786,11 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
         if sim_tables_dir is None and detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please either provide a SimTables or SimDetecTables directory."
+                "Please either provide a SimTables or SimDetecTables directory."
             )
         if not sim_tables_dir is None and not detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
         if detec_tables_dir is None:
@@ -957,7 +955,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
         For Charlie's model, use the manually calculated value of 2.8.
         """
         if peak_mjd is None:
-            raise RuntimeError("ERROR: A peak MJD is required to find the max FOM.")
+            raise RuntimeError("A peak MJD is required to find the max FOM.")
         if sigma_sim is None:
             # replace with default sigma sim for Charlie's model
             sigma_sim = 2.8
@@ -1083,12 +1081,12 @@ if __name__ == "__main__":
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
-        raise RuntimeError("ERROR: Model name cannot have spaces.")
+        raise RuntimeError("Model name cannot have spaces.")
     try:
         model_settings = sim_config[args.model_name]
     except Exception as e:
         raise RuntimeError(
-            f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
+            f"Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
     sn_info = detec_config["sn_info"]

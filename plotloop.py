@@ -63,7 +63,7 @@ class PlotLoop:
                 self.output_dir, num_controls=num_controls, cleaned=cleaned
             )
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+            raise RuntimeError(f"Could not load light curves: {str(e)}")
 
     def load_avg_sn(self, tnsname: str, mjd0: float, filt: str, mjdbinsize: float):
         self.avg_sn = AveragedSupernova(
@@ -76,7 +76,7 @@ class PlotLoop:
         try:
             self.avg_sn.load_all(output_dir, num_controls=num_controls)
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+            raise RuntimeError(f"Could not load light curves: {str(e)}")
 
     def plot_lcs(
         self,
@@ -402,17 +402,15 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
 
     if len(args.tnsnames) < 1:
-        raise RuntimeError("ERROR: Please specify at least one TNS name to plot.")
+        raise RuntimeError("Please specify at least one TNS name to plot.")
     if len(args.tnsnames) > 1 and not args.mjd0 is None:
-        raise RuntimeError(
-            f"ERROR: Cannot specify one MJD0 {args.mjd0} for a batch of SNe."
-        )
+        raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to plot: {args.tnsnames}")
 
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
         raise RuntimeError(
-            f"ERROR: Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
     print(f"\nLoading {args.preset} preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)

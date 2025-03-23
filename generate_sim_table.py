@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Generate a table of simulations for each peak apparent magnitude 
+Generate a table of simulations for each peak apparent magnitude
 using the parameters in simulation_settings.json.
 """
 
@@ -82,18 +82,16 @@ def load_json_config(config_file: str):
         with open(config_file) as cfg:
             return json.load(cfg)
     except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Could not load config file at {config_file}: {str(e)}"
-        )
+        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
 
 
 def parse_range_param(minval: float, maxval: float, step: float):
     print(f"Setting to range from {minval} to {maxval} with step size {step}")
     if maxval <= minval:
-        raise RuntimeError("ERROR: maxval must be greater than minval.")
+        raise RuntimeError("maxval must be greater than minval.")
     if step > abs(maxval - minval):
         raise RuntimeError(
-            "ERROR: step size cannot be greater than the difference between minval and maxval."
+            "step size cannot be greater than the difference between minval and maxval."
         )
     return list(np.arange(minval, maxval, step))
 
@@ -103,7 +101,7 @@ def parse_logrange_param(minval: float, maxval: float, base: int, n: int, to_int
         f'Generating {n}-length {"integer" if to_int else "float"} range using log base {base}'
     )
     if maxval <= minval:
-        raise RuntimeError("ERROR: maxval must be greater than minval.")
+        raise RuntimeError("maxval must be greater than minval.")
     minlog = np.log(minval) / np.log(base)
     maxlog = np.log(maxval) / np.log(base)
     res = list(np.logspace(minlog, maxlog, num=n, base=base))
@@ -115,7 +113,7 @@ def parse_logrange_param(minval: float, maxval: float, base: int, n: int, to_int
 def parse_random_param(minval: float, maxval: float, n: int, to_int=False):
     print(f"Generating {n}-length random list")
     if maxval <= minval:
-        raise RuntimeError("ERROR: maxval must be greater than minval.")
+        raise RuntimeError("maxval must be greater than minval.")
     res = list(np.random.uniform(minval, maxval, n))
     if to_int:
         res = [round(num) for num in res]
@@ -193,7 +191,7 @@ def parse_param(param_name: str, param_info: Dict):
 
     else:
         raise RuntimeError(
-            "ERROR: Type must be one of the following: list, range, logrange, random, random_inrange."
+            "Type must be one of the following: list, range, logrange, random, random_inrange."
         )
 
     print(f"Result: {res}")
@@ -241,14 +239,14 @@ def parse_colname_info(model_settings, model_name):
             flux_colname = model_settings["flux_column_name"]
 
             if " " in filename:
-                raise RuntimeError("ERROR: Filename cannot have spaces.")
+                raise RuntimeError("Filename cannot have spaces.")
 
             if mag_colname is False and flux_colname is False:
                 raise RuntimeError(
-                    f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
+                    f"Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
                 )
         except Exception as e:
-            raise RuntimeError(f"ERROR: {str(e)}")
+            raise RuntimeError(f"{str(e)}")
 
     return filename, mjd_colname, mag_colname, flux_colname
 
@@ -285,9 +283,7 @@ class SimTable(pdastrostatsclass):
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Could not load SimTable at {filename}: {str(e)}"
-            )
+            raise RuntimeError(f"Could not load SimTable at {filename}: {str(e)}")
 
     def __str__(self):
         return self.t.to_string()
@@ -380,12 +376,12 @@ if __name__ == "__main__":
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
-        raise RuntimeError("ERROR: Model name cannot have spaces.")
+        raise RuntimeError("Model name cannot have spaces.")
     try:
         model_settings = sim_config[args.model_name]
     except Exception as e:
         raise RuntimeError(
-            f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
+            f"Could not find model {args.model_name} in model config file: {str(e)}"
         )
 
     parsed_params = parse_params(

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from configparser import ConfigParser
 from functools import reduce
 from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
-import re, json, requests, time, sys, io
+import re, json, requests, time, sys, io, os
 from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
@@ -22,6 +22,8 @@ DISC_DATE_BUFFER = 20
 # ATLAS template change dates
 TEMPLATE_CHANGE_1_MJD = 58417
 TEMPLATE_CHANGE_2_MJD = 58882
+
+CONFIG_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 
 def AandB(A, B):
@@ -48,10 +50,16 @@ def get_allowed_presets(config: ConfigParser) -> list[str]:
     return [match.group(1) for key in config.keys() if (match := pattern.match(key))]
 
 
-def parse_config_value(value: str | None):
+def parse_config_str(value: str | None):
     """Parse value from config file by converting None-like string to None."""
-    if value and value.strip().lower() == "none":
-        return None
+    if value:
+        stripped = value.strip().lower()
+        if stripped == "none":
+            return None
+        if stripped == "true":
+            return True
+        if stripped == "false":
+            return False
     return value
 
 
@@ -67,10 +75,10 @@ class PresetColumnNames:
 
     def _validate_columns_dict(self, columns_dict: Dict, no_nones: bool = False):
         for key, name in columns_dict.items():
-            name = parse_config_value(name)
+            name = parse_config_str(name)
             if no_nones and name is None:
                 raise RuntimeError(
-                    f"ERROR: Column name '{name}' in config preset {self.preset} cannot be None"
+                    f"Column name '{name}' in config preset {self.preset} cannot be None"
                 )
             columns_dict[key] = name
         return columns_dict
@@ -80,7 +88,7 @@ class PresetColumnNames:
             config_preset_settings: Dict = config[f"column_name_preset.{self.preset}"]
         except:
             raise RuntimeError(
-                f"ERROR: Preset '{self.preset}' (field '{f'column_name_preset.{self.preset}'}') not found in config file."
+                f"Preset '{self.preset}' (field '{f'column_name_preset.{self.preset}'}') not found in config file."
             )
 
         self.required_columns: Dict[str, str] = self._validate_columns_dict(
@@ -107,7 +115,7 @@ class PresetColumnNames:
         )
 
         # extra columns to copy
-        extra_columns = parse_config_value(config_preset_settings["extra_columns"])
+        extra_columns = parse_config_str(config_preset_settings["extra_columns"])
         self.extra_columns: List[str] = (
             []
             if extra_columns is None
@@ -126,7 +134,7 @@ class PresetColumnNames:
         existing_name = self.required_columns.get(key) or self.optional_columns.get(key)
         if existing_name and existing_name != name and not overwrite:
             raise RuntimeError(
-                f"ERROR: Column key '{key}' is already defined with a different name '{existing_name}'."
+                f"Column key '{key}' is already defined with a different name '{existing_name}'."
             )
 
         if is_required:
@@ -142,13 +150,13 @@ class PresetColumnNames:
         if is_required:
             if key not in self.required_columns:
                 raise RuntimeError(
-                    f"ERROR: Cannot update non-existing required column name {key} with '{name}'"
+                    f"Cannot update non-existing required column name {key} with '{name}'"
                 )
             self.required_columns[key] = name
         else:
             if key not in self.optional_columns:
                 raise RuntimeError(
-                    f"ERROR: Cannot update non-existing optional column name {key} with '{name}'"
+                    f"Cannot update non-existing optional column name {key} with '{name}'"
                 )
             self.optional_columns[key] = name
 
@@ -223,11 +231,11 @@ class Credentials:
     def __init__(
         self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
     ):
-        self.atlas_username = parse_config_value(atlas_username)
-        self.atlas_password = parse_config_value(atlas_password)
-        self.tns_api_key = parse_config_value(tns_api_key)
-        self.tns_id = parse_config_value(tns_id)
-        self.tns_bot_name = parse_config_value(tns_bot_name)
+        self.atlas_username = parse_config_str(atlas_username)
+        self.atlas_password = parse_config_str(atlas_password)
+        self.tns_api_key = parse_config_str(tns_api_key)
+        self.tns_id = parse_config_str(tns_id)
+        self.tns_bot_name = parse_config_str(tns_bot_name)
 
     def validate_tns_credentials(self):
         tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
@@ -422,7 +430,7 @@ class SnInfoTable:
                 self.t.loc[index, "dec"] = f"{coords.dec.angle.degree:0.14f}"
         except Exception as e:
             raise RuntimeError(
-                f"ERROR: Could not update SN info table at index {index}: {str(e)}"
+                f"Could not update SN info table at index {index}: {str(e)}"
             )
 
     def add_new_row(self, tnsname, coords: Coordinates = None, mjd0: float = None):
@@ -450,7 +458,7 @@ class SnInfoTable:
         matching_ix = np.where(self.t["tnsname"].eq(tnsname))[0]
         if len(matching_ix) > 1:
             raise RuntimeError(
-                f"ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}."
+                f"SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}."
             )
         elif len(matching_ix) == 1:
             index = matching_ix[0]
@@ -529,9 +537,7 @@ def get_tns_coords_from_json(json_data):
         coords = Coordinates(json_data["data"]["ra"], json_data["data"]["dec"])
         return coords
     except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Failed to get coordinates from TNS JSON data: {str(e)}"
-        )
+        raise RuntimeError(f"Failed to get coordinates from TNS JSON data: {str(e)}")
 
 
 def get_tns_mjd0_from_json(json_data):
@@ -543,9 +549,7 @@ def get_tns_mjd0_from_json(json_data):
         mjd0 = date_object.mjd - DISC_DATE_BUFFER
         return mjd0
     except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Failed to get discovery date from TNS JSON data: {str(e)}"
-        )
+        raise RuntimeError(f"Failed to get discovery date from TNS JSON data: {str(e)}")
 
 
 def get_mjd0_from_tns(
@@ -557,7 +561,7 @@ def get_mjd0_from_tns(
         print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
         mjd0 = float(sninfo_row["mjd0"])
         if not isinstance(mjd0, (int, float)):
-            raise RuntimeError(f"ERROR: Invalid MJD0: {mjd0}")
+            raise RuntimeError(f"Invalid MJD0: {mjd0}")
         else:
             print("Success")
             return mjd0, None
@@ -674,6 +678,17 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
             )
 
     return dfresult
+
+
+def reformat_dir(directory: str, tnsname: str):
+    """Removes tnsname and trailing slash from the end of directory path if present."""
+    if directory.endswith(tnsname):
+        return directory[: -len(tnsname)].rstrip(os.sep)
+    return directory
+
+
+def hexstring_to_int(hexstring):
+    return int(hexstring, 16)
 
 
 def combine_flags(flags: List[int]) -> int:
@@ -879,7 +894,7 @@ class CutList:
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
-            raise RuntimeError(f"ERROR: cut by the name {cut.name()} already exists.")
+            raise RuntimeError(f"cut by the name {cut.name()} already exists.")
         self.list[cut.name()] = cut
 
     def get(self, name: str):
@@ -949,6 +964,13 @@ class CutList:
                 if len(flags) > 0:
                     combined_flags = combine_flags(flags)
                     mask = mask | combined_flags
+        return mask
+
+    def get_all_default_flags(self):
+        mask = 0
+        for cut in self.list.values():
+            if not isinstance(cut, UncertaintyEstimation):
+                mask = mask | cut.flag
         return mask
 
     def get_previous_flags(self, current_cut_name: str):
