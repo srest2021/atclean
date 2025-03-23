@@ -8,836 +8,31 @@ from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
 from collections import OrderedDict
-from pdastro import pdastrostatsclass
+from pdastro import AnotB, pdastrostatsclass
 import numpy as np
 import pandas as pd
 from copy import deepcopy
 from pathlib import Path
 
-# number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
-DISC_DATE_BUFFER = 20
-
-DEFAULT_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
-
-# ATLAS template change dates
-TEMPLATE_CHANGE_1_MJD = 58417
-TEMPLATE_CHANGE_2_MJD = 58882
-
-"""
-UTILITY
-"""
-
-
-def AandB(A, B):
-    return np.intersect1d(A, B, assume_unique=False)
-
-
-def AnotB(A, B):
-    return np.setdiff1d(A, B)
-
-
-def AorB(A, B):
-    return np.union1d(A, B)
-
-
-def not_AandB(A, B):
-    return np.setxor1d(A, B)
-
-
-def get_allowed_presets(config: ConfigParser) -> list[str]:
-    """
-    Extract all preset names from the config that match 'column_name_preset.<PRESET NAME>'.
-    """
-    pattern = re.compile(r"^column_name_preset\.(.+)$")
-    return [match.group(1) for key in config.keys() if (match := pattern.match(key))]
-
-
-def parse_config_value(value: str | None):
-    """Parse value from config file by converting None-like string to None."""
-    if value and value.strip().lower() == "none":
-        return None
-    return value
-
-
-class PresetColumnNames:
-    """
-    Class to handle loading and managing column names for light curve conversion
-    to ATClean-readable format, as defined in the config file.
-    """
-
-    def __init__(self, config: ConfigParser, preset: str):
-        self.preset = preset
-        self._read_config(config)
-
-    def _validate_columns_dict(self, columns_dict: Dict, no_nones: bool = False):
-        for key, name in columns_dict.items():
-            name = parse_config_value(name)
-            if no_nones and name is None:
-                raise RuntimeError(
-                    f"ERROR: Column name '{name}' in config preset {self.preset} cannot be None"
-                )
-            columns_dict[key] = name
-        return columns_dict
-
-    def _read_config(self, config: ConfigParser):
-        try:
-            config_preset_settings: Dict = config[f"column_name_preset.{self.preset}"]
-        except:
-            raise RuntimeError(
-                f"ERROR: Preset '{self.preset}' (field '{f'column_name_preset.{self.preset}'}') not found in config file."
-            )
-
-        self.required_columns: Dict[str, str] = self._validate_columns_dict(
-            {
-                "mjd": config_preset_settings.get("mjd_column_name"),
-                "flux": config_preset_settings.get("flux_column_name"),
-                "dflux": config_preset_settings.get("dflux_column_name"),
-                "mjdbin": config["column_name_preset"]["mjd_bin_column_name"],
-                "mask": config["column_name_preset"]["mask_column_name"],
-                "fdf": config["column_name_preset"]["snr_column_name"],
-            },
-            no_nones=True,
-        )
-
-        self.optional_columns: Dict[str, Optional[str]] = self._validate_columns_dict(
-            {
-                "chisquare": config_preset_settings.get("chisquare_column_name"),
-                "filt": config_preset_settings.get("filter_column_name"),
-                "mag": config_preset_settings.get("mag_column_name"),
-                "dmag": config_preset_settings.get("dmag_column_name"),
-                "ra": config_preset_settings.get("ra_column_name"),
-                "dec": config_preset_settings.get("dec_column_name"),
-            }
-        )
-
-        # extra columns to copy
-        extra_columns = parse_config_value(config_preset_settings["extra_columns"])
-        self.extra_columns: List[str] = (
-            []
-            if extra_columns is None
-            else [col.strip() for col in extra_columns.split(",")]
-        )
-
-    def add(
-        self, key: str, name: str, is_required: bool = False, overwrite: bool = False
-    ):
-        if not isinstance(key, str) or not key.strip():
-            raise ValueError("Column key must be a non-empty string.")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"Column name for key '{key}' must be a non-empty string.")
-
-        # if key exists but the name is different, raise an error
-        existing_name = self.required_columns.get(key) or self.optional_columns.get(key)
-        if existing_name and existing_name != name and not overwrite:
-            raise RuntimeError(
-                f"ERROR: Column key '{key}' is already defined with a different name '{existing_name}'."
-            )
-
-        if is_required:
-            self.required_columns[key] = name
-        else:
-            self.optional_columns[key] = name
-
-    def add_many(self, coldict: Dict, is_required: bool = False):
-        for key, name in coldict.items():
-            self.add(key, name, is_required=is_required)
-
-    def update(self, key: str, name: str, is_required: bool = False):
-        if is_required:
-            if key not in self.required_columns:
-                raise RuntimeError(
-                    f"ERROR: Cannot update non-existing required column name {key} with '{name}'"
-                )
-            self.required_columns[key] = name
-        else:
-            if key not in self.optional_columns:
-                raise RuntimeError(
-                    f"ERROR: Cannot update non-existing optional column name {key} with '{name}'"
-                )
-            self.optional_columns[key] = name
-
-    def get_required_column_names(self, is_averaged: bool = False):
-        if is_averaged:
-            return [
-                self.required_columns["mjdbin"],
-                self.required_columns["flux"],
-                self.required_columns["dflux"],
-                self.required_columns["mask"],
-            ]
-
-        return [
-            self.required_columns["mjd"],
-            self.required_columns["flux"],
-            self.required_columns["dflux"],
-        ]
-
-    def get_optional_column_names(self):
-        return list(self.optional_columns.values())
-
-    def get_all_columns_to_copy(self) -> List[str]:
-        """Return all columns that should be copied into the output light curve."""
-        colset: Set[str] = (
-            set(self.required_columns.values())
-            | set(filter(None, self.optional_columns.values()))
-            | set(self.extra_columns)
-        )
-        return list(colset)
-
-    def __getattr__(self, name: str) -> Optional[str]:
-        """
-        Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
-        """
-        if (
-            "required_columns" not in self.__dict__
-            or "optional_columns" not in self.__dict__
-        ):
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
-
-        if name in self.required_columns:
-            return self.required_columns[name]
-        if name in self.optional_columns:
-            return self.optional_columns[name]
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'"
-        )
-
-    def __str__(self) -> str:
-        """Readable string representation of all column names."""
-        skip_colnames = ["mjdbin", "fdf", "mask"]
-
-        lines = ["--- Required Columns ---"]
-        for k, v in self.required_columns.items():
-            if k in skip_colnames:
-                continue
-            lines.append(f"{k}: {v}")
-
-        lines.append("--- Optional Columns ---")
-        for k, v in self.optional_columns.items():
-            lines.append(f"{k}: {v}")
-
-        lines.append("--- Extra Columns to Copy ---")
-        lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
-
-        return "\n".join(lines)
-
-
-class Credentials:
-    def __init__(
-        self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
-    ):
-        self.atlas_username = parse_config_value(atlas_username)
-        self.atlas_password = parse_config_value(atlas_password)
-        self.tns_api_key = parse_config_value(tns_api_key)
-        self.tns_id = parse_config_value(tns_id)
-        self.tns_bot_name = parse_config_value(tns_bot_name)
-
-    def validate_tns_credentials(self):
-        tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
-        not_none_count = sum(param is not None for param in tns_params)
-        if 0 < not_none_count < 3:
-            raise RuntimeError(
-                "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
-            )
-
-
-class BaseAngle(ABC):
-    def __init__(self, string=None):
-        self.angle = None
-        if string:
-            self.set_angle(string)
-
-    def set_angle(self, string):
-        """Template method calling specific parsing."""
-        if self._is_nan(string):
-            self.angle = None
-            return
-
-        self.angle = self._parse_angle(string)
-
-    @staticmethod
-    def _is_nan(value):
-        """Check if a value is NaN, None, or an empty string."""
-        return (
-            value is None
-            or (isinstance(value, float) and np.isnan(value))
-            or (isinstance(value, str) and value.strip().lower() in ["nan", ""])
-        )
-
-    @abstractmethod
-    def _parse_angle(self, string):
-        """Abstract method to be implemented by subclasses to parse angles."""
-        pass
-
-
-class RA(BaseAngle):
-    def _parse_angle(self, string):
-        """Parse RA angle, using hours if ':' is present, degrees otherwise."""
-        s = re.compile("\:")
-        if isinstance(string, str) and s.search(string):
-            return Angle(string, u.hour)
-        else:
-            return Angle(string, u.degree)
-
-
-class Dec(BaseAngle):
-    def _parse_angle(self, string):
-        """Parse Dec angle, always using degrees."""
-        return Angle(string, u.degree)
-
-
-class Coordinates:
-    def __init__(self, ra: str | None = None, dec: str | None = None):
-        self.ra: RA = RA(ra)
-        self.dec: Dec = Dec(dec)
-
-    def set_RA(self, ra):
-        self.ra = RA(ra)
-
-    def set_Dec(self, dec):
-        self.dec = Dec(dec)
-
-    def get_RA_str(self):
-        if self._is_angle_missing(self.ra):
-            return np.nan
-        return f"{self.ra.angle.degree:0.14f}"
-
-    def get_Dec_str(self):
-        if self._is_angle_missing(self.dec):
-            return np.nan
-        return f"{self.dec.angle.degree:0.14f}"
-
-    def _is_angle_missing(self, angle: BaseAngle) -> bool:
-        return angle.angle is None
-
-    def is_empty(self) -> bool:
-        # both RA and Dec missing
-        return self._is_angle_missing(self.ra) and self._is_angle_missing(self.dec)
-
-    def is_incomplete(self) -> bool:
-        # one or both of RA and Dec missing
-        return self._is_angle_missing(self.ra) or self._is_angle_missing(self.dec)
-
-    def is_ra_present(self) -> bool:
-        return not self._is_angle_missing(self.ra)
-
-    def is_dec_present(self) -> bool:
-        return not self._is_angle_missing(self.dec)
-
-    def ra_andor_dec_present(self) -> bool:
-        return not self._is_angle_missing(self.ra) or not self._is_angle_missing(
-            self.dec
-        )
-
-    def __str__(self):
-        output = []
-        if self.is_ra_present():
-            output.append(f"RA {self.ra.angle.degree:0.14f}")
-        if self.is_dec_present():
-            output.append(f"Dec {self.dec.angle.degree:0.14f}")
-
-        if len(output) < 1:
-            return f"WARNING: Coordinates are empty and cannot be printed."
-        return ", ".join(output)
-
-
-def get_filename(
-    directory, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
-):
-    filename = f"{directory}/{tnsname}"
-
-    if control_index != 0:
-        filename += "/controls"
-
-    filename += f"/{tnsname}"
-
-    if control_index != 0:
-        filename += f"_i{control_index:03d}"
-
-    filename += f".{filt}"
-
-    if mjdbinsize:
-        filename += f".{mjdbinsize:0.2f}days"
-
-    if cleaned:
-        filename += f".clean"
-
-    filename += ".lc.txt"
-    return filename
-
-
-def query_tns(tnsname, api_key, tns_id, bot_name):
-    if tns_id is None or bot_name is None:
-        print(
-            "WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
-        )
-        return None
-
-    try:
-        url = "https://www.wis-tns.org/api/get/object"
-        json_file = OrderedDict(
-            [("objname", tnsname), ("objid", ""), ("photometry", "1"), ("spectra", "1")]
-        )
-        data = {"api_key": api_key, "data": json.dumps(json_file)}
-        response = requests.post(
-            url,
-            data=data,
-            headers={
-                "User-Agent": 'tns_marker{"tns_id":"%s","type": "bot", "name":"%s"}'
-                % (tns_id, bot_name)
-            },
-        )
-        json_data = json.loads(response.text, object_pairs_hook=OrderedDict)
-        return json_data
-    except Exception as e:
-        print(json_data["data"])
-        raise RuntimeError("ERROR in query_tns(): " + str(e))
-
-
-def get_tns_coords_from_json(json_data):
-    try:
-        coords = Coordinates(json_data["data"]["ra"], json_data["data"]["dec"])
-        return coords
-    except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Failed to get coordinates from TNS JSON data: {str(e)}"
-        )
-
-
-def get_tns_mjd0_from_json(json_data):
-    try:
-        disc_date = json_data["data"]["discoverydate"]
-        date = list(disc_date.partition(" "))[0]
-        time = list(disc_date.partition(" "))[2]
-        date_object = Time(date + "T" + time, format="isot", scale="utc")
-        mjd0 = date_object.mjd - DISC_DATE_BUFFER
-        return mjd0
-    except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Failed to get discovery date from TNS JSON data: {str(e)}"
-        )
-
-
-def query_atlas(headers, ra, dec, min_mjd, max_mjd):
-    baseurl = "https://fallingstar-data.com/forcedphot"
-    task_url = None
-    while not task_url:
-        with requests.Session() as s:
-            resp = s.post(
-                f"{baseurl}/queue/",
-                headers=headers,
-                data={
-                    "ra": ra,
-                    "dec": dec,
-                    "send_email": False,
-                    "mjd_min": min_mjd,
-                    "mjd_max": max_mjd,
-                },
-            )
-            if resp.status_code == 201:
-                task_url = resp.json()["url"]
-                print(f"Task url: {task_url}")
-            elif resp.status_code == 429:
-                message = resp.json()["detail"]
-                print(f"{resp.status_code} {message}")
-                t_sec = re.findall(r"available in (\d+) seconds", message)
-                t_min = re.findall(r"available in (\d+) minutes", message)
-                if t_sec:
-                    waittime = int(t_sec[0])
-                elif t_min:
-                    waittime = int(t_min[0]) * 60
-                else:
-                    waittime = 10
-                print(f"Waiting {waittime} seconds")
-                time.sleep(waittime)
-            else:
-                print(f"ERROR {resp.status_code}")
-                print(resp.text)
-                sys.exit()
-
-    result_url = None
-    taskstarted_printed = False
-
-    print("Waiting for job to start...")
-    while not result_url:
-        with requests.Session() as s:
-            resp = s.get(task_url, headers=headers)
-            if resp.status_code == 200:
-                if not (resp.json()["finishtimestamp"] is None):
-                    result_url = resp.json()["result_url"]
-                    print(f"Task is complete with results available at {result_url}")
-                    break
-                elif resp.json()["starttimestamp"]:
-                    if not taskstarted_printed:
-                        print(
-                            f"Task is running (started at {resp.json()['starttimestamp']})"
-                        )
-                        taskstarted_printed = True
-                    time.sleep(2)
-                else:
-                    # print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
-                    time.sleep(4)
-            else:
-                print(f"ERROR {resp.status_code}")
-                print(resp.text)
-                sys.exit()
-
-    with requests.Session() as s:
-        if result_url is None:
-            print("WARNING: Empty light curve (no data within this MJD range).")
-            dfresult = pd.DataFrame(
-                columns=[
-                    "MJD",
-                    "m",
-                    "dm",
-                    "uJy",
-                    "duJy",
-                    "F",
-                    "err",
-                    "chi/N",
-                    "RA",
-                    "Dec",
-                    "x",
-                    "y",
-                    "maj",
-                    "min",
-                    "phi",
-                    "apfit",
-                    "Sky",
-                    "ZP",
-                    "Obs",
-                    "Mask",
-                ]
-            )
-        else:
-            result = s.get(result_url, headers=headers).text
-            dfresult = pd.read_csv(
-                io.StringIO(result.replace("###", "")), delim_whitespace=True
-            )
-
-    return dfresult
-
-
-# input/output table containing TNS names, RA, Dec, and MJD0
-# (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
-class SnInfoTable:
-    def __init__(self, directory, filename=None):
-        if filename is None:
-            self.filename = f"{directory}/sninfo.txt"
-        else:
-            self.filename = f"{directory}/{filename}"
-
-        try:
-            print(f"Loading SN info table at {self.filename}...")
-            self.t = pd.read_table(self.filename, delim_whitespace=True)
-            if not "tnsname" in self.t.columns:
-                raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
-            self.t["ra"] = self.t["ra"].astype(str)
-            self.t["dec"] = self.t["dec"].astype(str)
-            print("Success")
-        except Exception:
-            print(f"No existing SN info table at that path; creating blank table...")
-            self.t = pd.DataFrame(
-                columns=["tnsname", "ra", "dec", "mjd0"]
-            )  # , 'closebright_ra', 'closebright_dec'])
-
-    def get_row(self, tnsname):
-        if self.t.empty:
-            # raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--table is empty.')
-            return -1, None
-
-        matching_ix = np.where(self.t["tnsname"].eq(tnsname))[0]
-        if len(matching_ix) >= 2:
-            print(
-                f"WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows..."
-            )
-            self.t.drop(matching_ix[1:], inplace=True)
-            return matching_ix[0], self.t.loc[matching_ix[0], :]
-        elif len(matching_ix) == 1:
-            return matching_ix[0], self.t.loc[matching_ix[0], :]
-        else:
-            # raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--row doesn\'t exist.')
-            return -1, None
-
-    def is_nan(self, string: str):
-        return string.lower() == "nan"
-
-    def get_info(self, tnsname):
-        _, row = self.get_row(tnsname)
-        if row is None:
-            return None, None, None
-
-        # coords = Coordinates(row['ra'], row['dec'])
-        ra = None if self.is_nan(row["ra"]) else row["ra"]
-        dec = None if self.is_nan(row["dec"]) else row["dec"]
-
-        if np.isnan(row["mjd0"]):
-            mjd0 = None
-        else:
-            if not isinstance(row["mjd0"], (int, float)):
-                raise RuntimeError(f'ERROR: Invalid MJD0: {row["mjd0"]}')
-            mjd0 = float(row["mjd0"])
-
-        return ra, dec, mjd0
-
-    def update_row_at_index(
-        self, index, coords: Coordinates = None, mjd0: float = None, overwrite=False
-    ):
-        try:
-            if overwrite or np.isnan(self.t.loc[index, "mjd0"]):
-                self.t.loc[index, "mjd0"] = mjd0
-
-            if (
-                (overwrite or self.is_nan(self.t.loc[index, "ra"]))
-                and not coords is None
-                and coords.is_ra_present()
-            ):
-                self.t.loc[index, "ra"] = f"{coords.ra.angle.degree:0.14f}"
-
-            if (
-                (overwrite or self.is_nan(self.t.loc[index, "dec"]))
-                and not coords is None
-                and coords.is_dec_present()
-            ):
-                self.t.loc[index, "dec"] = f"{coords.dec.angle.degree:0.14f}"
-        except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Could not update SN info table at index {index}: {str(e)}"
-            )
-
-    def add_new_row(self, tnsname, coords: Coordinates = None, mjd0: float = None):
-        if mjd0 is None:
-            mjd0 = np.nan
-
-        ra = np.nan
-        dec = np.nan
-        if not coords is None:
-            if coords.is_ra_present():
-                ra = f"{coords.ra.angle.degree:0.14f}"
-            if coords.is_dec_present():
-                dec = f"{coords.dec.angle.degree:0.14f}"
-
-        row = {"tnsname": tnsname, "ra": ra, "dec": dec, "mjd0": mjd0}
-        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
-
-    def update_row(
-        self, tnsname, coords: Coordinates = None, mjd0: float = None, overwrite=False
-    ):
-        if self.t.empty:
-            self.add_new_row(tnsname, coords, mjd0)
-            return
-
-        matching_ix = np.where(self.t["tnsname"].eq(tnsname))[0]
-        if len(matching_ix) > 1:
-            raise RuntimeError(
-                f"ERROR: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}."
-            )
-        elif len(matching_ix) == 1:
-            index = matching_ix[0]
-            self.update_row_at_index(
-                index, coords=coords, mjd0=mjd0, overwrite=overwrite
-            )
-        else:
-            self.add_new_row(tnsname, coords, mjd0)
-
-    def save(self):
-        print(f"\nSaving SN info table at {self.filename}...")
-        self.t["ra"] = self.t["ra"].astype(str)
-        self.t["dec"] = self.t["dec"].astype(str)
-        self.t.to_string(self.filename, index=False)
-        print("Success")
-
-    def __str__(self):
-        return self.t.to_string()
-
-
-def get_mjd0_from_tns(
-    tnsname: str, sninfo: SnInfoTable, credentials: Credentials
-) -> Tuple[float, Coordinates | None]:
-    _, sninfo_row = sninfo.get_row(tnsname)
-    if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
-        # get MJD0 from SN info table
-        print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
-        mjd0 = float(sninfo_row["mjd0"])
-        if not isinstance(mjd0, (int, float)):
-            raise RuntimeError(f"ERROR: Invalid MJD0: {mjd0}")
-        else:
-            print("Success")
-            return mjd0, None
-    else:
-        # get MJD0 from TNS
-        print(f"\nQuerying TNS for SN {tnsname} discovery date...")
-        credentials.validate_tns_credentials()
-        json_data = query_tns(
-            tnsname,
-            credentials.tns_api_key,
-            credentials.tns_id,
-            credentials.tns_bot_name,
-        )
-        mjd0 = get_tns_mjd0_from_json(json_data)
-        coords = get_tns_coords_from_json(json_data)
-        return mjd0, coords
-
-
-# TODO (COLUMN): not sure if internal column string should be actual or preset
-class Cut:
-    def __init__(
-        self,
-        column: str = None,
-        min_value: float = None,
-        max_value: float = None,
-        flag: int = None,
-        params: Dict[str, Any] = None,
-    ):
-        self.column = column
-        self.min_value = min_value
-        self.max_value = max_value
-        self.flag = flag
-        self.params = params
-
-    def can_apply_directly(self):
-        if (
-            not self.flag
-            or not self.column
-            or (not self.min_value and not self.max_value)
-        ):
-            return False
-        return True
-
-    def __str__(self):
-        output = ""
-        if self.column:
-            output += f"column={self.column} "
-        if self.flag:
-            output += f"flag={hex(self.flag)} "
-        if self.min_value:
-            output += f"min_value={self.min_value} "
-        if self.max_value:
-            output += f"max_value={self.max_value}"
-        return output
-
-
-class CutList:
-    def __init__(self):
-        self.list: Dict[str, Type[Cut]] = {}
-
-    def add(self, cut: Cut, name: str):
-        if name in self.list:
-            raise RuntimeError(f"ERROR: cut by the name {name} already exists.")
-        self.list[name] = cut
-
-    def get(self, name: str):
-        if not name in self.list:
-            return None
-        return self.list[name]
-
-    def remove(self, names: str | List[str]):
-        if isinstance(names, str):
-            if self.has(name):
-                del self.list[names]
-        else:
-            for name in names:
-                if self.has(name):
-                    del self.list[name]
-
-    def remove_by_flag(self, flag: int):
-        """
-        Removes any Cut object from self.list that has a matching Cut.flag value.
-        """
-        to_remove = [
-            name
-            for name, cut in self.list.items()
-            if cut.flag is not None and cut.flag == flag
-        ]
-        for name in to_remove:
-            del self.list[name]
-
-    def has(self, name: str):
-        return name in self.list
-
-    def can_apply_directly(self, name: str):
-        return self.list[name].can_apply_directly()
-
-    def get_flag_duplicates(self):
-        if len(self.list) < 1:
-            return
-
-        unique_flags = set()
-        duplicate_flags = []
-
-        for name, cut in self.list.items():
-            if name == "uncert_est":
-                continue
-
-            flags = [cut.flag]
-            if cut.params:
-                for key in cut.params:
-                    if key.endswith("_flag"):
-                        flags.append(cut.params[key])
-
-            for flag in flags:
-                if flag in unique_flags:
-                    if not flag is None:
-                        duplicate_flags.append(flag)
-                elif not flag is None:
-                    unique_flags.add(flag)
-
-        return duplicate_flags
-
-    def get_custom_cuts(self) -> Dict[str, Cut]:
-        custom_cuts = {}
-
-        for name in self.list:
-            if not name in DEFAULT_CUT_NAMES and name != "uncert_est":
-                custom_cuts[name] = self.list[name]
-
-        return custom_cuts
-
-    def get_all_flags(self):
-        mask = 0
-        for name in self.list:
-            if name != "uncert_est":
-                mask = mask | self.list[name].flag
-        return mask
-
-    def get_previous_flags(self, current_cut_name: str):
-        skip_names: List = (
-            [
-                "uncert_est",
-                "badday_cut",
-            ]
-            + list(self.get_custom_cuts().values())
-            + [
-                "controls_cut",
-                "x2_cut",
-                "uncert_cut",
-            ]
-        )
-
-        try:
-            current_cut_index = skip_names.index(current_cut_name)
-        except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Cannot get previous flags for a custom cut: {str(e)}"
-            )
-        skip_names = skip_names[: current_cut_index + 1]
-        mask = 0
-        for name in self.list:
-            if not name in skip_names:
-                mask = mask | self.list[name].flag
-        return mask
-
-    def __str__(self):
-        output = ""
-        for name in self.list:
-            output += f"\n{name}: " + self.list[name].__str__()
-        return output
-
-
-"""
-LIGHT CURVES
-"""
+from utils import (
+    DISC_DATE_BUFFER,
+    TEMPLATE_CHANGE_1_MJD,
+    TEMPLATE_CHANGE_2_MJD,
+    AandB,
+    AorB,
+    BadDayCut,
+    ControlLightCurveCut,
+    Coordinates,
+    Cut,
+    PresetColumnNames,
+    UncertaintyEstimation,
+    combine_flags,
+    get_filename,
+    get_tns_coords_from_json,
+    get_tns_mjd0_from_json,
+    query_atlas,
+    query_tns,
+)
 
 
 class Supernova:
@@ -901,7 +96,7 @@ class Supernova:
 
         sn_sorted_mjd = self.lcs[0].t[self.colnames_master.mjd].to_numpy()
 
-        for control_index in self.get_control_indices():
+        for control_index in self.get_control_lc_indices():
             # sort by MJD
             self.lcs[control_index].t.sort_values(
                 by=[self.colnames_master.mjd], ignore_index=True, inplace=True
@@ -964,7 +159,7 @@ class Supernova:
                 f"Adding blank '{self.colnames_master.mask}' columns, replacing infs with NaNs, and calculating flux/dflux..."
             )
 
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             # add blank 'Mask' column
             self.lcs[control_index].t[self.colnames_master.mask] = 0
             # remove rows with duJy=0 or uJy=NaN
@@ -996,36 +191,30 @@ class Supernova:
         )
 
     def apply_cut(self, cut: Cut):
-        if not cut.can_apply_directly():
-            raise RuntimeError(f"ERROR: Cannot directly apply the following cut: {cut}")
-
         sn_percent_cut = None
-        for control_index in self.get_all_indices():
-            percent_cut = self.lcs[control_index].apply_cut(
-                cut.column, cut.flag, min_value=cut.min_value, max_value=cut.max_value
-            )
+        for control_index in self.get_lc_indices():
+            percent_cut = self.lcs[control_index].apply_cut(cut)
             if control_index == 0:
                 sn_percent_cut = percent_cut
-
         return sn_percent_cut
 
-    def get_uncert_est_stats(self, cut: Cut):
+    def get_uncert_est_stats(self, cut: UncertaintyEstimation):
         def get_sigma_extra(median_dflux, stdev):
             return max(0, np.sqrt(stdev**2 - median_dflux**2))
 
         stats = pd.DataFrame(
             columns=["control_index", "median_dflux", "stdev", "sigma_extra"]
         )
-        stats["control_index"] = self.get_control_indices()
+        stats["control_index"] = self.get_control_lc_indices()
         stats.set_index("control_index", inplace=True)
 
-        for control_index in self.get_control_indices():
+        for control_index in self.get_control_lc_indices():
             dflux_clean_ix = self.lcs[control_index].ix_unmasked(
-                self.colnames_master.mask, maskval=cut.params["uncert_cut_flag"]
+                self.colnames_master.mask, maskval=cut.uncert_cut_flag
             )
             x2_clean_ix = self.lcs[control_index].ix_inrange(
                 colnames=[self.colnames_master.chisquare],
-                uplim=cut.params["temp_x2_max_value"],
+                uplim=cut.temp_x2_max_value,
                 exclude_uplim=True,
             )
             clean_ix = AandB(dflux_clean_ix, x2_clean_ix)
@@ -1057,7 +246,7 @@ class Supernova:
         return stats
 
     def add_noise_to_dflux(self, sigma_extra):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.lcs[control_index].add_noise_to_dflux(sigma_extra)
 
     def get_all_controls(self):
@@ -1081,7 +270,7 @@ class Supernova:
         Mask = np.full((self.num_controls, len_mjd), 0, dtype=np.int32)
 
         i = 1
-        for control_index in self.get_control_indices():
+        for control_index in self.get_control_lc_indices():
             if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(
                 self.lcs[0].t[self.colnames_master.mjd],
                 self.lcs[control_index].t[self.colnames_master.mjd],
@@ -1123,7 +312,7 @@ class Supernova:
                 pda4MJD.statparams, c2_param2columnmapping, destindex=index
             )
 
-    def apply_controls_cut(self, cut: Cut, previous_flags: int):
+    def apply_controls_cut(self, cut: ControlLightCurveCut, previous_flags: int):
         self.calculate_control_stats(previous_flags)
         self.lcs[0].t["c2_abs_stn"] = (
             self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
@@ -1135,19 +324,12 @@ class Supernova:
         # copy over SN's control cut flags to control light curve 'Mask' columns
         flags_arr = np.full(
             self.lcs[0].t[self.colnames_master.mask].shape,
-            (
-                cut.flag
-                | cut.params["questionable_flag"]
-                | cut.params["x2_flag"]
-                | cut.params["snr_flag"]
-                | cut.params["Nclip_flag"]
-                | cut.params["Ngood_flag"]
-            ),
+            combine_flags(cut.get_flags()),
         )
         flags_to_copy = np.bitwise_and(
             self.lcs[0].t[self.colnames_master.mask], flags_arr
         )
-        for control_index in self.get_control_indices():
+        for control_index in self.get_control_lc_indices():
             self.lcs[control_index].copy_flags(flags_to_copy)
 
         # self.drop_extra_columns()
@@ -1155,37 +337,27 @@ class Supernova:
         len_ix = len(self.lcs[0].getindices())
         x2_percent_cut = (
             100
-            * len(
-                self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["x2_flag"]
-                )
-            )
+            * len(self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.x2_flag))
             / len_ix
         )
         stn_percent_cut = (
             100
             * len(
-                self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["snr_flag"]
-                )
+                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.snr_flag)
             )
             / len_ix
         )
         Nclip_percent_cut = (
             100
             * len(
-                self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["Nclip_flag"]
-                )
+                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.Nclip_flag)
             )
             / len_ix
         )
         Ngood_percent_cut = (
             100
             * len(
-                self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["Ngood_flag"]
-                )
+                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.Ngood_flag)
             )
             / len_ix
         )
@@ -1193,7 +365,7 @@ class Supernova:
             100
             * len(
                 self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.params["questionable_flag"]
+                    self.colnames_master.mask, maskval=cut.questionable_flag
                 )
             )
             / len_ix
@@ -1212,33 +384,28 @@ class Supernova:
             percent_cut,
         )
 
-    def apply_badday_cut(self, cut: Cut, previous_flags, flux2mag_sigmalimit=3.0):
-        mjdbinsize = cut.params["mjd_bin_size"]
+    def apply_badday_cut(self, cut: BadDayCut, previous_flags, flux2mag_sigmalimit=3.0):
         avg_sn = AveragedSupernova(
             self.colnames_master,
             tnsname=self.tnsname,
             mjd0=self.mjd0,
             filt=self.filt,
-            mjdbinsize=mjdbinsize,
+            mjdbinsize=cut.mjd_bin_size,
         )
         avg_sn.num_controls = self.num_controls
-        for control_index in self.get_all_indices():
+
+        for control_index in self.get_lc_indices():
             avg_sn.set_avg_lc(
                 self.lcs[control_index].average(
                     cut,
                     previous_flags,
-                    mjdbinsize=mjdbinsize,
+                    mjdbinsize=cut.mjd_bin_size,
                     flux2mag_sigmalimit=flux2mag_sigmalimit,
                 ),
                 control_index=control_index,
             )
 
-        all_flags = (
-            previous_flags
-            | cut.flag
-            | cut.params["ixclip_flag"]
-            | cut.params["smallnum_flag"]
-        )
+        all_flags = previous_flags | cut.get_flags()
         percent_cut = (
             100
             * len(
@@ -1251,7 +418,7 @@ class Supernova:
         return avg_sn, percent_cut
 
     def drop_extra_columns(self):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.lcs[control_index].drop_extra_columns()
 
     def count_files_in_dir(self, path):
@@ -1260,7 +427,7 @@ class Supernova:
         return len(files)
 
     def remove_flag(self, flag):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.lcs[control_index].remove_flag(flag)
 
     def load(self, input_dir, control_index=0, cleaned=False):
@@ -1293,16 +460,16 @@ class Supernova:
                 control_index += 1
 
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_control_indices()})"
+            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_control_lc_indices()})"
         )
 
-    def get_all_indices(self):
+    def get_lc_indices(self):
         if not self.all_indices:
             self.all_indices = list(self.lcs.keys())
             self.all_indices.sort()
         return self.all_indices
 
-    def get_control_indices(self):
+    def get_control_lc_indices(self):
         if not self.control_indices:
             self.control_indices = list(self.lcs.keys())
             if 0 in self.control_indices:
@@ -1314,7 +481,7 @@ class Supernova:
         print(
             f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...'
         )
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.lcs[control_index].drop_extra_columns()
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
@@ -1394,20 +561,20 @@ class AveragedSupernova(Supernova):
         print(
             f"\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves..."
         )
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.avg_lcs[control_index].drop_extra_columns()
             self.avg_lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
         print("Success")
 
-    def get_all_indices(self):
+    def get_lc_indices(self):
         if not self.all_indices:
             self.all_indices = list(self.avg_lcs.keys())
             self.all_indices.sort()
         return self.all_indices
 
-    def get_control_indices(self):
+    def get_control_lc_indices(self):
         if not self.control_indices:
             self.control_indices = list(self.avg_lcs.keys())
             if 0 in self.control_indices:
@@ -1517,36 +684,33 @@ class LightCurve(pdastrostatsclass):
         self.colnames.update("dflux_new", new_dflux_colname)
         self.calculate_fdf_column()
 
-    def flag_by_control_stats(self, cut: Cut):
+    def flag_by_control_stats(self, cut: ControlLightCurveCut):
         # flag SN measurements according to given bounds
         flag_x2_ix = self.ix_inrange(
-            colnames=["c2_X2norm"], lowlim=cut.params["x2_max"], exclude_lowlim=True
+            colnames=["c2_X2norm"], lowlim=cut.x2_max, exclude_lowlim=True
         )
         flag_stn_ix = self.ix_inrange(
-            colnames=["c2_abs_stn"], lowlim=cut.params["snr_max"], exclude_lowlim=True
+            colnames=["c2_abs_stn"], lowlim=cut.snr_max, exclude_lowlim=True
         )
         flag_nclip_ix = self.ix_inrange(
-            colnames=["c2_Nclip"], lowlim=cut.params["Nclip_max"], exclude_lowlim=True
+            colnames=["c2_Nclip"], lowlim=cut.Nclip_max, exclude_lowlim=True
         )
         flag_ngood_ix = self.ix_inrange(
-            colnames=["c2_Ngood"], uplim=cut.params["Ngood_min"], exclude_uplim=True
+            colnames=["c2_Ngood"], uplim=cut.Ngood_min, exclude_uplim=True
         )
-        self.update_mask_column(cut.params["x2_flag"], flag_x2_ix)
-        self.update_mask_column(cut.params["snr_flag"], flag_stn_ix)
-        self.update_mask_column(cut.params["Nclip_flag"], flag_nclip_ix)
-        self.update_mask_column(cut.params["Ngood_flag"], flag_ngood_ix)
+        self.update_mask_column(cut.x2_flag, flag_x2_ix)
+        self.update_mask_column(cut.snr_flag, flag_stn_ix)
+        self.update_mask_column(cut.Nclip_flag, flag_nclip_ix)
+        self.update_mask_column(cut.Ngood_flag, flag_ngood_ix)
 
         # update mask column with control light curve cut on any measurements flagged according to given bounds
         zero_Nclip_ix = self.ix_equal("c2_Nclip", 0)
         unmasked_ix = self.ix_unmasked(
             self.colnames.mask,
-            maskval=cut.params["x2_flag"]
-            | cut.params["snr_flag"]
-            | cut.params["Nclip_flag"]
-            | cut.params["Ngood_flag"],
+            maskval=cut.x2_flag | cut.snr_flag | cut.Nclip_flag | cut.Ngood_flag,
         )
         self.update_mask_column(
-            cut.params["questionable_flag"], AnotB(unmasked_ix, zero_Nclip_ix)
+            cut.questionable_flag, AnotB(unmasked_ix, zero_Nclip_ix)
         )
         self.update_mask_column(cut.flag, AnotB(self.getindices(), unmasked_ix))
 
@@ -1564,7 +728,7 @@ class LightCurve(pdastrostatsclass):
             )
 
     def average(
-        self, cut: Cut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
+        self, cut: BadDayCut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
             self.colnames,
@@ -1726,29 +890,27 @@ class LightCurve(pdastrostatsclass):
             # flag clipped measurements in lc
             if len(fluxstatparams["ix_clip"]) > 0:
                 self.update_mask_column(
-                    cut.params["ixclip_flag"],
+                    cut.ixclip_flag,
                     fluxstatparams["ix_clip"],
                     remove_old=False,
                 )
 
             # if small number within this bin, flag measurements
             if len(range_good_ix) < 3:
-                self.update_mask_column(
-                    cut.params["smallnum_flag"], range_ix, remove_old=False
-                )
+                self.update_mask_column(cut.smallnum_flag, range_ix, remove_old=False)
                 avg_lc.update_mask_column(
-                    cut.params["smallnum_flag"], [avglc_index], remove_old=False
+                    cut.smallnum_flag, [avglc_index], remove_old=False
                 )
             # else check sigmacut bounds and flag
             else:
                 is_bad = False
-                if fluxstatparams["Ngood"] < cut.params["Ngood_min"]:
+                if fluxstatparams["Ngood"] < cut.Ngood_min:
                     is_bad = True
-                if fluxstatparams["Nclip"] > cut.params["Nclip_max"]:
+                if fluxstatparams["Nclip"] > cut.Nclip_max:
                     is_bad = True
                 if (
                     not (fluxstatparams["X2norm"] is None)
-                    and fluxstatparams["X2norm"] > cut.params["x2_max"]
+                    and fluxstatparams["X2norm"] > cut.x2_max
                 ):
                     is_bad = True
                 if is_bad:
@@ -1772,24 +934,21 @@ class LightCurve(pdastrostatsclass):
 
         return avg_lc
 
-    def apply_cut(self, column_name, flag, min_value=None, max_value=None):
-        if not column_name in self.t.columns:
+    def apply_cut(self, cut: Cut):
+        if not cut.can_apply_directly():
+            raise RuntimeError(f"ERROR: Cannot directly apply the following cut: {cut}")
+        if not cut.column in self.t.columns:
             raise RuntimeError(
-                f"ERROR: No column name '{column_name}' exists in light curve; cannot apply cut"
+                f"ERROR: No column name '{cut.column}' exists in light curve; cannot apply cut"
             )
 
         all_ix = self.getindices()
-        if not min_value is None or not max_value is None:
-            kept_ix = self.ix_inrange(
-                colnames=[column_name], lowlim=min_value, uplim=max_value
-            )
-        else:
-            raise RuntimeError(
-                f"ERROR: Cannot apply cut without min value ({min_value}) or max value ({max_value})."
-            )
+        kept_ix = self.ix_inrange(
+            colnames=[cut.column], lowlim=cut.min_value, uplim=cut.max_value
+        )
         cut_ix = AnotB(all_ix, kept_ix)
 
-        self.update_mask_column(flag, cut_ix)
+        self.update_mask_column(cut.flag, cut_ix)
 
         percent_cut = 100 * len(cut_ix) / len(all_ix)
         return percent_cut
@@ -2318,15 +1477,15 @@ class SimDetecSupernova(AveragedSupernova):
         self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
 
     def apply_rolling_sums(self, sigma_kern: float, flag=0x800000):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
 
     def remove_rolling_sums(self):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.avg_lcs[control_index].remove_rolling_sum()
 
     def remove_simulations(self):
-        for control_index in self.get_all_indices():
+        for control_index in self.get_lc_indices():
             self.avg_lcs[control_index].remove_simulations()
 
     def load(self, input_dir, control_index=0):

@@ -12,17 +12,15 @@ Convert existing non-ATLAS files into ATClean-readable files.
 """
 
 import argparse
-import re
 import sys
 import numpy as np
 import pandas as pd
-from configparser import ConfigParser
-from typing import Dict, List, Optional, Set
+from typing import List
 from download import ControlCoordinatesTable, load_config, make_dir_if_not_exists
-from lightcurve import (
+from lightcurve import LightCurve
+from utils import (
     AorB,
     Coordinates,
-    LightCurve,
     PresetColumnNames,
     SnInfoTable,
     get_allowed_presets,
@@ -43,7 +41,6 @@ class ConvertLightCurve(LightCurve):
     ):
         LightCurve.__init__(self, colnames, control_index)
         self.obj_name: str = obj_name
-        # self.colnames: PresetColumnNames = colnames
 
     def load_raw_t(self, filename: str):
         """Load raw light curve data from file (CSV or whitespace-separated)."""

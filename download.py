@@ -19,13 +19,8 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import (
-    Coordinates,
-    Credentials,
-    PresetColumnNames,
-    SnInfoTable,
-    FullLightCurve,
-)
+from lightcurve import FullLightCurve
+from utils import Coordinates, Credentials, PresetColumnNames, SnInfoTable
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -130,8 +125,8 @@ class ControlCoordinatesTable:
         row = {
             "tnsname": tnsname,
             "control_index": control_index,
-            "ra": coords.get_RA_str(),
-            "dec": coords.get_Dec_str(),
+            "ra": coords.RA_str(),
+            "dec": coords.Dec_str(),
             "ra_offset": (
                 f"{ra_offset.degree:0.14f}"
                 if isinstance(ra_offset, Angle)

@@ -165,7 +165,7 @@ class Plot:
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"{sn.num_controls} control light curves"
-            for control_index in sn.get_control_indices():
+            for control_index in sn.get_control_lc_indices():
                 lc = sn.lcs[control_index]
 
                 plt.errorbar(
@@ -418,7 +418,7 @@ class Plot:
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"Cleaned control measurements"
-            for control_index in sn.get_control_indices():
+            for control_index in sn.get_control_lc_indices():
                 lc = sn.lcs[control_index]
                 good_ix = lc.get_good_indices(flag)
 
@@ -545,7 +545,7 @@ class Plot:
         if plot_controls and avg_sn.num_controls > 0:
             # plot control light curves
             label = f"Cleaned & averaged control measurements"
-            for control_index in avg_sn.get_control_indices():
+            for control_index in avg_sn.get_control_lc_indices():
                 lc = avg_sn.avg_lcs[control_index]
                 good_ix = lc.get_good_indices(flag)
 
