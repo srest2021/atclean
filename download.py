@@ -20,7 +20,15 @@ from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from lightcurve import FullLightCurve
-from utils import Coordinates, Credentials, PresetColumnNames, SnInfoTable
+from utils import (
+    Coordinates,
+    Credentials,
+    PresetColumnNames,
+    SnInfoTable,
+    load_config,
+    make_dir_if_not_exists,
+    parse_comma_separated_string,
+)
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -34,31 +42,6 @@ CTRL_COORDINATES_COLNAMES = [
     "n_detec_c",
     "n_detec_o",
 ]
-
-"""
-UTILITY
-"""
-
-
-def parse_comma_separated_string(string: str | None):
-    if string is None:
-        return None
-    return [item.strip() for item in string.split(",")]
-
-
-def make_dir_if_not_exists(directory):
-    if not os.path.isdir(directory):
-        os.makedirs(directory)
-
-
-def load_config(config_file):
-    cfg = configparser.ConfigParser()
-    try:
-        print(f"\nLoading config file at {config_file}...")
-        cfg.read(config_file)
-    except Exception as e:
-        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
-    return cfg
 
 
 class ControlCoordinatesTable:

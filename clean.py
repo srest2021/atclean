@@ -15,9 +15,6 @@ from lightcurve import (
 )
 from download import (
     Credentials,
-    load_config,
-    make_dir_if_not_exists,
-    parse_comma_separated_string,
 )
 from plot import PlotPdf
 from utils import (
@@ -28,6 +25,7 @@ from utils import (
     CustomCut,
     UncertaintyCut,
     UncertaintyEstimation,
+    find_all_filts,
     hexstring_to_int,
     Cut,
     CutList,
@@ -36,6 +34,9 @@ from utils import (
     get_mjd0_from_tns,
     PresetColumnNames,
     parse_config_str,
+    load_config,
+    make_dir_if_not_exists,
+    parse_comma_separated_string,
 )
 
 
@@ -646,35 +647,6 @@ class CleanLoop:
                 title=cut.name(),
             )
 
-    def find_all_filts(self, directory, tnsname):
-        subdir = os.path.join(directory, tnsname)
-        if not os.path.isdir(subdir):
-            raise RuntimeError(
-                f"Cannot search for filters because the path does not exist: {subdir}"
-            )
-
-        filts = set()
-
-        pattern = re.compile(
-            rf"^{re.escape(tnsname)}"  # starts with tnsname
-            r"(?:_i\d{3})?"  # optional control index
-            r"\.(?P<filt>\w+)"  # filter (captured)
-            r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
-            r"(?:\.clean)?"  # optional 'clean'
-            r"\.lc\.txt$"  # ends with '.lc.txt'
-        )
-
-        for file in os.listdir(subdir):
-            match = pattern.match(file)
-            if match:
-                filt = match.group("filt")
-                filts.add(filt)
-
-        if len(filts) < 1:
-            raise RuntimeError(f"Could not find filters from the files in {subdir}")
-
-        return filts
-
     def clean_lcs(
         self,
         tnsname: str,
@@ -828,7 +800,7 @@ class CleanLoop:
 
             if filts is None:
                 print("Searching for filters in input directory...")
-                filts = self.find_all_filts(self.input_dir, tnsname)
+                filts = find_all_filts(self.input_dir, tnsname)
                 print(f"Filters found: {filts}")
 
             for filt in filts:

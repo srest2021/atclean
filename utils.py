@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
+import configparser
 from functools import reduce
 from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, os
@@ -61,6 +62,57 @@ def parse_config_str(value: str | None):
         if stripped == "false":
             return False
     return value
+
+
+def parse_comma_separated_string(string: str | None):
+    if string is None:
+        return None
+    return [item.strip() for item in string.split(",")]
+
+
+def make_dir_if_not_exists(directory):
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+
+
+def load_config(config_file):
+    cfg = configparser.ConfigParser()
+    try:
+        print(f"\nLoading config file at {config_file}...")
+        cfg.read(config_file)
+    except Exception as e:
+        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
+    return cfg
+
+
+def find_all_filts(directory, tnsname):
+    subdir = os.path.join(directory, tnsname)
+    if not os.path.isdir(subdir):
+        raise RuntimeError(
+            f"Cannot search for filters because the path does not exist: {subdir}"
+        )
+
+    filts = set()
+
+    pattern = re.compile(
+        rf"^{re.escape(tnsname)}"  # starts with tnsname
+        r"(?:_i\d{3})?"  # optional control index
+        r"\.(?P<filt>\w+)"  # filter (captured)
+        r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+        r"(?:\.clean)?"  # optional 'clean'
+        r"\.lc\.txt$"  # ends with '.lc.txt'
+    )
+
+    for file in os.listdir(subdir):
+        match = pattern.match(file)
+        if match:
+            filt = match.group("filt")
+            filts.add(filt)
+
+    if len(filts) < 1:
+        raise RuntimeError(f"Could not find filters from the files in {subdir}")
+
+    return filts
 
 
 class PresetColumnNames:

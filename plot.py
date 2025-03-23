@@ -7,14 +7,12 @@ from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from lightcurve import (
-    TEMPLATE_CHANGE_1_MJD,
-    TEMPLATE_CHANGE_2_MJD,
     LimCutsTable,
-    Cut,
     LightCurve,
     Supernova,
     AveragedSupernova,
 )
+from utils import TEMPLATE_CHANGE_1_MJD, TEMPLATE_CHANGE_2_MJD, ChiSquareCut
 
 # plotting styles
 plt.rc("axes", titlesize=17)
@@ -646,7 +644,7 @@ class Plot:
     def plot_limcuts(
         self,
         limcuts: LimCutsTable,
-        cut: Cut,
+        cut: ChiSquareCut,
         save: bool = False,
         filename: str = "limcutstable",
     ):
@@ -661,7 +659,7 @@ class Plot:
 
         ax1.minorticks_on()
         ax1.tick_params(direction="in", which="both")
-        if cut.params["use_pre_mjd0_lc"]:
+        if cut.use_pre_mjd0_lc:
             ax1.set_ylabel(f"% pre-SN measurements")
         else:
             ax1.set_ylabel(f"% control measurements")
@@ -687,7 +685,7 @@ class Plot:
 
         ax1.axvline(cut.max_value, color="k", linestyle="dashed", label="Selected cut")
 
-        ax1.set_xlim(cut.params["min_cut"], cut.params["max_cut"])
+        ax1.set_xlim(cut.min_cut, cut.max_cut)
         ax1.set_ylim(
             0, max(max(limcuts.t["Ploss"]), max(limcuts.t["Pcontamination"])) * 1.1
         )
@@ -1129,7 +1127,7 @@ class PlotPdf(Plot):
     def plot_limcuts(
         self,
         limcuts: LimCutsTable,
-        cut: Cut,
+        cut: ChiSquareCut,
         save: bool = False,
         filename: str = "limcutstable",
     ):
