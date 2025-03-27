@@ -26,6 +26,7 @@ from utils import (
     PresetColumnNames,
     UncertaintyEstimation,
     combine_flags,
+    find_all_control_indices,
     get_filename,
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
@@ -444,6 +445,12 @@ class Supernova:
         # load SN light curve
         self.load(input_dir, cleaned=cleaned)
 
+        control_indices = find_all_control_indices(input_dir, self.tnsname)
+        if len(control_indices) < num_controls:
+            raise RuntimeError(
+                f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
+            )
+
         if num_controls > 0:
             # keep iterating over control indices until we successfully load num_controls light curves
             control_index = 1
@@ -538,6 +545,12 @@ class AveragedSupernova(Supernova):
         # load averaged SN light curve
         self.load(input_dir)
 
+        control_indices = find_all_control_indices(input_dir, self.tnsname)
+        if len(control_indices) < num_controls:
+            raise RuntimeError(
+                f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
+            )
+
         if num_controls > 0:
             # keep iterating over control indices until we successfully load num_controls averaged light curves
             control_index = 1
@@ -547,7 +560,7 @@ class AveragedSupernova(Supernova):
                     self.num_controls += 1
                 except:
                     print(
-                        f"Could not load control light curve {control_index}; skipping..."
+                        f"Could not load averaged control light curve {control_index}; skipping..."
                     )
                     del self.avg_lcs[control_index]
                 control_index += 1

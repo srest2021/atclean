@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from configparser import ConfigParser
 import configparser
 from functools import reduce
-from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
+from typing import Callable, Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, os
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -85,15 +85,30 @@ def load_config(config_file):
     return cfg
 
 
-def find_all_filts(directory, tnsname):
-    subdir = os.path.join(directory, tnsname)
+def extract_from_subdir(
+    subdir: str,
+    pattern: re.Pattern,
+    group_name: str,
+    convert_function: Callable = lambda x: x,
+):
     if not os.path.isdir(subdir):
-        raise RuntimeError(
-            f"Cannot search for filters because the path does not exist: {subdir}"
-        )
+        raise RuntimeError(f"Cannot search because the path does not exist: {subdir}")
 
-    filts = set()
+    extracted_values = set()
 
+    for file in os.listdir(subdir):
+        match = pattern.match(file)
+        if match:
+            value = match.group(group_name)
+            extracted_values.add(convert_function(value))
+
+    if not extracted_values:
+        raise RuntimeError(f"Could not find {group_name} from the files in {subdir}")
+
+    return extracted_values
+
+
+def find_all_filts(directory: str, tnsname: str):
     pattern = re.compile(
         rf"^{re.escape(tnsname)}"  # starts with tnsname
         r"(?:_i\d{3})?"  # optional control index
@@ -102,17 +117,17 @@ def find_all_filts(directory, tnsname):
         r"(?:\.clean)?"  # optional 'clean'
         r"\.lc\.txt$"  # ends with '.lc.txt'
     )
+    subdir = os.path.join(directory, tnsname)
+    return extract_from_subdir(subdir, pattern, "filt")
 
-    for file in os.listdir(subdir):
-        match = pattern.match(file)
-        if match:
-            filt = match.group("filt")
-            filts.add(filt)
 
-    if len(filts) < 1:
-        raise RuntimeError(f"Could not find filters from the files in {subdir}")
-
-    return filts
+def find_all_control_indices(directory: str, tnsname: str):
+    pattern = re.compile(
+        rf"^{re.escape(tnsname)}_i(?P<index>\d{{3}})"  # captures control index
+        r"\..*\.lc\.txt$"  # ensures it follows the general pattern
+    )
+    subdir = os.path.join(directory, tnsname, "controls")
+    return extract_from_subdir(subdir, pattern, "index", convert_function=int)
 
 
 class PresetColumnNames:
