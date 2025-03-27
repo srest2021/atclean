@@ -45,13 +45,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         action="store_true",
         help="store multiple SN files within one zip file",
     )
-    parser.add_argument(
-        "-p",
-        "--preset",
-        type=str,
-        default="atlas",
-        help="preset name from config file (ex. atlas, rubin, tess)",
-    )
     return parser
 
 
@@ -142,7 +135,7 @@ if __name__ == "__main__":
 
     config = load_config(args.config_file)
 
-    input_dir = config["dir"][f"{args.preset}_input"]
+    input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
     print(f"ATClean input directory: {input_dir}")
     print(f"Output directory: {output_dir}")
