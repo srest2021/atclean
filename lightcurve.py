@@ -404,7 +404,7 @@ class Supernova:
                 control_index=control_index,
             )
 
-        all_flags = previous_flags | cut.get_flags()
+        all_flags = previous_flags | combine_flags(cut.get_flags())
         percent_cut = (
             100
             * len(

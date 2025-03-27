@@ -10,7 +10,7 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
     - [Install dependencies](#install-dependencies): Install the necessary dependencies.
     - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert_to_atclean.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
-    - [`convert_to_atclean.py`](#convertpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
+    - [`convert_to_atclean.py`](#convert-to-atcleanpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
     - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
     - [`generate_sim_tables.py`](#generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
@@ -464,7 +464,7 @@ Arguments will override default config file settings if specified.
 
 #### Example commands
 - Apply the uncertainty cut to a single SN and its control light curves: `./clean.py 2020lse -u -o`
-- <a id="example-command-plot"></a>Apply the uncertainty cut to a single SN and its control light curves, then generate a summary PDF file of diagnostic plots: `./clean.py 2020lse -u -o -p`
+- <a id="example-command-plot"></a>Apply the uncertainty cut to a single SN and its control light curves, then generate a summary PDF file of diagnostic plots: `./clean.py 2020lse -u -o --plot`
 - Specify the number of control light curves to clean (can be 0): `./clean.py 2020lse -u --num_controls 5 -o`
 - Apply all custom cuts listed in `config.ini`: `./clean.py 2020lse --custom_cuts -o`
 - Apply the uncertainty cut, true uncertainties estimation, chi-square cut, control light curve cut, and all custom cuts listed in `config.ini`: `./clean.py 2020lse -u -e -x -c --custom_cuts -o`

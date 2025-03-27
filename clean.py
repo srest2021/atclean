@@ -179,7 +179,7 @@ class OutputReadMe:
             f"\nPercent of SN light curve below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
         )
         self.f.write(
-            f'\nTotal percent of SN light curve flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%'
+            f"\nTotal percent of SN light curve flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.questionable_flag)}): {questionable_percent_cut:0.2f}%"
         )
         self.f.write(
             f"\nTotal percent of SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
@@ -568,7 +568,7 @@ class CleanLoop:
             f"Percent of data below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
         )
         print(
-            f'Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.params["questionable_flag"])}): {questionable_percent_cut:0.2f}%'
+            f"Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.questionable_flag)}): {questionable_percent_cut:0.2f}%"
         )
         print(
             f"Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
