@@ -186,10 +186,10 @@ class OutputReadMe:
         )
 
     def add_badday_cut_section(self, percent_cut):
-        self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
             f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.'
         )
+        self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
             f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
