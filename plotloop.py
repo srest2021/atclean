@@ -450,7 +450,7 @@ if __name__ == "__main__":
     if not lims.is_empty():
         print(lims)
 
-    cut_list = parse_config_cuts(args, config)
+    cut_list = parse_config_cuts(args, config, colnames)
 
     print()
     credentials = Credentials(

@@ -111,6 +111,7 @@ def zip_sne_in_bulk(
         in_dirnames = get_in_dirnames(tnsnames[i], input_dir, output_dir)
         zf = zip_directory(zf, in_dirnames)
     zf.close()
+    print("Success")
 
 
 def zip_single_sn(
@@ -122,6 +123,7 @@ def zip_single_sn(
     zf = new_zipfile(out_filename)
     zf = zip_directory(zf, in_dirnames)
     zf.close()
+    print("Success")
 
 
 if __name__ == "__main__":

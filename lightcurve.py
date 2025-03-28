@@ -530,7 +530,10 @@ class AveragedSupernova(Supernova):
 
     def load(self, input_dir, control_index=0):
         self.avg_lcs[control_index] = AveragedLightCurve(
-            control_index=control_index, filt=self.filt, mjdbinsize=self.mjdbinsize
+            self.colnames_master,
+            control_index=control_index,
+            filt=self.filt,
+            mjdbinsize=self.mjdbinsize,
         )
         self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
 
