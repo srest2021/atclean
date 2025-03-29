@@ -43,14 +43,46 @@ def not_AandB(A, B):
     return np.setxor1d(A, B)
 
 
-# load the JSON config file
-def load_json_config(config_file: str):
+# print iterations progress
+# from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
+def print_progress_bar(
+    iteration,
+    total,
+    prefix="",
+    suffix="",
+    decimals=1,
+    length=100,
+    fill="█",
+    printEnd="\r",
+):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + "-" * (length - filledLength)
+    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end=printEnd)
+    if iteration == total:
+        print()
+
+
+# load a JSON config file
+def load_json_config(filename: str):
     try:
-        print(f"Loading config file at {config_file}...")
-        with open(config_file) as cfg:
+        print(f"Loading JSON config file at {filename}...")
+        with open(filename) as cfg:
             return json.load(cfg)
     except Exception as e:
-        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
+        raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
 
 
 def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
@@ -99,13 +131,14 @@ def make_dir_if_not_exists(directory):
         os.makedirs(directory)
 
 
-def load_config(config_file):
+# load a .ini config file
+def load_config(filename):
     cfg = configparser.ConfigParser()
     try:
-        print(f"\nLoading config file at {config_file}...")
-        cfg.read(config_file)
+        print(f"\nLoading config file at {filename}...")
+        cfg.read(filename)
     except Exception as e:
-        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
+        raise RuntimeError(f"Could not load config file at {filename}: {str(e)}")
     return cfg
 
 

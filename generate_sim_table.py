@@ -381,7 +381,6 @@ class SimTables:
         :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
         """
         del parsed_params["peak_appmag"]
-        num_rows = sum(len(v) for v in parsed_params.values())
 
         row = {
             "model_name": self.model_name,
@@ -396,6 +395,7 @@ class SimTables:
 
         print()
         self.d = {}
+        num_rows = sum(len(v) for v in parsed_params.values())
         for peak_appmag in self.peak_appmags:
             print(
                 f"Generating {num_rows}-length SimTable for peak_appmag={peak_appmag}..."

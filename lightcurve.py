@@ -1508,11 +1508,7 @@ class SimDetecSupernova(AveragedSupernova):
             filt=self.filt,
             mjdbinsize=self.mjdbinsize,
         )
-        if control_index == 0:
-            filename = f"{input_dir}/{self.tnsname}.{self.filt}.{self.mjdbinsize:0.2f}days.lc.txt"
-        else:
-            filename = f"{input_dir}/controls/{self.tnsname}_i{control_index:03d}.{self.filt}.{self.mjdbinsize:0.2f}days.lc.txt"
-        self.avg_lcs[control_index].load_lc_by_filename(filename)
+        self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
 
 
 class SimDetecLightCurve(AveragedLightCurve):
@@ -1714,14 +1710,14 @@ class SimDetecLightCurve(AveragedLightCurve):
         sim_flux = sim.get_sim_flux(
             lc.t.loc[good_ix, self.colnames.mjd], peak_appmag, **kwargs
         )
-
-        return lc.add_sim_flux(
+        lc.add_sim_flux(
             good_ix,
             sim_flux,
             cur_sigma_kern=cur_sigma_kern,
             verbose=verbose,
             remove_old=remove_old,
         )
+        return lc
 
     # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices
