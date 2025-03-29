@@ -7,7 +7,8 @@ using the parameters in simulation_settings.json.
 
 from abc import ABC, abstractmethod
 import itertools
-import json, argparse
+import argparse
+import os
 import sys
 import pandas as pd
 import numpy as np
@@ -15,56 +16,34 @@ from typing import Dict, List, Optional
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
+from utils import load_config, load_json_config, abbreviate_list
 
 GAUSSIAN_MODEL_NAME = "gaussian"
 ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
 SIM_TABLE_REQUIRED_COLUMNS = ["model_name", "filename"]
 
 
-def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
-    if len(l) > max_length:
-        half_abbrev_length = int(abbrev_length / 2)
-        return (
-            "["
-            + ", ".join(map(str, l[:half_abbrev_length]))
-            + ", ..., "
-            + ", ".join(map(str, l[-half_abbrev_length:]))
-            + f"] (length: {len(l)})"
-        )
-    else:
-        return str(l) + f" (length: {len(l)})"
-
-
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler="resolve"):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
-    parser.add_argument("model_name", type=str, help="name of model to use")
+    parser.add_argument("tnsname", type=str, help="transient name")
     parser.add_argument(
-        "-d",
-        "--detec_config_file",
-        default="detection_settings.json",
-        type=str,
-        help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
+        "-m", "--model_name", type=str, default="gaussian", help="name of model to use"
     )
     parser.add_argument(
-        "-f",
         "--sim_config_file",
         default="simulation_settings.json",
         type=str,
         help="file name of JSON file with model information and SimTable generation settings",
     )
+    parser.add_argument(
+        "--config_file",
+        default="config.ini",
+        type=str,
+        help="file name of .ini file with settings for this class",
+    )
     return parser
-
-
-# load the JSON config file
-def load_json_config(config_file: str):
-    try:
-        print(f"Loading config file at {config_file}...")
-        with open(config_file) as cfg:
-            return json.load(cfg)
-    except Exception as e:
-        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
 
 
 """class SimulationParam(ABC):
@@ -165,7 +144,8 @@ class RandomInRangeParam(SimulationParam):
         self.values = self._rec_get_valid_draws(valid_ranges, n)"""
 
 
-######
+def get_sim_tables_output_dir(output_dir: str, tnsname: str):
+    return os.path.join(output_dir, tnsname, "bump_analysis", "sim_tables")
 
 
 def parse_range_param(minval: float, maxval: float, step: float):
@@ -304,12 +284,8 @@ def parse_params(model_settings: Dict, time_param_name: str = "peak_mjd"):
     parsed_params[time_param_name] = list(
         np.floor(parsed_params[time_param_name]) + 0.5
     )
-    print("Success")
 
     return parsed_params
-
-
-######
 
 
 def parse_colname_info(model_settings: Dict, model_name: str):
@@ -405,8 +381,6 @@ class SimTables:
         :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
         """
         del parsed_params["peak_appmag"]
-        for p, v in parsed_params.items():
-            print(p, len(v))
         num_rows = sum(len(v) for v in parsed_params.values())
 
         row = {
@@ -458,7 +432,7 @@ class SimTables:
 
 if __name__ == "__main__":
     args = define_args().parse_args()
-    detec_config = load_json_config(args.detec_config_file)
+    config = load_config(args.config_file)
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
@@ -468,8 +442,10 @@ if __name__ == "__main__":
             f"Model '{args.model_name}' not found in simulation config file\n"
             f"Available models: {', '.join(sim_config.keys())}"
         )
+    print(f"Loading settings for model '{args.model_name}'...")
     model_settings = sim_config[args.model_name]
 
+    print("Parsing model parameters...")
     parsed_params = parse_params(
         model_settings, time_param_name=model_settings["time_parameter_name"]
     )
@@ -485,4 +461,7 @@ if __name__ == "__main__":
         mag_colname=mag_colname,
         flux_colname=flux_colname,
     )
-    sim_tables.save_all(detec_config["sim_tables_dir"])
+    sim_tables_output_dir = get_sim_tables_output_dir(
+        config["dir"]["output"], args.tnsname
+    )
+    sim_tables.save_all(sim_tables_output_dir)

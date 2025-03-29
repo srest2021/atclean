@@ -43,6 +43,30 @@ def not_AandB(A, B):
     return np.setxor1d(A, B)
 
 
+# load the JSON config file
+def load_json_config(config_file: str):
+    try:
+        print(f"Loading config file at {config_file}...")
+        with open(config_file) as cfg:
+            return json.load(cfg)
+    except Exception as e:
+        raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
+
+
+def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
+    if len(l) > max_length:
+        half_abbrev_length = int(abbrev_length / 2)
+        return (
+            "["
+            + ", ".join(map(str, l[:half_abbrev_length]))
+            + ", ..., "
+            + ", ".join(map(str, l[-half_abbrev_length:]))
+            + f"] (length: {len(l)})"
+        )
+    else:
+        return str(l) + f" (length: {len(l)})"
+
+
 def get_allowed_presets(config: ConfigParser) -> list[str]:
     """
     Extract all preset names from the config that match 'column_name_preset.<PRESET NAME>'.

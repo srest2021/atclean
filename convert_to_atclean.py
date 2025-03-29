@@ -321,7 +321,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
 
-    parser.add_argument("obj_name", help="transient name")
+    parser.add_argument("obj_name", type=str, help="transient name")
     parser.add_argument(
         "-p",
         "--preset",
