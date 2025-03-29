@@ -5,12 +5,13 @@ Generate a table of simulations for each peak apparent magnitude
 using the parameters in simulation_settings.json.
 """
 
+from abc import ABC, abstractmethod
 import itertools
 import json, argparse
 import sys
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
@@ -20,37 +21,18 @@ ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
 SIM_TABLE_REQUIRED_COLUMNS = ["model_name", "filename"]
 
 
-# print iterations progress
-# from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
-def print_progress_bar(
-    iteration,
-    total,
-    prefix="",
-    suffix="",
-    decimals=1,
-    length=100,
-    fill="█",
-    printEnd="\r",
-):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + "-" * (length - filledLength)
-    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end=printEnd)
-    # Print New Line on Complete
-    if iteration == total:
-        print()
+def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
+    if len(l) > max_length:
+        half_abbrev_length = int(abbrev_length / 2)
+        return (
+            "["
+            + ", ".join(map(str, l[:half_abbrev_length]))
+            + ", ..., "
+            + ", ".join(map(str, l[-half_abbrev_length:]))
+            + f"] (length: {len(l)})"
+        )
+    else:
+        return str(l) + f" (length: {len(l)})"
 
 
 # define command line arguments
@@ -83,6 +65,107 @@ def load_json_config(config_file: str):
             return json.load(cfg)
     except Exception as e:
         raise RuntimeError(f"Could not load config file at {config_file}: {str(e)}")
+
+
+"""class SimulationParam(ABC):
+    def __init__(self, name: str, values: Optional[List] = None):
+        self.name = name
+        self.values = values
+
+    @abstractmethod
+    def generate(self, **kwargs):
+        pass
+
+
+class ListParam(SimulationParam):
+    def __init__(self, name: str, values: Optional[List]):
+        super().__init__(name, values=values)
+
+
+class RangeParam(SimulationParam):
+    def __init__(self, name: str, minval: float, maxval: float, step: float):
+        super().__init__(name)
+        self.generate(minval, maxval, step)
+
+    def generate(self, minval: float, maxval: float, step: float):
+        print(f"Setting to range from {minval} to {maxval} with step size {step}")
+        if maxval <= minval:
+            raise RuntimeError("Max value must be greater than min value.")
+        if step > abs(maxval - minval):
+            raise RuntimeError(
+                "Step size cannot be greater than the difference between min value and max value."
+            )
+        self.values = list(np.arange(minval, maxval, step))
+
+
+class LogRangeParam(SimulationParam):
+    def __init__(
+        self, name: str, minval: float, maxval: float, base: int, n: int, to_int=False
+    ):
+        super().__init__(name)
+        self.generate(minval, maxval, base, n, to_int=to_int)
+
+    def generate(self, minval: float, maxval: float, base: int, n: int, to_int=False):
+        print(
+            f'Generating {n}-length {"integer" if to_int else "float"} range using log base {base}'
+        )
+        if maxval <= minval:
+            raise RuntimeError("Max value must be greater than min value.")
+        minlog = np.log(minval) / np.log(base)
+        maxlog = np.log(maxval) / np.log(base)
+        res = list(np.logspace(minlog, maxlog, num=n, base=base))
+        if to_int:
+            res = [round(num) for num in res]
+        self.values = res
+
+
+class RandomParam(SimulationParam):
+    def __init__(self, name: str, minval: float, maxval: float, n: int, to_int=False):
+        super().__init__(name)
+        self.generate(minval, maxval, n, to_int=to_int)
+
+    def generate(self, minval: float, maxval: float, n: int, to_int=False):
+        print(f"Generating {n}-length random list")
+        if maxval <= minval:
+            raise RuntimeError("maxval must be greater than minval.")
+        res = list(np.random.uniform(minval, maxval, n))
+        if to_int:
+            res = [round(num) for num in res]
+        self.values = res
+
+
+class RandomInRangeParam(SimulationParam):
+    def __init__(self, name, valid_ranges: List[List[float]], n: int):
+        super().__init__(name)
+        self.generate(valid_ranges, n)
+
+    def _filter_valid_draws(self, valid_ranges: List[List[float]], draws: List):
+        return [
+            draw
+            for draw in draws
+            if any(
+                valid_range[0] <= draw <= valid_range[1] for valid_range in valid_ranges
+            )
+        ]
+
+    def _rec_get_valid_draws(self, valid_ranges: List[List[float]], n: int):
+        m = 2 * n
+        m_draws = list(np.random.uniform(valid_ranges[0][0], valid_ranges[-1][1], m))
+        valid_draws = self._filter_valid_draws(valid_ranges, m_draws)
+
+        m_prime = len(valid_draws)
+        if m_prime >= n:
+            return valid_draws[:n]
+        return valid_draws + self._rec_get_valid_draws(valid_ranges, n - m_prime)
+
+    def generate(self, valid_ranges: List[List[float]], n: int):
+        print(
+            f"Generating {n}-length random list within the following valid ranges: {valid_ranges}"
+        )
+        self.values = self._rec_get_valid_draws(valid_ranges, n)"""
+
+
+######
 
 
 def parse_range_param(minval: float, maxval: float, step: float):
@@ -135,7 +218,7 @@ def rec_get_valid_draws(valid_ranges: List[List[float]], n: int):
 
     m_prime = len(valid_draws)
     if m_prime >= n:
-        return valid_draws
+        return valid_draws[:n]
     return valid_draws + rec_get_valid_draws(valid_ranges, n - m_prime)
 
 
@@ -194,11 +277,11 @@ def parse_param(param_name: str, param_info: Dict):
             "Type must be one of the following: list, range, logrange, random, random_inrange."
         )
 
-    print(f"Result: {res}")
+    print("Result: ", abbreviate_list(res))
     return res
 
 
-def parse_params(model_settings, time_param_name="peak_mjd"):
+def parse_params(model_settings: Dict, time_param_name: str = "peak_mjd"):
     parsed_params = {}
     for param_name in model_settings["parameters"]:
         parsed_params[param_name] = parse_param(
@@ -207,12 +290,12 @@ def parse_params(model_settings, time_param_name="peak_mjd"):
 
     if not "peak_appmag" in parsed_params:
         raise RuntimeError(
-            'ERROR: Parameters must include peak apparent magnitude ("peak_appmag").'
+            'Parameters must include peak apparent magnitude ("peak_appmag").'
         )
 
     if not time_param_name in parsed_params:
         raise RuntimeError(
-            f'ERROR: Time parameter name "{time_param_name}" cannot be found in listed parameters.'
+            f'Time parameter name "{time_param_name}" cannot be found in listed parameters.'
         )
     # make sure the time parameter will match the MJDbin column
     print(
@@ -226,7 +309,10 @@ def parse_params(model_settings, time_param_name="peak_mjd"):
     return parsed_params
 
 
-def parse_colname_info(model_settings, model_name):
+######
+
+
+def parse_colname_info(model_settings: Dict, model_name: str):
     filename, mjd_colname, mag_colname, flux_colname = None, False, False, False
     if (
         model_name != GAUSSIAN_MODEL_NAME
@@ -252,7 +338,7 @@ def parse_colname_info(model_settings, model_name):
 
 
 class SimTable(pdastrostatsclass):
-    def __init__(self, peak_appmag, **kwargs):
+    def __init__(self, peak_appmag: float, **kwargs):
         """
         Initialize a SimTable.
 
@@ -304,10 +390,10 @@ class SimTables:
     def generate(
         self,
         parsed_params: Dict[str, List],
-        filename=None,
-        mjd_colname=False,
-        mag_colname=False,
-        flux_colname=False,
+        filename: str = None,
+        mjd_colname: Optional[bool] = False,
+        mag_colname: Optional[bool] = False,
+        flux_colname: Optional[bool] = False,
     ):
         """
         Generate the table content of the SimTable using parsed parameters from the config file.
@@ -319,9 +405,9 @@ class SimTables:
         :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
         """
         del parsed_params["peak_appmag"]
-        num_rows = 0
-        for param_name in parsed_params:
-            num_rows += len(parsed_params[param_name])
+        for p, v in parsed_params.items():
+            print(p, len(v))
+        num_rows = sum(len(v) for v in parsed_params.values())
 
         row = {
             "model_name": self.model_name,
@@ -354,14 +440,14 @@ class SimTables:
 
         print("Success")
 
-    def save_all(self, tables_dir):
+    def save_all(self, tables_dir: str):
         print(f"\nSaving SimTables in directory: {tables_dir}")
         make_dir_if_not_exists(tables_dir)
         for peak_appmag in self.peak_appmags:
             self.d[peak_appmag].save_sim_table(self.model_name, tables_dir)
         print("Success")
 
-    def load_all(self, tables_dir):
+    def load_all(self, tables_dir: str):
         print(f"\nLoading SimTables in directory: {tables_dir}")
         self.d = {}
         for peak_appmag in self.peak_appmags:
@@ -377,12 +463,12 @@ if __name__ == "__main__":
 
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
-    try:
-        model_settings = sim_config[args.model_name]
-    except Exception as e:
+    if args.model_name not in sim_config:
         raise RuntimeError(
-            f"Could not find model {args.model_name} in model config file: {str(e)}"
+            f"Model '{args.model_name}' not found in simulation config file\n"
+            f"Available models: {', '.join(sim_config.keys())}"
         )
+    model_settings = sim_config[args.model_name]
 
     parsed_params = parse_params(
         model_settings, time_param_name=model_settings["time_parameter_name"]

@@ -426,7 +426,7 @@ class SnInfoTable:
             print(f"Loading SN info table at {self.filename}...")
             self.t = pd.read_table(self.filename, delim_whitespace=True)
             if not "tnsname" in self.t.columns:
-                raise RuntimeError('ERROR: SN info table must have a "tnsname" column.')
+                raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
             print("Success")
@@ -470,7 +470,7 @@ class SnInfoTable:
             mjd0 = None
         else:
             if not isinstance(row["mjd0"], (int, float)):
-                raise RuntimeError(f'ERROR: Invalid MJD0: {row["mjd0"]}')
+                raise RuntimeError(f'Invalid MJD0: {row["mjd0"]}')
             mjd0 = float(row["mjd0"])
 
         return ra, dec, mjd0

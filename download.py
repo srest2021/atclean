@@ -58,7 +58,7 @@ class ControlCoordinatesTable:
             self.t = pd.read_table(filename, delim_whitespace=True)
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
-                    'ERROR: Control coordinates table must have "ra" and "dec" columns.'
+                    'Control coordinates table must have "ra" and "dec" columns.'
                 )
             print("Success")
         except Exception as e:
@@ -351,7 +351,7 @@ class DownloadLoop:
             or not args.closebright is None
         ):
             raise RuntimeError(
-                f'ERROR: Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.'
+                f'Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.'
             )
 
         self.overwrite = args.overwrite
