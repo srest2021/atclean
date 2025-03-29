@@ -1,0 +1,2 @@
+  MJD  Flux  DFlux   RA   Dec Filter
+59000   1.2    0.1 10.5 -20.3      g

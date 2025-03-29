@@ -11,3 +11,10 @@ brightstars/
 atlas_lc.py
 download_atlas_lc.py
 settings.ini
+atlas_lc_template_correction.ipynb
+extern/2023ixf_simulation_analysis.ipynb
+extern/example2018gkr_clean_atlas_lc.v4.ipynb
+extern/example2019vxm_clean_atlas_lc.v4.ipynb
+extern/example2020lse_clean_atlas_lc.v4.ipynb
+extern/example2023ixf_atlas_lc_template_correction.ipynb
+extern/tess_detec_loop.py

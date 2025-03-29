@@ -19,7 +19,16 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import Coordinates, Credentials, SnInfoTable, FullLightCurve
+from lightcurve import FullLightCurve
+from utils import (
+    Coordinates,
+    Credentials,
+    PresetColumnNames,
+    SnInfoTable,
+    load_config,
+    make_dir_if_not_exists,
+    parse_comma_separated_string,
+)
 
 CTRL_COORDINATES_COLNAMES = [
     "tnsname",
@@ -33,31 +42,6 @@ CTRL_COORDINATES_COLNAMES = [
     "n_detec_c",
     "n_detec_o",
 ]
-
-"""
-UTILITY
-"""
-
-
-def parse_comma_separated_string(string):
-    return [item.strip() for item in string.split(",")]
-
-
-def make_dir_if_not_exists(directory):
-    if not os.path.isdir(directory):
-        os.makedirs(directory)
-
-
-def load_config(config_file):
-    cfg = configparser.ConfigParser()
-    try:
-        print(f"\nLoading config file at {config_file}...")
-        cfg.read(config_file)
-    except Exception as e:
-        raise RuntimeError(
-            f"ERROR: Could not load config file at {config_file}: {str(e)}"
-        )
-    return cfg
 
 
 class ControlCoordinatesTable:
@@ -74,12 +58,12 @@ class ControlCoordinatesTable:
             self.t = pd.read_table(filename, delim_whitespace=True)
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
-                    'ERROR: Control coordinates table must have "ra" and "dec" columns.'
+                    'Control coordinates table must have "ra" and "dec" columns.'
                 )
             print("Success")
         except Exception as e:
             raise RuntimeError(
-                f"ERROR: Could not load control coordinates table at {filename}: {str(e)}"
+                f"Could not load control coordinates table at {filename}: {str(e)}"
             )
 
         self.num_controls = len(self.t)
@@ -98,15 +82,15 @@ class ControlCoordinatesTable:
         ix = np.where(self.t["control_index"] == control_index)[0]
         if len(ix) > 1:
             raise RuntimeError(
-                f"ERROR: Cannot update row in control coordinates table for control index {control_index}: duplicate rows."
+                f"Cannot update row in control coordinates table for control index {control_index}: duplicate rows."
             )
         index = ix[0]
 
-        # update corresponding row in table with n_detec, n_detec_o, and n_detec_c counts
-        total_len, o_len, c_len = full_control_lc.get_filt_lens()
+        # update corresponding row in table with total and filter counts
+        total_len, filt_lens = full_control_lc.get_filt_lens()
         self.t.loc[index, "n_detec"] = total_len
-        self.t.loc[index, "n_detec_o"] = o_len
-        self.t.loc[index, "n_detec_c"] = c_len
+        for filt in filt_lens:
+            self.t.loc[index, f"n_detec_{filt}"] = filt_lens[filt]
 
     def add_row(
         self,
@@ -117,14 +101,13 @@ class ControlCoordinatesTable:
         dec_offset=0,
         radius=0,
         n_detec=0,
-        n_detec_o=0,
-        n_detec_c=0,
+        filt_lens=None,
     ):
         row = {
             "tnsname": tnsname,
             "control_index": control_index,
-            "ra": f"{coords.ra.angle.degree:0.14f}",
-            "dec": f"{coords.dec.angle.degree:0.14f}",
+            "ra": coords.RA_str(),
+            "dec": coords.Dec_str(),
             "ra_offset": (
                 f"{ra_offset.degree:0.14f}"
                 if isinstance(ra_offset, Angle)
@@ -137,9 +120,11 @@ class ControlCoordinatesTable:
             ),
             "radius_arcsec": radius.arcsecond if isinstance(radius, Angle) else radius,
             "n_detec": n_detec,
-            "n_detec_o": n_detec_o,
-            "n_detec_c": n_detec_c,
         }
+
+        if not filt_lens is None:
+            for filt in filt_lens:
+                row[f"n_detec_{filt}"] = filt_lens[filt]
 
         self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
@@ -216,7 +201,7 @@ class ControlCoordinatesTable:
         )
 
         # add row for SN position
-        total_len, o_len, c_len = full_sn_lc.get_filt_lens()
+        total_len, filt_lens = full_sn_lc.get_filt_lens()
         if closebright:
             # circle pattern radius is distance between SN and bright object
             r = self.get_distance(full_sn_lc.coords, center_coords)
@@ -229,18 +214,12 @@ class ControlCoordinatesTable:
                 dec_offset=np.nan,
                 radius=r,
                 n_detec=total_len,
-                n_detec_o=o_len,
-                n_detec_c=c_len,
+                filt_lens=filt_lens,
             )
         else:
             r = Angle(self.radius, u.arcsec)
             self.add_row(
-                tnsname,
-                0,
-                full_sn_lc.coords,
-                n_detec=total_len,
-                n_detec_o=o_len,
-                n_detec_c=c_len,
+                tnsname, 0, full_sn_lc.coords, n_detec=total_len, filt_lens=filt_lens
             )
 
         # add row for each control light curve
@@ -256,7 +235,7 @@ class ControlCoordinatesTable:
         if filename is None:
             if tnsname is None:
                 raise RuntimeError(
-                    "ERROR: Please provide either a filename or a TNS name to save the control coordinates table."
+                    "Please provide either a filename or a TNS name to save the control coordinates table."
                 )
             filename = f"{directory}/{tnsname}/{tnsname}_control_coords.txt"
         else:
@@ -364,9 +343,7 @@ class DownloadLoop:
         self.tnsnames = args.tnsnames
         print(f"List of transients to download from ATLAS: {self.tnsnames}")
         if len(self.tnsnames) < 1:
-            raise RuntimeError(
-                "ERROR: Please specify at least one TNS name to download."
-            )
+            raise RuntimeError("Please specify at least one TNS name to download.")
         if len(self.tnsnames) > 1 and (
             not args.coords is None
             or not args.mjd0 is None
@@ -374,7 +351,7 @@ class DownloadLoop:
             or not args.closebright is None
         ):
             raise RuntimeError(
-                f'ERROR: Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.'
+                f'Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.'
             )
 
         self.overwrite = args.overwrite
@@ -449,7 +426,7 @@ class DownloadLoop:
                     print(f' with radius of {self.ctrl_coords.radius}" from center')
         elif args.ctrl_coords or args.closebright or args.num_controls or args.radius:
             raise RuntimeError(
-                "ERROR: Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
+                "Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
             )
 
     def connect_atlas(self):
@@ -473,11 +450,11 @@ class DownloadLoop:
         parsed_coords = parse_comma_separated_string(arg_coords)
         if len(parsed_coords) > 2:
             raise RuntimeError(
-                "ERROR: Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
+                "Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
             )
         if len(parsed_coords) < 2:
             raise RuntimeError(
-                "ERROR: Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
+                "Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
             )
         return parsed_coords[0], parsed_coords[1]
 
@@ -502,6 +479,7 @@ class DownloadLoop:
             self.lcs[0] = FullLightCurve(0)
 
         # try to query TNS for any missing data
+        self.credentials.validate_tns_credentials()
         self.lcs[0].get_tns_data(
             tnsname,
             self.credentials.tns_api_key,
@@ -512,7 +490,7 @@ class DownloadLoop:
         # add final RA, Dec, MJD0 to SN info table
         self.sninfo.update_row(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
 
-    def download_lcs(self, args, headers, tnsname):
+    def download_lcs(self, args, headers, colnames: PresetColumnNames, tnsname):
         print(f"\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n")
 
         self.lcs = {}
@@ -520,7 +498,7 @@ class DownloadLoop:
             self.construct_full_lc(args, tnsname)
         except Exception as e:
             print(
-                f"ERROR: Could not construct light curve object: {str(e)}. Skipping to next SN..."
+                f"Could not construct light curve object: {str(e)}. Skipping to next SN..."
             )
             return
 
@@ -528,7 +506,7 @@ class DownloadLoop:
         self.lcs[0].download(
             headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
         )
-        self.lcs[0].save(self.input_dir, tnsname, overwrite=args.overwrite)
+        self.lcs[0].save(colnames, self.input_dir, tnsname, overwrite=args.overwrite)
 
         # save SN info table
         self.sninfo.save()
@@ -561,24 +539,31 @@ class DownloadLoop:
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
                 )
                 self.lcs[control_index].save(
-                    self.input_dir, tnsname, overwrite=args.overwrite
+                    colnames, self.input_dir, tnsname, overwrite=args.overwrite
                 )
                 self.ctrl_coords.update_row(control_index, self.lcs[control_index])
 
             # save control coordinates table
             self.ctrl_coords.save(self.input_dir, tnsname=tnsname)
 
-    def loop(self, args):
+    def loop(self, args, colnames: PresetColumnNames):
         print("\nConnecting to ATLAS API...")
         headers = self.connect_atlas()
         if headers is None:
-            raise RuntimeError("ERROR: No token header!")
+            raise RuntimeError("No token header!")
 
         for obj_index in range(len(args.tnsnames)):
-            self.download_lcs(args, headers, args.tnsnames[obj_index])
+            self.download_lcs(args, headers, colnames, args.tnsnames[obj_index])
 
 
 if __name__ == "__main__":
     args = define_args().parse_args()
+    config = load_config(args.config_file)
+
+    print(f"Loading ATLAS preset column names from config.ini...")
+    colnames = PresetColumnNames(config, "atlas")
+    # print(colnames.__str__())
+    # print("Success")
+
     download = DownloadLoop(args)
-    download.loop(args)
+    download.loop(args, colnames)

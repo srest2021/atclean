@@ -5,19 +5,27 @@ import os
 import sys
 from typing import Dict, List
 
-from clean import parse_config_cuts, parse_config_filters
+from clean import parse_config_cuts
 from download import (
     Credentials,
-    load_config,
-    make_dir_if_not_exists,
-    parse_comma_separated_string,
 )
 from lightcurve import (
     AveragedSupernova,
-    CutList,
-    SnInfoTable,
     Supernova,
-    get_mjd0,
+)
+from utils import (
+    BadDayCut,
+    ChiSquareCut,
+    ControlLightCurveCut,
+    CutList,
+    PresetColumnNames,
+    SnInfoTable,
+    UncertaintyCut,
+    find_all_filts,
+    get_allowed_presets,
+    get_mjd0_from_tns,
+    load_config,
+    make_dir_if_not_exists,
 )
 from plot import PlotLimits, PlotPdf
 
@@ -25,12 +33,14 @@ from plot import PlotLimits, PlotPdf
 class PlotLoop:
     def __init__(
         self,
+        colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
         sninfo_filename: str = None,
         overwrite: bool = False,
     ):
+        self.colnames = colnames
         self.sn: Supernova = None
         self.avg_sn: AveragedSupernova = None
         self.cut_list: CutList = None
@@ -53,16 +63,17 @@ class PlotLoop:
         num_controls: int = 0,
         cleaned: bool = False,
     ):
-        self.sn = Supernova(tnsname=tnsname, mjd0=mjd0, filt=filt)
+        self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
         try:
             self.sn.load_all(
                 self.output_dir, num_controls=num_controls, cleaned=cleaned
             )
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+            raise RuntimeError(f"Could not load light curves: {str(e)}")
 
     def load_avg_sn(self, tnsname: str, mjd0: float, filt: str, mjdbinsize: float):
         self.avg_sn = AveragedSupernova(
+            self.colnames,
             tnsname=tnsname,
             mjd0=mjd0,
             filt=filt,
@@ -71,7 +82,7 @@ class PlotLoop:
         try:
             self.avg_sn.load_all(output_dir, num_controls=num_controls)
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load light curves: {str(e)}")
+            raise RuntimeError(f"Could not load light curves: {str(e)}")
 
     def plot_lcs(
         self,
@@ -87,13 +98,13 @@ class PlotLoop:
         # load the cleaned SN and control light curves
         self.load_sn(tnsname, mjd0, filt, num_controls=num_controls, cleaned=True)
 
-        if self.cut_list.has("badday_cut"):
+        if self.cut_list.has(BadDayCut.name()):
             # load averaged light curves
             self.load_avg_sn(
                 tnsname,
                 mjd0,
                 filt,
-                self.cut_list.get("badday_cut").params["mjd_bin_size"],
+                self.cut_list.get(BadDayCut.name()).mjd_bin_size,
             )
 
         # initialize PDF of diagnostic plots
@@ -107,7 +118,7 @@ class PlotLoop:
             plot_template_changes=True,
         )
 
-        uncert_cut = self.cut_list.get("uncert_cut")
+        uncert_cut = self.cut_list.get(UncertaintyCut.name())
         if not uncert_cut is None:
             # plot uncertainty cut
             self.p.plot_cut(
@@ -137,7 +148,7 @@ class PlotLoop:
                 ),
             )
 
-        x2_cut = cut_list.get("x2_cut")
+        x2_cut = self.cut_list.get(ChiSquareCut.name())
         if not x2_cut is None:
             # plot chi-square cut
             self.p.plot_cut(
@@ -151,7 +162,7 @@ class PlotLoop:
                 title="Chi-square cut",
             )
 
-        controls_cut = cut_list.get("controls_cut")
+        controls_cut = self.cut_list.get(ControlLightCurveCut.name())
         if not controls_cut is None:
             # plot control light curve cut
             self.p.plot_cut(
@@ -166,7 +177,7 @@ class PlotLoop:
             )
 
         custom_cuts = self.cut_list.get_custom_cuts()
-        for name, cut in custom_cuts.items():
+        for cut in custom_cuts.values():
             # plot custom cut
             self.p.plot_cut(
                 self.sn.lcs[0],
@@ -176,11 +187,11 @@ class PlotLoop:
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
                     custom_lims=custom_lims,
                 ),
-                title=f"Custom cut {name}",
+                title=cut.name(),
             )
 
         # plot cleaned light curve using all previous cuts
-        previous_flags = self.cut_list.get_previous_flags("badday_cut")
+        previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
         lims = self.p.get_lims(
             lc=self.sn.lcs[0],
             indices=self.sn.lcs[0].get_good_indices(previous_flags),
@@ -191,7 +202,7 @@ class PlotLoop:
             self.sn, previous_flags, lims, plot_controls=True, plot_flagged=False
         )
 
-        badday_cut = self.cut_list.get("badday_cut")
+        badday_cut = self.cut_list.get(BadDayCut.name())
         if not badday_cut is None:
             lims = self.p.get_lims(
                 lc=self.avg_sn.avg_lcs[0],
@@ -230,7 +241,7 @@ class PlotLoop:
         cut_list: CutList,
         num_controls: int = 0,
         mjd0=None,
-        filters: List[str] = ["o", "c"],
+        filters: List[str] = None,
         plot_uncert_est: bool = False,
         lims: PlotLimits | None = None,
     ):
@@ -242,8 +253,11 @@ class PlotLoop:
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
 
+            if filters is None:
+                filters = find_all_filts(self.output_dir, tnsname)
+
             if mjd0 is None:
-                mjd0, coords = get_mjd0(tnsname, self.sninfo, self.credentials)
+                mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
@@ -269,6 +283,13 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
     parser.add_argument(
         "tnsnames", nargs="+", help="TNS names of the transients to clean"
+    )
+    parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
     )
     parser.add_argument(
         "--config_file",
@@ -300,13 +321,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     )
 
     # possible cuts
-    # parser.add_argument(
-    #     "-t",
-    #     "--template_correction",
-    #     default=False,
-    #     action="store_true",
-    #     help="plot ATLAS template change correction",
-    # )
     parser.add_argument(
         "-e",
         "--uncert_est",
@@ -390,12 +404,20 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
 
     if len(args.tnsnames) < 1:
-        raise RuntimeError("ERROR: Please specify at least one TNS name to plot.")
+        raise RuntimeError("Please specify at least one TNS name to plot.")
     if len(args.tnsnames) > 1 and not args.mjd0 is None:
-        raise RuntimeError(
-            f"ERROR: Cannot specify one MJD0 {args.mjd0} for a batch of SNe."
-        )
+        raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to plot: {args.tnsnames}")
+
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
+        raise RuntimeError(
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
+    print("Success")
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
@@ -409,8 +431,7 @@ if __name__ == "__main__":
     print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
     print(f"Overwrite existing files: {args.overwrite}")
-    filters = parse_config_filters(args, config)
-    print(f"Filters: {filters}")
+    print(f"Filters: {args.filters}")
     if args.mjd0:
         print(f"MJD0: {args.mjd0}")
     num_controls = (
@@ -429,7 +450,7 @@ if __name__ == "__main__":
     if not lims.is_empty():
         print(lims)
 
-    cut_list = parse_config_cuts(args, config)
+    cut_list = parse_config_cuts(args, config, colnames)
 
     print()
     credentials = Credentials(
@@ -440,6 +461,7 @@ if __name__ == "__main__":
         config["credentials"]["tns_bot_name"],
     )
     plotloop = PlotLoop(
+        colnames,
         input_dir,
         output_dir,
         credentials,
@@ -452,7 +474,7 @@ if __name__ == "__main__":
         cut_list,
         num_controls=num_controls,
         mjd0=args.mjd0,
-        filters=filters,
+        filters=args.filters,
         plot_uncert_est=args.uncert_est,
         lims=lims if not lims.is_empty() else None,
     )

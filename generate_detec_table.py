@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
+from configparser import ConfigParser
 import itertools
 import os
 import random
 import argparse, re
 from copy import deepcopy
 import sys
-from typing import Dict, List, Self
+from typing import Dict, List, Optional, Self
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -19,16 +20,23 @@ from pdastro import pdastrostatsclass
 from generate_sim_table import (
     SimTable,
     SimTables,
-    load_json_config,
+    get_sim_tables_output_dir,
     parse_params,
     GAUSSIAN_MODEL_NAME,
     ASYMMETRIC_GAUSSIAN_MODEL_NAME,
-    print_progress_bar,
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
+from utils import (
+    PresetColumnNames,
+    get_allowed_presets,
+    hexstring_to_int,
+    load_config,
+    load_json_config,
+    print_progress_bar,
+)
 
 
-NON_PARAM_COLNAMES = [
+NON_PARAM_COLNAMES = {
     "sigma_kern",
     "peak_appmag",
     "peak_flux",
@@ -40,7 +48,11 @@ NON_PARAM_COLNAMES = [
     "control_index",
     "max_fom",
     "max_fom_mjd",
-]
+}
+
+
+def get_detec_tables_output_dir(output_dir: str, tnsname: str):
+    return os.path.join(output_dir, tnsname, "bump_analysis", "detec_tables")
 
 
 # convert flux to magnitude
@@ -105,11 +117,11 @@ class AsymmetricGaussian(Simulation):
         """
         if sigma_sim_plus is None or sigma_sim_minus is None:
             raise RuntimeError(
-                "ERROR: sim_sigma_plus and sim_sigma_minus required to get flux of simulated asymmetric Gaussian."
+                "sim_sigma_plus and sim_sigma_minus required to get flux of simulated asymmetric Gaussian."
             )
         if peak_mjd is None:
             raise RuntimeError(
-                "ERROR: Peak MJD required to get flux of simulated asymmetric Gaussian."
+                "Peak MJD required to get flux of simulated asymmetric Gaussian."
             )
 
         self.new(sigma_sim_plus, sigma_sim_minus, peak_appmag)
@@ -212,7 +224,7 @@ class Model(Simulation):
 
         if mag_colname is False and flux_colname is False:
             raise RuntimeError(
-                f"ERROR: Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
+                f"Model must have either mag or flux column. Please set one or both fields to null or the correct column name."
             )
 
         try:
@@ -222,7 +234,7 @@ class Model(Simulation):
                 header = None
             self.t = pd.read_table(filename, delim_whitespace=True, header=header)
         except Exception as e:
-            raise RuntimeError(f"ERROR: Could not load model at {filename}: {str(e)}")
+            raise RuntimeError(f"Could not load model at {filename}: {str(e)}")
 
         if mjd_colname is False:
             # create MJD column and make it the first column
@@ -275,7 +287,7 @@ class Model(Simulation):
         """
         self.peak_appmag = peak_appmag
         if peak_mjd is None:
-            raise RuntimeError("ERROR: Peak MJD required to construct simulated model.")
+            raise RuntimeError("Peak MJD required to construct simulated model.")
 
         # get original peak appmag index
         peak_idx = self.t["m"].idxmin()
@@ -312,15 +324,11 @@ class SimDetecTable(SimTable):
         :param index: Index of the table from which to get the parameter column-value pairs.
         :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation. If provided, will be additionally skipped when getting the column-value pairs.
         """
-        if time_colname is None:
-            skip_params = NON_PARAM_COLNAMES
-        else:
-            skip_params = NON_PARAM_COLNAMES.append(time_colname)
+        skip_params = NON_PARAM_COLNAMES
+        if time_colname is not None:
+            skip_params.add(time_colname)
 
-        colnames = []
-        for colname in self.t.columns:
-            if not colname in skip_params:
-                colnames.append(colname)
+        colnames = [col for col in self.t.columns if col not in skip_params]
         return dict(self.t.loc[index, colnames])
 
     def update_row_at_index(self, index: int, data: Dict):
@@ -354,9 +362,7 @@ class SimDetecTable(SimTable):
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
-            raise RuntimeError(
-                f"ERROR: Could not load SimDetecTable at {filename}: {str(e)}"
-            )
+            raise RuntimeError(f"Could not load SimDetecTable at {filename}: {str(e)}")
 
     def load_from_sim_table(self, model_name: str, sim_tables_dir: str):
         """
@@ -547,11 +553,23 @@ class EfficiencyTable(pdastrostatsclass):
                 res[self.sigma_kerns[i]] = fom_limits[i]
         elif len(fom_limits) != len(self.sigma_kerns):
             raise RuntimeError(
-                "ERROR: Each entry in sigma_kerns must have a matching list in fom_limits"
+                "Each entry in sigma_kerns must have a matching list in fom_limits"
             )
         else:
             res = fom_limits
         return res
+
+    def get_params_at_index(self, index: int, skip_colnames: List[str]) -> Dict:
+        """
+        Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
+        Any known non-parameter column names will be skipped.
+
+        :param index: Index of the table from which to get the parameter column-value pairs.
+        :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation. If provided, will be additionally skipped when getting the column-value pairs.
+        """
+
+        colnames = [col for col in self.t.columns if col not in skip_colnames]
+        return dict(self.t.loc[index, colnames])
 
     def get_efficiencies(
         self,
@@ -570,20 +588,20 @@ class EfficiencyTable(pdastrostatsclass):
 
         fom_limits = self.set_fom_limits(fom_limits)
 
+        skip_colnames = NON_PARAM_COLNAMES
+        skip_colnames.add(time_colname)
+
         l = len(self.t)
         print("Calculating efficiencies...")
         print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
         for i in range(l):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             peak_appmag = self.t.loc[i, "peak_appmag"]
-            sim_detec_table = sd.get_table(sigma_kern, peak_appmag)
 
             if kwargs:
                 params = kwargs
             else:
-                params = sim_detec_table.get_params_at_index(
-                    i, time_colname=time_colname
-                )
+                params = self.get_params_at_index(i, skip_colnames)
 
             for fom_limit in fom_limits[sigma_kern]:
                 try:
@@ -592,9 +610,10 @@ class EfficiencyTable(pdastrostatsclass):
                     )
                 except Exception as e:
                     raise RuntimeError(
-                        f"ERROR: Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
+                        f"Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
                     )
                 self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
+                skip_colnames.add(f"pct_detec_{fom_limit:0.2f}")
 
             print_progress_bar(
                 i + 1, l, prefix="Progress:", suffix="Complete", length=50
@@ -658,7 +677,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         if not isinstance(other, EfficiencyTable):
             raise RuntimeError(
-                f"ERROR: Cannot merge EfficiencyTable with object type: {type(other)}"
+                f"Cannot merge EfficiencyTable with object type: {type(other)}"
             )
 
         self.sigma_kerns += other.sigma_kerns
@@ -674,7 +693,7 @@ class EfficiencyTable(pdastrostatsclass):
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
             raise RuntimeError(
-                f"ERROR: Could not load efficiency table at {filename}: {str(e)}"
+                f"Could not load efficiency table at {filename}: {str(e)}"
             )
 
     def save(self, detec_tables_dir: str, model_name: str):
@@ -715,11 +734,11 @@ class SimDetecLoop(ABC):
         """
         if model_name is None or (sim_tables_dir is None and detec_tables_dir is None):
             raise RuntimeError(
-                "ERROR: Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
+                "Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
             )
         if not sim_tables_dir is None and not detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
         self.peak_appmags = set()
@@ -752,6 +771,7 @@ class SimDetecLoop(ABC):
     def load_sn(
         self,
         data_dir: str,
+        colnames: PresetColumnNames,
         tnsname: str,
         num_controls: int,
         mjdbinsize: float = 1.0,
@@ -766,7 +786,7 @@ class SimDetecLoop(ABC):
         :param mjdbinsize: MJD bin size of the averaged light curves to load.
         :param filt: Filter of the averaged light curves to load.
         """
-        self.sn = SimDetecSupernova(tnsname, mjdbinsize=mjdbinsize, filt=filt)
+        self.sn = SimDetecSupernova(colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt)
         self.sn.load_all(data_dir, num_controls=num_controls)
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
@@ -788,11 +808,11 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
         if sim_tables_dir is None and detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please either provide a SimTables or SimDetecTables directory."
+                "Please either provide a SimTables or SimDetecTables directory."
             )
         if not sim_tables_dir is None and not detec_tables_dir is None:
             raise RuntimeError(
-                "ERROR: Please provide either a SimTables directory or a SimDetecTables directory, not both."
+                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
         if detec_tables_dir is None:
@@ -937,8 +957,18 @@ class AtlasSimDetecLoop(SimDetecLoop):
             model_name=model_name, sim_tables_dir=sim_tables_dir, **kwargs
         )
 
-    def load_sn(self, data_dir, tnsname, num_controls, mjdbinsize=1, filt="o"):
-        return super().load_sn(data_dir, tnsname, num_controls, mjdbinsize, filt)
+    def load_sn(
+        self,
+        data_dir: str,
+        colnames: PresetColumnNames,
+        tnsname: str,
+        num_controls: int,
+        mjdbinsize: float = 1.0,
+        filt: str = "o",
+    ):
+        return super().load_sn(
+            data_dir, colnames, tnsname, num_controls, mjdbinsize, filt
+        )
 
     def load_sd(self, model_name, sim_tables_dir=None, detec_tables_dir=None):
         return super().load_sd(
@@ -957,7 +987,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
         For Charlie's model, use the manually calculated value of 2.8.
         """
         if peak_mjd is None:
-            raise RuntimeError("ERROR: A peak MJD is required to find the max FOM.")
+            raise RuntimeError("A peak MJD is required to find the max FOM.")
         if sigma_sim is None:
             # replace with default sigma sim for Charlie's model
             sigma_sim = 2.8
@@ -1042,19 +1072,37 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
 
 # define command line arguments
-def define_args(parser=None, usage=None, conflict_handler="resolve"):
+def define_args(
+    config: ConfigParser, parser=None, usage=None, conflict_handler="resolve"
+):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
-    parser.add_argument("model_name", type=str, help="name of model to use")
+
+    parser.add_argument("tnsname", type=str, help="transient name")
     parser.add_argument(
-        "-d",
+        "filter",
+        type=str,
+        default=None,
+        help="filter of transient to inject simulations into",
+    )
+    parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
+    )
+
+    parser.add_argument(
+        "-m", "--model_name", type=str, default="gaussian", help="name of model to use"
+    )
+    parser.add_argument(
         "--detec_config_file",
         default="detection_settings.json",
         type=str,
         help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
     )
     parser.add_argument(
-        "-f",
         "--sim_config_file",
         default="simulation_settings.json",
         type=str,
@@ -1074,41 +1122,71 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="calculate efficiencies using FOM limits",
     )
 
+    parser.add_argument(
+        "--num_controls",
+        type=int,
+        default=int(config["download"]["num_controls"]),
+        help="number of averaged control light curves to load",
+    )
+    parser.add_argument(
+        "-m",
+        "--mjd_bin_size",
+        type=float,
+        default=float(config["averaging"]["mjd_bin_size"]),
+        help="MJD bin size in days of the target averaged light curves",
+    )
+
     return parser
 
 
 if __name__ == "__main__":
-    args = define_args().parse_args()
+    config = load_config("config.ini")
+    args = define_args(config).parse_args()
+
     detec_config = load_json_config(args.detec_config_file)
     sim_config = load_json_config(args.sim_config_file)
 
     if " " in args.model_name:
-        raise RuntimeError("ERROR: Model name cannot have spaces.")
-    try:
-        model_settings = sim_config[args.model_name]
-    except Exception as e:
+        raise RuntimeError("Model name cannot have spaces.")
+    if args.model_name not in sim_config:
         raise RuntimeError(
-            f"ERROR: Could not find model {args.model_name} in model config file: {str(e)}"
+            f"Model '{args.model_name}' not found in simulation config file\n"
+            f"Available models: {', '.join(sim_config.keys())}"
         )
+    print(f"Loading settings for model '{args.model_name}'...")
+    model_settings = sim_config[args.model_name]
 
-    sn_info = detec_config["sn_info"]
-    data_dir = detec_config["data_dir"]
-    sim_tables_dir = detec_config["sim_tables_dir"]
-    detec_tables_dir = detec_config["detec_tables_dir"]
     sigma_kerns = [obj["sigma_kern"] for obj in detec_config["sigma_kerns"]]
     valid_control_ix = [
         i
-        for i in range(1, sn_info["num_controls"] + 1)
+        for i in range(1, args.num_controls + 1)
         if not i in detec_config["skip_control_ix"]
     ]
 
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
+        raise RuntimeError(
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
+
+    print(f"\nFilter: {args.filter}")
+    print(f"MJD bin size: {args.mjd_bin_size:0.2f} days")
     simdetec = AtlasSimDetecLoop(sigma_kerns)
     simdetec.load_sn(
-        data_dir,
-        sn_info["tnsname"],
-        sn_info["num_controls"],
-        sn_info["mjd_bin_size"],
-        sn_info["filt"],
+        config["dir"]["output"],
+        colnames,
+        args.tnsname,
+        args.num_controls,
+        args.mjd_bin_size,
+        args.filter,
+    )
+
+    sim_tables_dir = get_sim_tables_output_dir(config["dir"]["output"], args.tnsname)
+    detec_tables_dir = get_detec_tables_output_dir(
+        config["dir"]["output"], args.tnsname
     )
 
     if args.skip_generate:
@@ -1122,7 +1200,11 @@ if __name__ == "__main__":
         )
         simdetec.load_sd(args.model_name, sim_tables_dir=sim_tables_dir)
 
-        simdetec.loop(valid_control_ix, detec_tables_dir, flag=sn_info["badday_flag"])
+        simdetec.loop(
+            valid_control_ix,
+            detec_tables_dir,
+            flag=hexstring_to_int(config["averaging"]["flag"]),
+        )
 
     if args.efficiencies:
         parsed_params = parse_params(model_settings)
