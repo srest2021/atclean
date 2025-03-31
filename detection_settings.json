@@ -33,8 +33,7 @@
   ],
 
   "fom_limit_calculation": {
-    "contamination": "n_pos_controls",
-    "target_contamination": 2,
+    "target_n_pos_controls": 2,
     "n_steps": 15
   }
 }
