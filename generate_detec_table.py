@@ -540,24 +540,33 @@ class EfficiencyTable(pdastrostatsclass):
         self.t = self.t[col_order]
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
-    def set_fom_limits(self, fom_limits: List | Dict):
+    def validate_fom_limits(
+        self, fom_limits: List[List[float]] | Dict[float, List[float]]
+    ) -> Dict[float, List[float]]:
         """
         Create dictionary of FOM limits, with sigma_kerns as the keys.
         """
-        if fom_limits is None:
-            return None
+        if len(fom_limits) < 1:
+            raise RuntimeError("No FOM limits to validate")
 
-        if isinstance(fom_limits, list):
-            res = {}
-            for i in range(len(self.sigma_kerns)):
-                res[self.sigma_kerns[i]] = fom_limits[i]
-        elif len(fom_limits) != len(self.sigma_kerns):
+        if len(fom_limits) != len(self.sigma_kerns):
             raise RuntimeError(
                 "Each entry in sigma_kerns must have a matching list in fom_limits"
             )
-        else:
-            res = fom_limits
-        return res
+
+        if isinstance(fom_limits, list):
+            res = {}
+            expected_length = len(fom_limits[0])
+            for i in range(len(self.sigma_kerns)):
+                if len(fom_limits[i]) != expected_length:
+                    raise RuntimeError(
+                        "Each sigma_kern must have the same number of FOM limits"
+                    )
+                res[self.sigma_kerns[i]] = fom_limits[i]
+            return res
+
+        # already in Dict form
+        return fom_limits
 
     def get_params_at_index(self, index: int, skip_colnames: List[str]) -> Dict:
         """
@@ -574,7 +583,7 @@ class EfficiencyTable(pdastrostatsclass):
     def get_efficiencies(
         self,
         sd: SimDetecTables,
-        fom_limits: List | Dict[float, List[float]],
+        fom_limits: List[List[float]] | Dict[float, List[float]],
         time_colname: str,
         **kwargs,
     ):
@@ -586,7 +595,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation.
         """
 
-        fom_limits = self.set_fom_limits(fom_limits)
+        fom_limits = self.validate_fom_limits(fom_limits)
 
         skip_colnames = NON_PARAM_COLNAMES
         skip_colnames.add(time_colname)
@@ -705,7 +714,11 @@ class EfficiencyTable(pdastrostatsclass):
         return self.t.to_string()
 
 
-# TODO: documentation
+class ContaminationTable(pdastrostatsclass):
+    def __init__(self, **kwargs):
+        pdastrostatsclass.__init__(self, **kwargs)
+
+
 class SimDetecLoop(ABC):
     def __init__(self, sigma_kerns: List, **kwargs):
         self.sigma_kerns: List = sigma_kerns
@@ -741,7 +754,7 @@ class SimDetecLoop(ABC):
                 "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
-        self.peak_appmags = set()
+        peak_appmags = set()
         if detec_tables_dir is None:
             pattern = re.compile(
                 f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
@@ -760,9 +773,9 @@ class SimDetecLoop(ABC):
             match = pattern.match(filename)
             if match:
                 peak_appmag = float(match.group(1))
-                self.peak_appmags.add(peak_appmag)
+                peak_appmags.add(peak_appmag)
 
-        self.peak_appmags = list(self.peak_appmags)
+        self.peak_appmags = list(peak_appmags)
         self.peak_appmags.sort()
 
         self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
@@ -994,7 +1007,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
         # measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
-            colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
+            colnames=sim_lc.colnames.mjdbin,
+            lowlim=peak_mjd - sigma_sim,
+            uplim=peak_mjd + sigma_sim,
         )
         return indices
 
@@ -1208,7 +1223,21 @@ if __name__ == "__main__":
 
     if args.efficiencies:
         parsed_params = parse_params(model_settings)
-        fom_limits = [obj["fom_limits"] for obj in detec_config["sigma_kerns"]]
+        fom_limits = {
+            obj["sigma_kern"]: obj["fom_limits"] for obj in detec_config["sigma_kerns"]
+        }
+
+        """
+        TODO: Dynamic FOM limit calculation of fom_limits is list of empty sublists
+        
+        Need to access model_settings["parameters"][model_settings["time_parameter_name"]]
+        Then use it to get valid MJD indices
+
+        Calculate the preliminary range of valid detection limits
+
+        Calculate the best detection limits
+        """
+
         simdetec.calculate_efficiencies(
             fom_limits,
             parsed_params,

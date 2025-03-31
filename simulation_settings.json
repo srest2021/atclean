@@ -166,7 +166,7 @@
     "mjd_column_name": null,
     "mag_column_name": null,
     "flux_column_name": false,
-    "filename": "/Users/sofiarest/Desktop/Supernovae/data_refactor/atclean_input/eruption_m3e-07.dat",
+    "filename": "./extern/eruption_m3e-07.dat",
     "time_parameter_name": "peak_mjd",
 
     "parameters": {

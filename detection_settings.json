@@ -30,5 +30,11 @@
       "sigma_kern": 200,
       "fom_limits": [36.67]
     }
-  ]
+  ],
+
+  "fom_limit_calculation": {
+    "contamination": "n_pos_controls",
+    "target_contamination": 2,
+    "n_steps": 15
+  }
 }
