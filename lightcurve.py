@@ -1489,6 +1489,49 @@ class SimDetecSupernova(AveragedSupernova):
         )
         self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
 
+    def get_all_fom_dict(
+        self,
+        sigma_kerns: List[int],
+        mjd_ranges: List[List[float]],
+    ):
+        print(f"Getting all FOM for MJD ranges {mjd_ranges}...")
+        res = {sigma_kern: None for sigma_kern in sigma_kerns}
+
+        for sigma_kern in sigma_kerns:
+            all_fom = pd.Series()
+            for control_index in self.get_control_lc_indices():
+                self.avg_lcs[control_index].apply_rolling_sum(sigma_kern)
+                self.avg_lcs[control_index].set_valid_mjd_ix(mjd_ranges)
+                all_fom = pd.concat(
+                    [
+                        all_fom,
+                        self.avg_lcs[control_index].t.loc[
+                            self.avg_lcs[control_index].valid_mjd_ix,
+                            self.colnames_master.snrsumnorm,
+                        ],
+                    ],
+                    ignore_index=True,
+                )
+            res[sigma_kern] = all_fom
+        return res
+
+    def get_prelim_fom_limit_ranges(
+        self,
+        sigma_kerns: List[int],
+        mjd_ranges: List[List[float]],
+    ):
+        print("Getting preliminary valid FOM limit range...")
+        res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
+
+        all_fom_dict = self.get_all_fom_dict(sigma_kerns, mjd_ranges)
+
+        for sigma_kern in sigma_kerns:
+            max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
+            res[sigma_kern].append(max_fom)
+
+        print(f"Valid FOM limit range: {res}")
+        return res
+
     def apply_rolling_sums(self, sigma_kern: float, flag=0x800000):
         for control_index in self.get_lc_indices():
             self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
@@ -1537,8 +1580,87 @@ class SimDetecLightCurve(AveragedLightCurve):
         )
 
         self.cur_sigma_kern = None
-        self.pre_mjd0_ix = self.ix_inrange(self.colnames.mjd, uplim=mjd0)
-        self.valid_seasons_ix = None
+
+        self._pre_mjd0_ix = None
+        if mjd0 is not None:
+            self._pre_mjd0_ix = self.ix_inrange(self.colnames.mjd, uplim=mjd0)
+
+        self._valid_mjd_ix = None
+
+    @property
+    def valid_mjd_ix(self):
+        if self._valid_mjd_ix is None:
+            raise RuntimeError(
+                "Call self.set_valid_mjd_ix() first before accessing self.valid_mjd_ix"
+            )
+        if len(self._valid_mjd_ix) < 1:
+            raise RuntimeError(
+                f"No valid MJD indices found in light curve (control index {self.control_index})"
+            )
+        return self._valid_mjd_ix
+
+    @property
+    def pre_mjd0_ix(self):
+        if self._pre_mjd0_ix is None:
+            raise RuntimeError("Provide MJD0 first before accessing self.pre_mjd0_ix")
+        if len(self._pre_mjd0_ix) < 1:
+            raise RuntimeError(
+                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+        return self._pre_mjd0_ix
+
+    def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]) -> List[int]:
+        def in_range(value, mjd_ranges):
+            return any(r[0] <= value <= r[1] for r in mjd_ranges)
+
+        self._valid_mjd_ix = self.t.index[
+            self.t[self.colnames.mjdbin].apply(lambda x: in_range(x, mjd_ranges))
+        ].tolist()
+
+        if len(self._valid_mjd_ix) < 1:
+            raise RuntimeError(
+                f"No valid MJD indices found in light curve (control index {self.control_index}) for ranges: {mjd_ranges}"
+            )
+
+    def get_n_falsepos(
+        self,
+        sigma_kern: int,
+        fom_limit: float,
+        mjd_ranges: List[List[float]],
+        verbose=False,
+    ):
+        if self.valid_mjd_ix is None:
+            self.set_valid_mjd_ix(mjd_ranges)
+
+        if self.control_index == 0:
+            self.apply_rolling_sum(sigma_kern, indices=self.pre_mjd0_ix)
+        else:
+            self.apply_rolling_sum(sigma_kern)
+
+        # for control light curves, loop through all valid indices
+        # for the SN light curve, only loop through valid indices before MJD0
+        ix = self.valid_mjd_ix
+        if self.control_index == 0:
+            ix = AandB(ix, self.pre_mjd0_ix)
+
+        # find any triggers above the FOM limit
+        count = 0
+        mjds = []
+        above_lim = False
+        for k in ix:
+            if self.t.at[k, self.colnames.snrsumnorm] > fom_limit:
+                if not above_lim:
+                    mjds.append(self.t.at[k, self.colnames.mjdbin])
+                    count += 1
+                above_lim = True
+            else:
+                above_lim = False
+
+        if verbose and len(mjds) > 0:
+            print(
+                f"sigma_kern {sigma_kern}, FOM limit {fom_limit:0.2f}, control index {self.control_index}: {count} trigger(s) at MJDs {mjds}"
+            )
+        return count
 
     def remove_columns(self, colnames: List[str]):
         dropcols = []
@@ -1682,7 +1804,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         )
         self.t[self.colnames.snrsimsum] = list(SNRsimsum.loc[dataindices])
 
-    # add any simulation to the light curve, specifying parameters using keyword arguments
+    # add any simulation to a copy of the light curve and return it, specifying parameters using keyword arguments
     def add_simulation(
         self,
         sim: Simulation,
@@ -1691,7 +1813,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         flag: int = 0x800000,
         verbose: bool = False,
         remove_old: bool = True,
-        **kwargs,
+        **params,
     ) -> Self:
         """
         Add any Simulation object to a copy of the light curve, specifying parameters using keyword arguments.
@@ -1708,7 +1830,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         lc = deepcopy(self)
         good_ix = AandB(lc.getindices(), lc.ix_unmasked(self.colnames.mask, flag))
         sim_flux = sim.get_sim_flux(
-            lc.t.loc[good_ix, self.colnames.mjd], peak_appmag, **kwargs
+            lc.t.loc[good_ix, self.colnames.mjd], peak_appmag, **params
         )
         lc.add_sim_flux(
             good_ix,

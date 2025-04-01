@@ -10,7 +10,7 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
     - [Install dependencies](#install-dependencies): Install the necessary dependencies.
     - [Setup in `config.ini`](#setup-in-configini): Set the default configuration for the `convert_to_atclean.py`, `download.py`, and `clean.py` scripts.
     - [`download.py`](#downloadpy): Download one or more SNe and their control light curves from the ATLAS forced photometry server.
-    - [`convert_to_atclean.py`](#convert-to-atcleanpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
+    - [`convert_to_atclean.py`](#convert_to_atcleanpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
     - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
     - [`generate_sim_tables.py`](#generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
@@ -42,7 +42,7 @@ Note that these configurations may also be overridden by command line arguments.
 
 - `sninfo_filename`: This parameter provides the name of the SN info file located inside the output directory. This space-separated `.txt` file contains essential information about SNe, including the TNS name and optionally the RA, Dec, and MJD0 (MJD at which the transient begins). This file may be provided manually with the correct column names (`tnsname`, `ra`, `dec`, and `mjd0`, with blank fields denoted by `NaN`) or generated and updated automatically if TNS credentials are provided.
 
-#### Column name presets for ATLAS, Rubin, and Tess: `column_name_preset.<SURVEY NAME>` config sections
+#### Column name presets for ATLAS, Rubin, and TESS: `column_name_preset.<SURVEY NAME>` config sections
 
 These sections specify the arbitrary column names for the supported surveys. Column names are customizable and need to be accessed in `convert_to_atclean.py`, `clean.py`, etc. You can specify which preset to use via the `-p` or `--preset` argument (default is `atlas`). We recommend that you leave the ATLAS column name preset untouched!
 
@@ -186,10 +186,10 @@ Arguments will override default config file settings if specified.
 This script converts non-ATLAS light curves (and optionally their control light curves) into an ATClean-readable format. The resulting files can then be processed by other ATClean scripts, such as `clean.py` and `plotloop.py`.
 
 Functionality:
-* Converts light curve data from different surveys (e.g., Rubin, TESS) into a standardized format using the specified preset configuration (column_name_preset.<SURVEY_NAME> in `config.ini`).
+* Converts light curve data from different surveys (e.g., Rubin, TESS) into a standardized format using the specified preset column name configuration (column_name_preset.<SURVEY_NAME> in `config.ini`).
 * Allows users to retain additional columns via the `extra_columns` field in `config.ini`.
 * Searches for RA, Dec, and discovery date information from the command line and the light curves' RA and Dec columns. Saves this information to `snlist.txt` if found. 
-* Outputs files in under the directory specified by the `atclean_input` field in `config.ini`. Files will adhere to the ATClean filename scheme, will be split by filter, and undergo several data preprocessing steps. 
+* Outputs files to the directory specified by the `atclean_input` field in `config.ini`. Files will adhere to the ATClean filename scheme, will be split by filter, and undergo several data preprocessing steps. 
 
 #### `column_name_preset` config sections in `config.ini`
 

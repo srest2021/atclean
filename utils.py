@@ -1041,7 +1041,9 @@ class CutList:
         to_remove = [
             name
             for name, cut in self.list.items()
-            if cut.flag is not None and cut.flag == flag
+            if not isinstance(cut, UncertaintyEstimation)
+            and cut.flag is not None
+            and cut.flag == flag
         ]
         for name in to_remove:
             del self.list[name]
@@ -1060,7 +1062,7 @@ class CutList:
         duplicate_flags = []
 
         for name, cut in self.list.items():
-            if name == UncertaintyEstimation.name():
+            if isinstance(cut, UncertaintyEstimation):
                 continue
 
             flags = cut.get_flags()

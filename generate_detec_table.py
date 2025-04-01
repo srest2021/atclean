@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from configparser import ConfigParser
 import itertools
 import os
@@ -8,7 +9,7 @@ import random
 import argparse, re
 from copy import deepcopy
 import sys
-from typing import Dict, List, Optional, Self
+from typing import Dict, List, Optional, Self, Tuple
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -540,24 +541,33 @@ class EfficiencyTable(pdastrostatsclass):
         self.t = self.t[col_order]
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
-    def set_fom_limits(self, fom_limits: List | Dict):
+    def validate_fom_limits(
+        self, fom_limits: List[List[float]] | Dict[float, List[float]]
+    ) -> Dict[float, List[float]]:
         """
         Create dictionary of FOM limits, with sigma_kerns as the keys.
         """
-        if fom_limits is None:
-            return None
+        if len(fom_limits) < 1:
+            raise RuntimeError("No FOM limits to validate")
 
-        if isinstance(fom_limits, list):
-            res = {}
-            for i in range(len(self.sigma_kerns)):
-                res[self.sigma_kerns[i]] = fom_limits[i]
-        elif len(fom_limits) != len(self.sigma_kerns):
+        if len(fom_limits) != len(self.sigma_kerns):
             raise RuntimeError(
                 "Each entry in sigma_kerns must have a matching list in fom_limits"
             )
-        else:
-            res = fom_limits
-        return res
+
+        if isinstance(fom_limits, list):
+            res = {}
+            expected_length = len(fom_limits[0])
+            for i in range(len(self.sigma_kerns)):
+                if len(fom_limits[i]) != expected_length:
+                    raise RuntimeError(
+                        "Each sigma_kern must have the same number of FOM limits"
+                    )
+                res[self.sigma_kerns[i]] = fom_limits[i]
+            return res
+
+        # already in Dict form
+        return fom_limits
 
     def get_params_at_index(self, index: int, skip_colnames: List[str]) -> Dict:
         """
@@ -574,7 +584,7 @@ class EfficiencyTable(pdastrostatsclass):
     def get_efficiencies(
         self,
         sd: SimDetecTables,
-        fom_limits: List | Dict[float, List[float]],
+        fom_limits: List[List[float]] | Dict[float, List[float]],
         time_colname: str,
         **kwargs,
     ):
@@ -586,7 +596,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation.
         """
 
-        fom_limits = self.set_fom_limits(fom_limits)
+        fom_limits = self.validate_fom_limits(fom_limits)
 
         skip_colnames = NON_PARAM_COLNAMES
         skip_colnames.add(time_colname)
@@ -705,7 +715,151 @@ class EfficiencyTable(pdastrostatsclass):
         return self.t.to_string()
 
 
-# TODO: documentation
+class ContaminationTable(pdastrostatsclass):
+    def __init__(self, **kwargs):
+        pdastrostatsclass.__init__(self, **kwargs)
+
+    def calculate_row(
+        self,
+        sn: SimDetecSupernova,
+        sigma_kern: int,
+        fom_limit: float,
+        mjd_ranges: List[List[float]],
+    ) -> Dict:
+        row = {
+            "sigma_kern": sigma_kern,
+            "fom_limit": fom_limit,
+            "n_falsepos": 0,
+            "n_pos_controls": 0,
+            "pct_pos_controls": np.nan,
+        }
+
+        for control_index in sn.get_lc_indices():
+            n_falsepos = sn.avg_lcs[control_index].get_n_falsepos(
+                sigma_kern, fom_limit, mjd_ranges
+            )
+            row[f"n_falsepos_{control_index:02d}"] = n_falsepos
+
+            if control_index > 0 and n_falsepos > 0:
+                row["n_pos_controls"] += 1
+                row["n_falsepos"] += n_falsepos
+
+        row["pct_pos_controls"] = round(
+            100 * row["n_pos_controls"] / sn.num_controls, 2
+        )
+        return row
+
+    def construct_prelim_t(
+        self,
+        sn: SimDetecSupernova,
+        mjd_ranges: List[List[float]],
+        sigma_kerns: List[int],
+        fom_limits: Dict[int : List[float]],
+    ):
+        self.t = pd.DataFrame()
+        for sigma_kern in sigma_kerns:
+            for fom_limit in fom_limits[sigma_kern]:
+                row = self.calculate_row(sn, sigma_kern, fom_limit, mjd_ranges)
+                self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+    def get_initial_limits(
+        self, index: int, prelim_fom_limit_ranges: Dict[int, List[float]]
+    ):
+        sigma_kern = self.t.loc[index, "sigma_kern"]
+        lower_limit = round(self.t.loc[index, "fom_limit"], 2)
+        upper_limit = round(self.t.loc[index + 1, "fom_limit"], 2)
+
+        assert (
+            lower_limit == prelim_fom_limit_ranges[sigma_kern][0]
+            and upper_limit == prelim_fom_limit_ranges[sigma_kern][1]
+        ), "Mismatch in preliminary FOM limits"
+
+        return sigma_kern, lower_limit, upper_limit
+
+    def calculate(
+        self,
+        sn: SimDetecSupernova,
+        prelim_fom_limit_ranges: Dict[int : List[float]],
+        mjd_ranges: List[List[float]],
+        sigma_kerns: List[int],
+        tgt_value: int = 2,
+        n_steps: int = 15,
+        verbose: bool = False,
+    ):
+        print(
+            "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limits..."
+        )
+        print(f"Preliminary FOM limits: {prelim_fom_limit_ranges}")
+        self.construct_prelim_t(sn, mjd_ranges, sigma_kerns, prelim_fom_limit_ranges)
+        print("Success")
+        if verbose:
+            print(self.t.to_string())
+
+        print(
+            f"Calculating new FOM limits with {n_steps} iterations and target contamination of {tgt_value} positive control light curves..."
+        )
+        fom_limits = {}
+        i = 0
+        while i < len(self.t) - 1:
+            sigma_kern, lower_limit, upper_limit = self.get_initial_limits(
+                i, prelim_fom_limit_ranges
+            )
+            if verbose:
+                print(
+                    f"# sigma_kern={sigma_kern}, lower_limit={lower_limit}, upper_limit={upper_limit}"
+                )
+
+            # TODO: fix this
+
+            for _ in range(n_steps):
+                new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
+                new_row = self.calculate_row(sn, sigma_kern, new_fom_limit, mjd_ranges)
+                cur_value = new_row["n_pos_controls"]
+                self.t.loc[i + 1, :] = new_row
+
+                if verbose:
+                    print(
+                        f"## new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
+                    )
+
+                if (
+                    round(upper_limit - 0.01, 2) == new_fom_limit
+                    and cur_value > tgt_value
+                ):
+                    new_fom_limit = upper_limit
+                    new_row = self.calculate_row(
+                        sn, sigma_kern, new_fom_limit, mjd_ranges
+                    )
+                    cur_value = new_row["n_pos_controls"]
+                    self.t.loc[i + 1, :] = new_row
+                    if verbose:
+                        print(
+                            f"## new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
+                        )
+                    break
+
+                if cur_value > tgt_value:
+                    lower_limit = new_fom_limit
+                else:  # cur_value <= tgt_value
+                    upper_limit = new_fom_limit
+
+            fom_limits[sigma_kern] = [round(self.t.loc[i + 1, "fom_limit"], 2)]
+            if verbose:
+                print(
+                    f"## new_fom_limit={fom_limits[sigma_kern][0]:0.2f}, cur_value={cur_value}"
+                )
+
+            i += 2
+
+        return fom_limits
+
+    def get_fom_limits_from_t(self):
+        fom_limits: Dict[int, List[float]] = defaultdict(list)
+        for i in range(len(self.t)):
+            fom_limits[self.t.loc[i, "sigma_kern"]].append(self.t.loc[i, "fom_limit"])
+        return dict(fom_limits)
+
+
 class SimDetecLoop(ABC):
     def __init__(self, sigma_kerns: List, **kwargs):
         self.sigma_kerns: List = sigma_kerns
@@ -741,7 +895,7 @@ class SimDetecLoop(ABC):
                 "Please provide either a SimTables directory or a SimDetecTables directory, not both."
             )
 
-        self.peak_appmags = set()
+        peak_appmags = set()
         if detec_tables_dir is None:
             pattern = re.compile(
                 f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
@@ -760,9 +914,9 @@ class SimDetecLoop(ABC):
             match = pattern.match(filename)
             if match:
                 peak_appmag = float(match.group(1))
-                self.peak_appmags.add(peak_appmag)
+                peak_appmags.add(peak_appmag)
 
-        self.peak_appmags = list(self.peak_appmags)
+        self.peak_appmags = list(peak_appmags)
         self.peak_appmags.sort()
 
         self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
@@ -994,7 +1148,9 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
         # measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
-            colnames="MJDbin", lowlim=peak_mjd - sigma_sim, uplim=peak_mjd + sigma_sim
+            colnames=sim_lc.colnames.mjdbin,
+            lowlim=peak_mjd - sigma_sim,
+            uplim=peak_mjd + sigma_sim,
         )
         return indices
 
@@ -1208,7 +1364,21 @@ if __name__ == "__main__":
 
     if args.efficiencies:
         parsed_params = parse_params(model_settings)
-        fom_limits = [obj["fom_limits"] for obj in detec_config["sigma_kerns"]]
+        fom_limits = {
+            obj["sigma_kern"]: obj["fom_limits"] for obj in detec_config["sigma_kerns"]
+        }
+
+        """
+        TODO: Dynamic FOM limit calculation of fom_limits is list of empty sublists
+        
+        Need to access model_settings["parameters"][model_settings["time_parameter_name"]]
+        Then use it to get valid MJD ranges
+
+        Calculate the preliminary range of valid detection limits
+
+        Calculate the best detection limits
+        """
+
         simdetec.calculate_efficiencies(
             fom_limits,
             parsed_params,
