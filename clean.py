@@ -842,7 +842,7 @@ def parse_config_cuts(args, config, colnames):
     # always check true uncertainties estimation, but will only apply if args.true_uncert_est
     temp_x2_max_value = float(config["uncert_est"]["temp_x2_max_value"])
     print(
-        f"- True uncertainties estimation check: temporary chi-square cut at {temp_x2_max_value}"
+        f"- True uncertainties estimation check (using temporary chi-square cut at {temp_x2_max_value})"
     )
     uncert_est = UncertaintyEstimation(
         temp_x2_max_value,
@@ -857,7 +857,7 @@ def parse_config_cuts(args, config, colnames):
             max_value=float(config["uncert_cut"]["max_value"]),
         )
         cut_list.add(uncert_cut)
-        print(f"- Uncertainty cut: {uncert_cut}")
+        print(f"- {uncert_cut}")
 
     if args.x2_cut:
         x2_cut = ChiSquareCut(
@@ -871,7 +871,7 @@ def parse_config_cuts(args, config, colnames):
             use_pre_mjd0_lc=parse_config_str(config["x2_cut"]["use_pre_mjd0_lc"]),
         )
         cut_list.add(x2_cut)
-        print(f"- Chi-square cut: {x2_cut}")
+        print(f"- {x2_cut}")
 
     if args.controls_cut:
         controls_cut = ControlLightCurveCut(
@@ -889,7 +889,7 @@ def parse_config_cuts(args, config, colnames):
             Ngood_flag=hexstring_to_int(config["controls_cut"]["Ngood_flag"]),
         )
         cut_list.add(controls_cut)
-        print(f"- Control light curve cut: {controls_cut}")
+        print(f"- {controls_cut}")
 
     if args.averaging:
         badday_cut = BadDayCut(
@@ -906,7 +906,7 @@ def parse_config_cuts(args, config, colnames):
             smallnum_flag=hexstring_to_int(config["averaging"]["smallnum_flag"]),
         )
         cut_list.add(badday_cut)
-        print(f"- Bad day cut (averaging): {badday_cut}")
+        print(f"- Averaging / {badday_cut}")
 
     if args.custom_cuts:
         for i in range(len(config_custom_cuts)):

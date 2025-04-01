@@ -849,26 +849,30 @@ class Cut(ABC):
     def name() -> str:
         pass
 
-    def get_flags(self) -> list[int]:
-        """Extract all attributes ending in '_flag'."""
-        return [
-            value
+    def get_flags(self, keys=False) -> Dict | List:
+        """Extract all attributes that end in '_flag' or are 'flag'."""
+        flags = {
+            key: value
             for key, value in vars(self).items()
-            if (key.endswith("_flag") or key == "flag") and isinstance(value, int)
-        ]
+            if isinstance(value, int) and (key.endswith("_flag") or key == "flag")
+        }
+        return flags if keys else list(flags.values())
 
     def __str__(self) -> str:
         details = []
         if self.column:
             details.append(f"column={self.column}")
-        if self.flag:
-            details.append(f"flag={hex(self.flag)}")
         if self.min_value is not None:
             details.append(f"min_value={self.min_value}")
         if self.max_value is not None:
             details.append(f"max_value={self.max_value}")
 
-        return (f"{self.name()}: " + " ".join(details)) if details else self.name()
+        flags = self.get_flags(keys=True)
+        if flags:
+            for flag_name, flag_value in flags.items():
+                details.append(f"{flag_name}={hex(flag_value)}")
+
+        return (f"{self.name()}: " + ", ".join(details)) if details else self.name()
 
 
 class CustomCut(Cut):
