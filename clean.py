@@ -461,7 +461,7 @@ class CleanLoop:
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
-                title="Uncertainty cut",
+                title=UncertaintyCut.name(),
             )
 
     def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
@@ -517,7 +517,7 @@ class CleanLoop:
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
-                title="Chi-square cut",
+                title=ChiSquareCut.name(),
             )
 
         self.f.add_x2_cut_section(
@@ -588,7 +588,7 @@ class CleanLoop:
                     lc=self.sn.lcs[0],
                     indices=self.sn.lcs[0].get_good_indices(cut.flag),
                 ),
-                title="Control light curve cut",
+                title=ControlLightCurveCut.name(),
             )
 
     def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
@@ -615,7 +615,7 @@ class CleanLoop:
                 self.avg_sn.avg_lcs[0],
                 cut.flag,
                 lims,
-                title="Bad day cut",
+                title=BadDayCut.name(),
             )
 
             self.p.plot_averaged_SN(

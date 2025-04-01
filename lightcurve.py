@@ -1519,7 +1519,7 @@ class SimDetecSupernova(AveragedSupernova):
         self,
         sigma_kerns: List[int],
         mjd_ranges: List[List[float]],
-    ) -> Dict[int: List[float]]:
+    ):
         print("Getting preliminary valid FOM limit range...")
         res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
 
