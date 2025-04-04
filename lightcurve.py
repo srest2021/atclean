@@ -45,7 +45,7 @@ class Supernova:
         mjd0: float = None,
         filt="o",
     ):
-        self.colnames_master = colnames
+        self.colnames_master = deepcopy(colnames)
 
         self.tnsname = tnsname
         self.coords: Coordinates = Coordinates(ra, dec)
@@ -469,6 +469,19 @@ class Supernova:
             f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.get_control_lc_indices()})"
         )
 
+        # check for dflux_new column if cleaned
+        # if found, update colnames in self and all lc objects
+        if cleaned and f"{self.colnames_master.dflux}_new" in self.lcs[0].t.columns:
+            self.update_all_colnames("dflux_new", f"{self.colnames_master.dflux}_new")
+
+    def update_all_colnames(self, key: str, name: str):
+        print(
+            f"Updating column names for all light curves in this Supernova object (key: {key}, name: {name})..."
+        )
+        self.colnames_master.update(key, name)
+        for control_index in self.get_lc_indices():
+            self.lcs[control_index].colnames.update(key, name)
+
     def get_lc_indices(self):
         if not self.all_indices:
             self.all_indices = list(self.lcs.keys())
@@ -569,7 +582,7 @@ class AveragedSupernova(Supernova):
                 control_index += 1
 
         print(
-            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves"
+            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.get_control_lc_indices()})"
         )
 
     def save_all(self, output_dir, overwrite=False):
@@ -1483,9 +1496,10 @@ class SimDetecSupernova(AveragedSupernova):
         tnsname: str = None,
         mjdbinsize: float = 1.0,
         filt: str = "o",
+        **kwargs,
     ):
         AveragedSupernova.__init__(
-            self, colnames, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt
+            self, colnames, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt, **kwargs
         )
         self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
 

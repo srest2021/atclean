@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 import os
-from typing import List
+from typing import List, Optional
 import matplotlib
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
 from lightcurve import (
     LimCutsTable,
     LightCurve,
@@ -53,6 +54,28 @@ SN_FLUX_COLORS = {
 }
 SN_FLAGGED_FLUX_COLOR = "red"
 CONTROL_FLUX_COLOR = "steelblue"
+SELECT_CONTROL_FLUX_COLOR = "forestgreen"
+FACE_COLOR = "whitesmoke"
+SN_FOM_COLOR = "deeppink"
+CONTROL_FOM_COLOR = "cornflowerblue"
+SELECT_CONTROL_FOM_COLOR = "mediumblue"
+colors = [
+    "indianred",
+    "salmon",
+    "sandybrown",
+    "gold",
+    "yellowgreen",
+    "mediumseagreen",
+    "turquoise",
+    "lightskyblue",
+    "plum",
+    "palevioletred",
+]
+plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(color=colors)
+
+# line styles
+SIM_BUMP_LS = "dashed"
+FOM_LIMIT_LS = "dotted"
 
 
 class PlotLimits:
@@ -69,7 +92,7 @@ class PlotLimits:
         self.yupper = yupper
 
     def calc_ylims(
-        self, lc: LightCurve | None = None, indices: List[int] | None = None
+        self, lc: Optional[LightCurve] = None, indices: List[int] | None = None
     ):
         if lc is None:
             print("No light curve provided; skipping plot limits calculation...")
@@ -86,6 +109,27 @@ class PlotLimits:
             self.ylower = flux_min - offset
         if self.yupper is None:
             self.yupper = flux_max + offset
+
+    def calc_xlims(self, lc: LightCurve, mjd0: float):
+        """
+        Calculate and update the x-axis limits for the pre-SN light curve.
+        Maximum MJD is set to mjd0, and minimum MJD is set to the first MJD in the light curve.
+        """
+        if lc.t.empty:
+            raise ValueError(
+                "Cannot calculate xlims for empty light curve; skipping..."
+            )
+
+        first_mjd = lc.t.at[0, lc.colnames.mjd]
+        if self.xlower is None:
+            self.xlower = first_mjd
+        else:
+            self.xlower = max(self.xlower, first_mjd)
+
+        if self.xupper is None:
+            self.xupper = mjd0
+        else:
+            self.xupper = min(self.xupper, mjd0)
 
     def get_xlims(self):
         return [self.xlower, self.xupper]
@@ -121,6 +165,7 @@ class Plot:
         lc: LightCurve = None,
         indices: List[int] = None,
         custom_lims: PlotLimits | None = None,
+        pre_sn: bool = False,
     ) -> PlotLimits:
         if custom_lims is not None:
             lims = PlotLimits(
@@ -1047,6 +1092,192 @@ class Plot:
             self.save_plot(filename, bbox_inches="tight")
 
         return fig
+
+    def plot_preSN(
+        self,
+        sn: Supernova,
+        avg_sn: AveragedSupernova,
+        lims: PlotLimits,
+        save: bool = False,
+        filename: str = "pre_sn",
+    ):
+        flag = np.bitwise_or.reduce(sn.lcs[0].t[sn.colnames_master.mask])
+        lims.calc_xlims(sn.lcs[0], sn.mjd0)
+
+        fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        fig.set_figwidth(4)
+        fig.set_figheight(3.5)
+        ax1.set_facecolor(FACE_COLOR)
+        ax2.set_facecolor(FACE_COLOR)
+
+        ax1.set_ylim(lims.ylower, lims.yupper)
+        ax1.set_xlim(lims.xlower, lims.xupper)
+        ax1.minorticks_on()
+        ax1.set_xticklabels([])
+        ax1.tick_params(direction="in", which="both")
+        ax1.set_ylabel(r"Flux ($\mu$Jy)")
+        ax1.axhline(linewidth=1.5, color="k", zorder=0)
+        ax1.text(
+            0.06,
+            0.94,
+            f"Pre-SN Light Curve",
+            ha="left",
+            va="top",
+            transform=ax1.transAxes,
+            fontsize=11,
+            zorder=100,
+        ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
+
+        # cleaned original light curve
+
+        good_ix = sn.lcs[0].get_good_indices(flag)
+        bad_ix = sn.lcs[0].get_bad_indices(flag)
+
+        ax1.errorbar(
+            sn.lcs[0].t.loc[good_ix, sn.colnames_master.mjd],
+            sn.lcs[0].t.loc[good_ix, sn.colnames_master.flux],
+            yerr=sn.lcs[0].t.loc[good_ix, sn.colnames_master.dflux_new],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[sn.filt],
+            elinewidth=1.5,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[sn.filt],
+            alpha=0.5,
+            zorder=0,
+        )
+        ax1.scatter(
+            sn.lcs[0].t.loc[good_ix, sn.colnames_master.mjd],
+            sn.lcs[0].t.loc[good_ix, sn.colnames_master.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[sn.filt],
+            marker="o",
+            alpha=0.5,
+            label=f"Cleaned Measurements",
+            zorder=0,
+        )
+
+        ax1.errorbar(
+            sn.lcs[0].t.loc[bad_ix, sn.colnames_master.mjd],
+            sn.lcs[0].t.loc[bad_ix, sn.colnames_master.flux],
+            yerr=sn.lcs[0].t.loc[bad_ix, sn.colnames_master.dflux_new],
+            fmt="none",
+            ecolor=SN_FLAGGED_FLUX_COLOR,
+            elinewidth=1.5,
+            capsize=1.2,
+            c=SN_FLAGGED_FLUX_COLOR,
+            alpha=0.5,
+            zorder=10,
+        )
+        ax1.scatter(
+            sn.lcs[0].t.loc[bad_ix, sn.colnames_master.mjd],
+            sn.lcs[0].t.loc[bad_ix, sn.colnames_master.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            facecolors="none",
+            edgecolors=SN_FLAGGED_FLUX_COLOR,
+            marker="o",
+            alpha=0.5,
+            label=f"Flagged Measurements",
+            zorder=10,
+        )
+
+        # averaged light curve
+
+        ax2.set_ylim(lims.ylower, lims.yupper)
+        ax2.set_xlim(lims.xlower, lims.xupper)
+        ax2.minorticks_on()
+        ax2.tick_params(direction="in", which="both")
+        ax2.set_ylabel(r"Flux ($\mu$Jy)")
+        ax2.set_xlabel("MJD")
+        ax2.axhline(linewidth=1.5, color="k", zorder=0)
+        ax2.text(
+            0.06,
+            0.94,
+            f"Binned Pre-SN Light Curve",
+            ha="left",
+            va="top",
+            transform=ax2.transAxes,
+            fontsize=11,
+            zorder=100,
+        ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
+
+        good_ix = avg_sn.avg_lcs[0].get_good_indices(flag)
+        bad_ix = avg_sn.avg_lcs[0].get_bad_indices(flag)
+
+        ax2.errorbar(
+            avg_sn.avg_lcs[0].t.loc[good_ix, avg_sn.colnames_master.mjd],
+            avg_sn.avg_lcs[0].t.loc[good_ix, avg_sn.colnames_master.flux],
+            yerr=avg_sn.avg_lcs[0].t.loc[good_ix, avg_sn.colnames_master.dflux],
+            fmt="none",
+            ecolor=SN_FLUX_COLORS[sn.filt],
+            elinewidth=1.5,
+            capsize=1.2,
+            c=SN_FLUX_COLORS[sn.filt],
+            alpha=0.5,
+            zorder=0,
+        )
+        ax2.scatter(
+            avg_sn.avg_lcs[0].t.loc[good_ix, avg_sn.colnames_master.mjd],
+            avg_sn.avg_lcs[0].t.loc[good_ix, avg_sn.colnames_master.flux],
+            s=marker_size,
+            lw=marker_edgewidth,
+            color=SN_FLUX_COLORS[sn.filt],
+            marker="o",
+            alpha=0.5,
+            label=f"Cleaned Measurements",
+            zorder=0,
+        )
+        """
+        
+        # flagged
+        ax2.errorbar(
+            lc.lcs[0].t.loc[bad_ix, "MJD"],
+            lc.lcs[0].t.loc[bad_ix, "uJy"],
+            yerr=lc.lcs[0].t.loc[bad_ix, "duJy"],
+            fmt="none",
+            ecolor=sn_flagged_flux,
+            elinewidth=1.5,
+            capsize=1.2,
+            c=sn_flagged_flux,
+            alpha=0.5,
+            zorder=10,
+        )
+        ax2.scatter(
+            lc.lcs[0].t.loc[bad_ix, "MJD"],
+            lc.lcs[0].t.loc[bad_ix, "uJy"],
+            s=marker_size,
+            lw=marker_edgewidth,
+            facecolors="none",
+            edgecolors=sn_flagged_flux,
+            marker="o",
+            alpha=0.5,
+            label=f"Flagged Measurements",
+            zorder=10,
+        )
+
+        if plot_mjd_ranges and not mjd_ranges is None:
+            # valid mjd ranges
+            for mjd_range in mjd_ranges:
+                ax1.axvline(mjd_range[0], color="k", linestyle="dashed", zorder=100)
+                ax1.axvline(mjd_range[1], color="k", linestyle="dashed", zorder=100)
+                ax2.axvline(mjd_range[0], color="k", linestyle="dashed", zorder=100)
+                ax2.axvline(mjd_range[1], color="k", linestyle="dashed", zorder=100)
+
+        # ax1.legend(facecolor='white', fontsize=10, framealpha=0, bbox_to_anchor=(0, 1.15, 0.8, 0.2), loc="upper center", mode="expand", borderaxespad=0, ncol=1)
+        ax2.legend(
+            facecolor="white",
+            edgecolor="silver",
+            fontsize=9,
+            framealpha=0.8,
+            handletextpad=0.1,
+            loc="lower right",
+            borderaxespad=1,
+            ncol=1,
+        ).set_zorder(100)
+
+        if save:
+            save_plot(save_filename=f"cleaned_avg")"""
 
 
 class PlotPdf(Plot):

@@ -754,7 +754,7 @@ class ContaminationTable(pdastrostatsclass):
         sn: SimDetecSupernova,
         mjd_ranges: List[List[float]],
         sigma_kerns: List[int],
-        fom_limits: Dict[int : List[float]],
+        fom_limits: Dict[int, List[float]],
     ):
         self.t = pd.DataFrame()
         for sigma_kern in sigma_kerns:
@@ -779,13 +779,27 @@ class ContaminationTable(pdastrostatsclass):
     def calculate(
         self,
         sn: SimDetecSupernova,
-        prelim_fom_limit_ranges: Dict[int : List[float]],
+        prelim_fom_limit_ranges: Dict[int, List[float]],
         mjd_ranges: List[List[float]],
         sigma_kerns: List[int],
         tgt_value: int = 2,
         n_steps: int = 15,
         verbose: bool = False,
+        convergence_threshold: float = 0.01,
     ):
+        """
+        Calculate contamination metrics and refine FOM limits to achieve the target contamination level.
+
+        :param sn: SimDetecSupernova object containing light curve data.
+        :param prelim_fom_limit_ranges: Preliminary FOM limit ranges for each sigma_kern.
+        :param mjd_ranges: Valid MJD ranges for contamination calculation.
+        :param sigma_kerns: List of rolling sum kernel sizes.
+        :param tgt_value: Target number of positive control light curves.
+        :param n_steps: Maximum number of iterations for refining FOM limits.
+        :param verbose: Whether to print detailed logs.
+        :param convergence_threshold: Threshold for convergence of FOM limits.
+        :return: Dictionary of refined FOM limits for each sigma_kern.
+        """
         print(
             "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limits..."
         )
@@ -796,7 +810,7 @@ class ContaminationTable(pdastrostatsclass):
             print(self.t.to_string())
 
         print(
-            f"Calculating new FOM limits with {n_steps} iterations and target contamination of {tgt_value} positive control light curves..."
+            f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {tgt_value} positive control light curves..."
         )
         fom_limits = {}
         i = 0
@@ -806,47 +820,40 @@ class ContaminationTable(pdastrostatsclass):
             )
             if verbose:
                 print(
-                    f"# sigma_kern={sigma_kern}, lower_limit={lower_limit}, upper_limit={upper_limit}"
+                    f"# sigma_kern={sigma_kern}; starting limits: lower_limit={lower_limit}, upper_limit={upper_limit}"
                 )
 
-            # TODO: fix this
+            # TODO: test this
 
-            for _ in range(n_steps):
+            for step in range(n_steps):
                 new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
                 new_row = self.calculate_row(sn, sigma_kern, new_fom_limit, mjd_ranges)
                 cur_value = new_row["n_pos_controls"]
-                self.t.loc[i + 1, :] = new_row
-
                 if verbose:
                     print(
-                        f"## new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
+                        f"## Step {step + 1}/{n_steps}: new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
                     )
 
-                if (
-                    round(upper_limit - 0.01, 2) == new_fom_limit
-                    and cur_value > tgt_value
-                ):
-                    new_fom_limit = upper_limit
-                    new_row = self.calculate_row(
-                        sn, sigma_kern, new_fom_limit, mjd_ranges
-                    )
-                    cur_value = new_row["n_pos_controls"]
-                    self.t.loc[i + 1, :] = new_row
+                # check for convergence
+                if abs(upper_limit - lower_limit) < convergence_threshold:
                     if verbose:
                         print(
-                            f"## new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
+                            f"## Converged: new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}"
                         )
                     break
 
+                # update limits based on the current value
                 if cur_value > tgt_value:
                     lower_limit = new_fom_limit
                 else:  # cur_value <= tgt_value
                     upper_limit = new_fom_limit
 
-            fom_limits[sigma_kern] = [round(self.t.loc[i + 1, "fom_limit"], 2)]
+            # finalize the FOM limit for this sigma_kern
+            self.t.loc[i + 1, :] = new_row
+            fom_limits[sigma_kern] = [self.t.loc[i + 1, "fom_limit"]]
             if verbose:
                 print(
-                    f"## new_fom_limit={fom_limits[sigma_kern][0]:0.2f}, cur_value={cur_value}"
+                    f"## Final FOM limit for sigma_kern={sigma_kern}: {fom_limits[sigma_kern][0]:0.2f}"
                 )
 
             i += 2
