@@ -511,8 +511,14 @@ class SnInfoTable:
             # raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--row doesn\'t exist.')
             return -1, None
 
-    def is_nan(self, string: str):
-        return string.lower() == "nan"
+    def is_nan(self, value) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, (float, np.floating)) and np.isnan(value):
+            return True
+        if isinstance(value, str) and value.strip().lower() in ["nan", "", "none"]:
+            return True
+        return False
 
     def get_info(self, tnsname):
         _, row = self.get_row(tnsname)
@@ -523,11 +529,11 @@ class SnInfoTable:
         ra = None if self.is_nan(row["ra"]) else row["ra"]
         dec = None if self.is_nan(row["dec"]) else row["dec"]
 
-        if np.isnan(row["mjd0"]):
+        if self.is_nan(row["mjd0"]):
             mjd0 = None
         else:
-            if not isinstance(row["mjd0"], (int, float)):
-                raise RuntimeError(f'Invalid MJD0: {row["mjd0"]}')
+            if not isinstance(row["mjd0"], (int, float, np.integer, np.floating)):
+                raise RuntimeError(f"Invalid MJD0: {row['mjd0']}")
             mjd0 = float(row["mjd0"])
 
         return ra, dec, mjd0
