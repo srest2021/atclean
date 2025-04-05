@@ -526,7 +526,7 @@ class SnInfoTable:
         if np.isnan(row["mjd0"]):
             mjd0 = None
         else:
-            if not isinstance(row["mjd0"], (int, float)):
+            if not isinstance(row["mjd0"], (int, float, np.integer, np.floating)):
                 raise RuntimeError(f'Invalid MJD0: {row["mjd0"]}')
             mjd0 = float(row["mjd0"])
 
