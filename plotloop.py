@@ -205,14 +205,14 @@ class PlotLoop:
         badday_cut = self.cut_list.get(BadDayCut.name())
         if not badday_cut is None:
             lims = self.p.get_lims(
-                lc=self.avg_sn.avg_lcs[0],
-                indices=self.avg_sn.avg_lcs[0].get_good_indices(badday_cut.flag),
+                lc=self.avg_sn.lcs[0],
+                indices=self.avg_sn.lcs[0].get_good_indices(badday_cut.flag),
                 custom_lims=custom_lims,
             )
 
             # plot bad day cut
             self.p.plot_cut(
-                self.avg_sn.avg_lcs[0],
+                self.avg_sn.lcs[0],
                 badday_cut.flag,
                 lims,
                 title="Bad day cut",

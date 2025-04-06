@@ -32,6 +32,7 @@ from utils import (
     get_tns_mjd0_from_json,
     query_atlas,
     query_tns,
+    PlotLimits,
 )
 
 
@@ -45,7 +46,7 @@ class Supernova:
         mjd0: float = None,
         filt="o",
     ):
-        self.colnames_master = deepcopy(colnames)
+        self.colnames = deepcopy(colnames)
 
         self.tnsname = tnsname
         self.coords: Coordinates = Coordinates(ra, dec)
@@ -66,6 +67,19 @@ class Supernova:
                 f"Cannot get control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
 
+    def get_lims(self, control_index=0, flag: Optional[int] = None):
+        lims = PlotLimits()
+
+        lims.set_xlims(
+            self.lcs[control_index].get_xlims(
+                mjd0=self.mjd0 if control_index == 0 else None
+            )
+        )
+
+        lims.set_ylims(self.lcs[control_index].get_ylims(flag))
+
+        return lims
+
     def get_tns_data(self, api_key, tns_id, bot_name):
         if self.coords.is_incomplete() or self.mjd0 is None:
             print(f"\nQuerying TNS for {self.tnsname} data...")
@@ -85,7 +99,7 @@ class Supernova:
     def verify_mjds(self, verbose=False):
         """Sort SN and control light curves by MJD"""
         self.lcs[0].t.sort_values(
-            by=[self.colnames_master.mjd], ignore_index=True, inplace=True
+            by=[self.colnames.mjd], ignore_index=True, inplace=True
         )
 
         if self.num_controls == 0:
@@ -94,16 +108,14 @@ class Supernova:
         if verbose:
             print("\nMaking sure SN and control light curve MJDs match up exactly:")
 
-        sn_sorted_mjd = self.lcs[0].t[self.colnames_master.mjd].to_numpy()
+        sn_sorted_mjd = self.lcs[0].t[self.colnames.mjd].to_numpy()
 
         for control_index in self.get_control_lc_indices():
             # sort by MJD
             self.lcs[control_index].t.sort_values(
-                by=[self.colnames_master.mjd], ignore_index=True, inplace=True
+                by=[self.colnames.mjd], ignore_index=True, inplace=True
             )
-            control_sorted_mjd = (
-                self.lcs[control_index].t[self.colnames_master.mjd].to_numpy()
-            )
+            control_sorted_mjd = self.lcs[control_index].t[self.colnames.mjd].to_numpy()
 
             if (len(sn_sorted_mjd) != len(control_sorted_mjd)) or not np.array_equal(
                 sn_sorted_mjd, control_sorted_mjd
@@ -122,8 +134,8 @@ class Supernova:
                     for mjd in only_sn_mjd:
                         self.lcs[control_index].newrow(
                             {
-                                self.colnames_master.mjd: mjd,
-                                self.colnames_master.mask: 0,
+                                self.colnames.mjd: mjd,
+                                self.colnames.mask: 0,
                             }
                         )
 
@@ -132,7 +144,7 @@ class Supernova:
                     ix_to_skip = []
                     for mjd in only_control_mjd:
                         matching_ix = self.lcs[control_index].ix_equal(
-                            self.colnames_master.mjd, mjd
+                            self.colnames.mjd, mjd
                         )
                         if len(matching_ix) != 1:
                             raise RuntimeError(
@@ -145,7 +157,7 @@ class Supernova:
 
                 # sort again
                 sorted_ix = self.lcs[control_index].ix_sort_by_cols(
-                    self.colnames_master.mjd, indices=ix
+                    self.colnames.mjd, indices=ix
                 )
                 self.lcs[control_index].t = self.lcs[control_index].t.loc[sorted_ix]
 
@@ -156,12 +168,12 @@ class Supernova:
     def prep_for_cleaning(self, verbose=False):
         if verbose:
             print(
-                f"Adding blank '{self.colnames_master.mask}' columns, replacing infs with NaNs, and calculating flux/dflux..."
+                f"Adding blank '{self.colnames.mask}' columns, replacing infs with NaNs, and calculating flux/dflux..."
             )
 
         for control_index in self.get_lc_indices():
             # add blank 'Mask' column
-            self.lcs[control_index].t[self.colnames_master.mask] = 0
+            self.lcs[control_index].t[self.colnames.mask] = 0
             # remove rows with duJy=0 or uJy=NaN
             self.lcs[control_index].remove_invalid_rows()
             # calculate flux/dflux column
@@ -210,10 +222,10 @@ class Supernova:
 
         for control_index in self.get_control_lc_indices():
             dflux_clean_ix = self.lcs[control_index].ix_unmasked(
-                self.colnames_master.mask, maskval=cut.uncert_cut_flag
+                self.colnames.mask, maskval=cut.uncert_cut_flag
             )
             x2_clean_ix = self.lcs[control_index].ix_inrange(
-                colnames=[self.colnames_master.chisquare],
+                colnames=[self.colnames.chisquare],
                 uplim=cut.temp_x2_max_value,
                 exclude_uplim=True,
             )
@@ -255,14 +267,14 @@ class Supernova:
             for control_index in self.lcs
             if control_index > 0
         ]
-        all_controls = LightCurve(self.colnames_master)
+        all_controls = LightCurve(self.colnames)
         all_controls.t = pd.concat(controls, ignore_index=True)
         return all_controls
 
     def calculate_control_stats(self, previous_flags):
         print("Calculating control light curve statistics...")
 
-        len_mjd = len(self.lcs[0].t[self.colnames_master.mjd])
+        len_mjd = len(self.lcs[0].t[self.colnames.mjd])
 
         # construct arrays for control lc data
         uJy = np.full((self.num_controls, len_mjd), np.nan)
@@ -272,18 +284,18 @@ class Supernova:
         i = 1
         for control_index in self.get_control_lc_indices():
             if len(self.lcs[control_index].t) != len_mjd or not np.array_equal(
-                self.lcs[0].t[self.colnames_master.mjd],
-                self.lcs[control_index].t[self.colnames_master.mjd],
+                self.lcs[0].t[self.colnames.mjd],
+                self.lcs[control_index].t[self.colnames.mjd],
             ):
                 raise RuntimeError(
                     f"SN lc not equal to control lc for control_index {control_index}! Rerun or debug verify_mjds()."
                 )
             else:
-                uJy[i - 1, :] = self.lcs[control_index].t[self.colnames_master.flux]
+                uJy[i - 1, :] = self.lcs[control_index].t[self.colnames.flux]
                 duJy[i - 1, :] = self.lcs[control_index].t[
                     self.lcs[control_index].colnames.dflux_new
                 ]
-                Mask[i - 1, :] = self.lcs[control_index].t[self.colnames_master.mask]
+                Mask[i - 1, :] = self.lcs[control_index].t[self.colnames.mask]
 
             i += 1
 
@@ -293,16 +305,16 @@ class Supernova:
 
         for index in range(uJy.shape[-1]):
             pda4MJD = pdastrostatsclass()
-            pda4MJD.t[self.colnames_master.flux] = uJy[0:, index]
+            pda4MJD.t[self.colnames.flux] = uJy[0:, index]
             pda4MJD.t[self.lcs[0].colnames.dflux_new] = duJy[0:, index]
-            pda4MJD.t[self.colnames_master.mask] = np.bitwise_and(
+            pda4MJD.t[self.colnames.mask] = np.bitwise_and(
                 Mask[0:, index], previous_flags
             )
 
             pda4MJD.calcaverage_sigmacutloop(
-                self.colnames_master.flux,
+                self.colnames.flux,
                 noisecol=self.lcs[0].colnames.dflux_new,
-                maskcol=self.colnames_master.mask,
+                maskcol=self.colnames.mask,
                 maskval=previous_flags,
                 verbose=1,
                 Nsigma=3.0,
@@ -323,12 +335,10 @@ class Supernova:
 
         # copy over SN's control cut flags to control light curve 'Mask' columns
         flags_arr = np.full(
-            self.lcs[0].t[self.colnames_master.mask].shape,
+            self.lcs[0].t[self.colnames.mask].shape,
             combine_flags(cut.get_flags()),
         )
-        flags_to_copy = np.bitwise_and(
-            self.lcs[0].t[self.colnames_master.mask], flags_arr
-        )
+        flags_to_copy = np.bitwise_and(self.lcs[0].t[self.colnames.mask], flags_arr)
         for control_index in self.get_control_lc_indices():
             self.lcs[control_index].copy_flags(flags_to_copy)
 
@@ -337,42 +347,34 @@ class Supernova:
         len_ix = len(self.lcs[0].getindices())
         x2_percent_cut = (
             100
-            * len(self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.x2_flag))
+            * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.x2_flag))
             / len_ix
         )
         stn_percent_cut = (
             100
-            * len(
-                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.snr_flag)
-            )
+            * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.snr_flag))
             / len_ix
         )
         Nclip_percent_cut = (
             100
-            * len(
-                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.Nclip_flag)
-            )
+            * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.Nclip_flag))
             / len_ix
         )
         Ngood_percent_cut = (
             100
-            * len(
-                self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.Ngood_flag)
-            )
+            * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.Ngood_flag))
             / len_ix
         )
         questionable_percent_cut = (
             100
             * len(
-                self.lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=cut.questionable_flag
-                )
+                self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.questionable_flag)
             )
             / len_ix
         )
         percent_cut = (
             100
-            * len(self.lcs[0].ix_masked(self.colnames_master.mask, maskval=cut.flag))
+            * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.flag))
             / len_ix
         )
         return (
@@ -386,7 +388,7 @@ class Supernova:
 
     def apply_badday_cut(self, cut: BadDayCut, previous_flags, flux2mag_sigmalimit=3.0):
         avg_sn = AveragedSupernova(
-            self.colnames_master,
+            self.colnames,
             tnsname=self.tnsname,
             mjd0=self.mjd0,
             filt=self.filt,
@@ -408,12 +410,8 @@ class Supernova:
         all_flags = previous_flags | combine_flags(cut.get_flags())
         percent_cut = (
             100
-            * len(
-                avg_sn.avg_lcs[0].ix_masked(
-                    self.colnames_master.mask, maskval=all_flags
-                )
-            )
-            / len(avg_sn.avg_lcs[0].t)
+            * len(avg_sn.lcs[0].ix_masked(self.colnames.mask, maskval=all_flags))
+            / len(avg_sn.lcs[0].t)
         )
         return avg_sn, percent_cut
 
@@ -432,7 +430,7 @@ class Supernova:
 
     def load(self, input_dir, control_index=0, cleaned=False):
         self.lcs[control_index] = LightCurve(
-            self.colnames_master, control_index=control_index, filt=self.filt
+            self.colnames, control_index=control_index, filt=self.filt
         )
         self.lcs[control_index].load_lc(input_dir, self.tnsname, cleaned=cleaned)
 
@@ -471,14 +469,14 @@ class Supernova:
 
         # check for dflux_new column if cleaned
         # if found, update colnames in self and all lc objects
-        if cleaned and f"{self.colnames_master.dflux}_new" in self.lcs[0].t.columns:
-            self.update_all_colnames("dflux_new", f"{self.colnames_master.dflux}_new")
+        if cleaned and f"{self.colnames.dflux}_new" in self.lcs[0].t.columns:
+            self.update_all_colnames("dflux_new", f"{self.colnames.dflux}_new")
 
     def update_all_colnames(self, key: str, name: str):
         print(
             f"Updating column names for all light curves in this Supernova object (key: {key}, name: {name})..."
         )
-        self.colnames_master.update(key, name)
+        self.colnames.update(key, name)
         for control_index in self.get_lc_indices():
             self.lcs[control_index].colnames.update(key, name)
 
@@ -525,33 +523,33 @@ class AveragedSupernova(Supernova):
         Supernova.__init__(self, colnames, tnsname, ra, dec, mjd0, filt)
         self.mjdbinsize = mjdbinsize
 
-        self.avg_lcs: Dict[int, AveragedLightCurve] = {}
+        self.lcs: Dict[int, AveragedLightCurve] = {}
 
-    def set_avg_lc(self, lc, control_index=0):
-        self.avg_lcs[control_index] = deepcopy(lc)
+    def set_avg_lc(self, lc, control_index: int = 0):
+        self.lcs[control_index] = deepcopy(lc)
 
-    def set_avg_lcs(self, lcs):
-        self.avg_lcs = deepcopy(lcs)
+    def set_avg_lcs(self, lcs: Dict):
+        self.lcs = deepcopy(lcs)
 
     def get_avg(self, control_index: int = 0):
         try:
-            return self.avg_lcs[control_index].t
+            return self.lcs[control_index].t
         except:
             raise RuntimeError(
-                f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.avg_lcs)} lcs in dictionary."
+                f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
 
     def load(self, input_dir, control_index=0):
-        self.avg_lcs[control_index] = AveragedLightCurve(
-            self.colnames_master,
+        self.lcs[control_index] = AveragedLightCurve(
+            self.colnames,
             control_index=control_index,
             filt=self.filt,
             mjdbinsize=self.mjdbinsize,
         )
-        self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
+        self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
     def load_all(self, input_dir, num_controls=0):
-        self.avg_lcs = {}
+        self.lcs = {}
         self.num_controls = 0
 
         print(
@@ -578,7 +576,7 @@ class AveragedSupernova(Supernova):
                     print(
                         f"Could not load averaged control light curve {control_index}; skipping..."
                     )
-                    del self.avg_lcs[control_index]
+                    del self.lcs[control_index]
                 control_index += 1
 
         print(
@@ -590,21 +588,21 @@ class AveragedSupernova(Supernova):
             f"\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves..."
         )
         for control_index in self.get_lc_indices():
-            self.avg_lcs[control_index].drop_extra_columns()
-            self.avg_lcs[control_index].save_lc(
+            self.lcs[control_index].drop_extra_columns()
+            self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
         print("Success")
 
     def get_lc_indices(self):
         if not self.all_indices:
-            self.all_indices = list(self.avg_lcs.keys())
+            self.all_indices = list(self.lcs.keys())
             self.all_indices.sort()
         return self.all_indices
 
     def get_control_lc_indices(self):
         if not self.control_indices:
-            self.control_indices = list(self.avg_lcs.keys())
+            self.control_indices = list(self.lcs.keys())
             if 0 in self.control_indices:
                 self.control_indices.remove(0)
             self.control_indices.sort()
@@ -637,11 +635,66 @@ class LightCurve(pdastrostatsclass):
     def get_postMJD0_indices(self, mjd0: float):
         return self.ix_inrange(colnames=self.colnames.mjd, lowlim=mjd0)
 
-    def get_good_indices(self, flag: int):
+    def get_flags(self):
+        return np.bitwise_or.reduce(self.t[self.colnames.mask])
+
+    def get_good_indices(self, flag: Optional[int] = None):
+        # if flag is 0, return all indices
+        if flag == 0:
+            return self.getindices()
+
+        if flag is None:  # if no flag is given
+            # check if mask column exists
+            if not self.colnames.mask in self.t.columns:
+                return self.getindices()
+
+            # return all unmasked indices
+            flag = self.get_flags()
         return self.ix_unmasked(self.colnames.mask, maskval=flag)
 
-    def get_bad_indices(self, flag: int):
+    def get_bad_indices(self, flag: Optional[int] = None):
+        # if flag is 0, return no indices
+        if flag == 0:
+            return []
+
+        if flag is None:  # if no flag is given
+            # check if mask column exists
+            if not self.colnames.mask in self.t.columns:
+                return self.getindices()
+
+            # return all masked indices
+            flag = self.get_flags()
         return self.ix_masked(self.colnames.mask, maskval=flag)
+
+    def get_ylims(
+        self,
+        indices: Optional[List[int]] = None,
+        flag: Optional[int] = None,
+        use_all: bool = False,
+    ):
+        if self.t.empty or len(self.t) < 2:
+            return [None, None]
+
+        if indices is None or len(indices) < 2:
+            if use_all:
+                indices = self.getindices()
+            else:
+                indices = self.get_good_indices(flag)
+
+        flux_min = self.t.loc[indices, self.colnames.flux].min()
+        flux_max = self.t.loc[indices, self.colnames.flux].max()
+        offset = 0.05 * abs(flux_max - flux_min)
+
+        return [flux_min - offset, flux_max + offset]
+
+    def get_xlims(self, mjd0: float = None):
+        if self.t.empty or len(self.t) < 2:
+            return [None, None]
+
+        start = self.t.at[0, self.colnames.mjd]
+        end = self.t.at[len(self.t) - 1, self.colnames.mjd] if mjd0 is None else mjd0
+
+        return [start, end]
 
     def can_plot(self, ix: List[int], columns: List[str] = None):
         if columns is None:
@@ -1225,6 +1278,39 @@ class LightCurve(pdastrostatsclass):
         return self.t.to_string()
 
 
+class AveragedLightCurve(LightCurve):
+    def __init__(
+        self,
+        colnames: PresetColumnNames,
+        control_index=0,
+        filt="o",
+        mjdbinsize=1.0,
+        **kwargs,
+    ):
+        LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
+        self.mjdbinsize = mjdbinsize
+
+    def load_lc_by_filename(self, filename):
+        self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
+        self.check_column_names(
+            required_column_names=self.colnames.get_required_column_names(
+                is_averaged=True
+            )
+        )
+
+    def load_lc(self, input_dir, tnsname):
+        filename = get_filename(
+            input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
+        )
+        self.load_lc_by_filename(filename)
+
+    def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
+        filename = get_filename(
+            output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
+        )
+        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+
+
 class LimCutsTable:
     def __init__(self, lc: LightCurve, snr_bound, indices=None):
         self.t = None
@@ -1318,39 +1404,6 @@ class LimCutsTable:
                 continue
             row = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
             self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
-
-
-class AveragedLightCurve(LightCurve):
-    def __init__(
-        self,
-        colnames: PresetColumnNames,
-        control_index=0,
-        filt="o",
-        mjdbinsize=1.0,
-        **kwargs,
-    ):
-        LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
-        self.mjdbinsize = mjdbinsize
-
-    def load_lc_by_filename(self, filename):
-        self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
-        self.check_column_names(
-            required_column_names=self.colnames.get_required_column_names(
-                is_averaged=True
-            )
-        )
-
-    def load_lc(self, input_dir, tnsname):
-        filename = get_filename(
-            input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
-        )
-        self.load_lc_by_filename(filename)
-
-    def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
-        filename = get_filename(
-            output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
-        )
-        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
 
 
 # will contain measurements from both filters (o-band and c-band)
@@ -1501,7 +1554,7 @@ class SimDetecSupernova(AveragedSupernova):
         AveragedSupernova.__init__(
             self, colnames, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt, **kwargs
         )
-        self.avg_lcs: Dict[int, SimDetecLightCurve] = {}
+        self.lcs: Dict[int, SimDetecLightCurve] = {}
 
     def get_all_fom_dict(
         self,
@@ -1514,14 +1567,14 @@ class SimDetecSupernova(AveragedSupernova):
         for sigma_kern in sigma_kerns:
             all_fom = pd.Series()
             for control_index in self.get_control_lc_indices():
-                self.avg_lcs[control_index].apply_rolling_sum(sigma_kern)
-                self.avg_lcs[control_index].set_valid_mjd_ix(mjd_ranges)
+                self.lcs[control_index].apply_rolling_sum(sigma_kern)
+                self.lcs[control_index].set_valid_mjd_ix(mjd_ranges)
                 all_fom = pd.concat(
                     [
                         all_fom,
-                        self.avg_lcs[control_index].t.loc[
-                            self.avg_lcs[control_index].valid_mjd_ix,
-                            self.colnames_master.snrsumnorm,
+                        self.lcs[control_index].t.loc[
+                            self.lcs[control_index].valid_mjd_ix,
+                            self.colnames.snrsumnorm,
                         ],
                     ],
                     ignore_index=True,
@@ -1548,24 +1601,24 @@ class SimDetecSupernova(AveragedSupernova):
 
     def apply_rolling_sums(self, sigma_kern: float, flag=0x800000):
         for control_index in self.get_lc_indices():
-            self.avg_lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
+            self.lcs[control_index].apply_rolling_sum(sigma_kern, flag=flag)
 
     def remove_rolling_sums(self):
         for control_index in self.get_lc_indices():
-            self.avg_lcs[control_index].remove_rolling_sum()
+            self.lcs[control_index].remove_rolling_sum()
 
     def remove_simulations(self):
         for control_index in self.get_lc_indices():
-            self.avg_lcs[control_index].remove_simulations()
+            self.lcs[control_index].remove_simulations()
 
     def load(self, input_dir, control_index=0):
-        self.avg_lcs[control_index] = SimDetecLightCurve(
-            self.colnames_master,
+        self.lcs[control_index] = SimDetecLightCurve(
+            self.colnames,
             control_index=control_index,
             filt=self.filt,
             mjdbinsize=self.mjdbinsize,
         )
-        self.avg_lcs[control_index].load_lc(input_dir, self.tnsname)
+        self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
 
 class SimDetecLightCurve(AveragedLightCurve):

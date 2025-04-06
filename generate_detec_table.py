@@ -735,7 +735,7 @@ class ContaminationTable(pdastrostatsclass):
         }
 
         for control_index in sn.get_lc_indices():
-            n_falsepos = sn.avg_lcs[control_index].get_n_falsepos(
+            n_falsepos = sn.lcs[control_index].get_n_falsepos(
                 sigma_kern, fom_limit, mjd_ranges
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
@@ -1210,7 +1210,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
                     # add the simulated flux to the chosen control light curve
                     params = sim_detec_table.get_params_at_index(i)
-                    sim_lc = self.sn.avg_lcs[rand_control_index].add_simulation(
+                    sim_lc = self.sn.lcs[rand_control_index].add_simulation(
                         sim, peak_appmag, flag=flag, remove_old=True, **params
                     )
 

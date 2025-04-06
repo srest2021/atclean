@@ -26,6 +26,7 @@ from utils import (
     UncertaintyCut,
     UncertaintyEstimation,
     find_all_filts,
+    get_config_custom_cuts,
     hexstring_to_int,
     Cut,
     CutList,
@@ -409,16 +410,7 @@ class CleanLoop:
                 )
 
                 if plot:
-                    self.p.plot_uncert_est(
-                        self.sn.lcs[0],
-                        self.sn.tnsname,
-                        self.p.get_lims(
-                            lc=self.sn.lcs[0],
-                            indices=self.sn.lcs[0].get_good_indices(
-                                self.cut_list.get(UncertaintyCut.name()).flag
-                            ),
-                        ),
-                    )
+                    self.p.plot_uncert_est(self.sn)
         else:
             print("True uncertainties estimation not needed; skipping procedure...")
 
@@ -454,22 +446,14 @@ class CleanLoop:
         self.f.add_uncert_cut_section(cut, percent_cut)
 
         if plot:
-            self.p.plot_cut(
-                self.sn.lcs[0],
-                cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
-                ),
-                title=UncertaintyCut.name(),
-            )
+            self.p.plot_cut(self.sn, cut.flag, title=UncertaintyCut.name())
 
     def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
         if cut is None:
             return
 
         print(f"\nApplying chi-square cut ({cut}):")
-        if self.sn.colnames_master.chisquare is None:
+        if self.sn.colnames.chisquare is None:
             print(
                 "WARNING: No chi-square column name provided in config file; skipping..."
             )
@@ -510,15 +494,7 @@ class CleanLoop:
 
         if plot:
             self.p.plot_limcuts(limcuts, cut)
-            self.p.plot_cut(
-                self.sn.lcs[0],
-                cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
-                ),
-                title=ChiSquareCut.name(),
-            )
+            self.p.plot_cut(self.sn, cut.flag, title=ChiSquareCut.name())
 
         self.f.add_x2_cut_section(
             cut, data["Pcontamination"], data["Ploss"], percent_cut
@@ -581,15 +557,7 @@ class CleanLoop:
         )
 
         if plot:
-            self.p.plot_cut(
-                self.sn.lcs[0],
-                cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
-                ),
-                title=ControlLightCurveCut.name(),
-            )
+            self.p.plot_cut(self.sn, cut.flag, title=ControlLightCurveCut.name())
 
     def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
         if cut is None:
@@ -606,20 +574,10 @@ class CleanLoop:
         self.f.add_badday_cut_section(percent_cut)
 
         if plot:
-            lims = self.p.get_lims(
-                lc=self.avg_sn.avg_lcs[0],
-                indices=self.avg_sn.avg_lcs[0].get_good_indices(cut.flag),
-            )
-
-            self.p.plot_cut(
-                self.avg_sn.avg_lcs[0],
-                cut.flag,
-                lims,
-                title=BadDayCut.name(),
-            )
+            self.p.plot_cut(self.avg_sn, cut.flag, title=BadDayCut.name())
 
             self.p.plot_averaged_SN(
-                self.avg_sn, cut.flag, lims, plot_controls=True, plot_flagged=False
+                self.avg_sn, cut.flag, plot_controls=True, plot_flagged=False
             )
 
     def apply_custom_cut(self, name, cut: CustomCut, plot: bool = False):
@@ -634,15 +592,7 @@ class CleanLoop:
         self.f.add_custom_cut_section(cut, percent_cut)
 
         if plot:
-            self.p.plot_cut(
-                self.sn.lcs[0],
-                cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
-                ),
-                title=cut.name(),
-            )
+            self.p.plot_cut(self.sn, cut.flag, title=cut.name())
 
     def clean_lcs(
         self,
@@ -672,12 +622,7 @@ class CleanLoop:
             self.p = PlotPdf(f"{self.output_dir}/{tnsname}", tnsname, filt=filt)
 
             # plot original SN light curve and control light curves
-            self.p.plot_SN(
-                self.sn,
-                self.p.get_lims(lc=self.sn.lcs[0]),
-                plot_controls=True,
-                plot_template_changes=True,
-            )
+            self.p.plot_SN(self.sn, plot_controls=True, plot_template_changes=True)
 
         # template correction
         if apply_template_correction:
@@ -718,15 +663,9 @@ class CleanLoop:
         # plot the cleaned light curves so far
         previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
         if plot:
-            lims = self.p.get_lims(
-                lc=self.sn.lcs[0],
-                indices=self.sn.lcs[0].get_good_indices(previous_flags),
-            )
-            self.p.plot_cut(
-                self.sn.lcs[0], previous_flags, lims, title="All previous cuts"
-            )
+            self.p.plot_cut(self.sn, previous_flags, title="All previous cuts")
             self.p.plot_cleaned_SN(
-                self.sn, previous_flags, lims, plot_controls=True, plot_flagged=False
+                self.sn, previous_flags, plot_controls=True, plot_flagged=False
             )
 
         # bad day cut (averaging)
@@ -813,29 +752,10 @@ class CleanLoop:
                 )
 
 
-def find_config_custom_cuts(config: ConfigParser) -> List:
-    print("\nSearching config file for custom cuts...")
-
-    required_keys = {"column", "flag", "max_value", "min_value"}
-    custom_cuts = []
-
-    for key in config:
-        if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
-            if not required_keys.issubset(config[key].keys()):
-                print(
-                    f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys})"
-                )
-            else:
-                custom_cuts.append(config[key])
-
-    print(f"Found {len(custom_cuts)}")
-    return custom_cuts
-
-
 def parse_config_cuts(args, config, colnames):
     cut_list = CutList()
     if args.custom_cuts:
-        config_custom_cuts = find_config_custom_cuts(config)
+        config_custom_cuts = get_config_custom_cuts(config)
 
     print(f"\nProcedures to apply:")
 

@@ -187,6 +187,67 @@ def find_all_control_indices(directory: str, tnsname: str):
     return extract_from_subdir(subdir, pattern, "index", convert_function=int)
 
 
+class PlotLimits:
+    def __init__(self, xlower=None, xupper=None, ylower=None, yupper=None):
+        self.xlower = xlower
+        self.xupper = xupper
+        self.ylower = ylower
+        self.yupper = yupper
+
+    def set_lims(
+        self,
+        xlims: Optional[Tuple[float, float]] = None,
+        ylims: Optional[Tuple[float, float]] = None,
+    ):
+        if xlims is not None:
+            self.set_xlims(xlims)
+        if ylims is not None:
+            self.set_ylims(ylims)
+
+    def set_xlims(self, xlims: Tuple[float, float]):
+        if len(xlims) != 2:
+            raise ValueError(f"xlims must be a tuple of length 2, got {len(xlims)}")
+
+        if xlims[0] >= xlims[1]:
+            raise ValueError(
+                f"xlims lower limit {xlims[0]} must be less than upper limit {xlims[1]}"
+            )
+
+        self.xlower, self.xupper = xlims
+
+    def set_ylims(self, ylims: Tuple[float, float]):
+        if len(ylims) != 2:
+            raise ValueError(f"ylims must be a tuple of length 2, got {len(ylims)}")
+
+        if ylims[0] >= ylims[1]:
+            raise ValueError(
+                f"ylims lower limit {ylims[0]} must be less than upper limit {ylims[1]}"
+            )
+
+        self.ylower, self.yupper = ylims
+
+    def get_xlims(self):
+        if self.xlower is None or self.xupper is None:
+            return None
+        return self.xlower, self.xupper
+
+    def get_ylims(self):
+        if self.ylower is None or self.yupper is None:
+            return None
+        return self.ylower, self.yupper
+
+    def is_empty(self):
+        return (
+            self.xlower is None
+            and self.xupper is None
+            and self.ylower is None
+            and self.yupper is None
+        )
+
+    def __str__(self):
+        return f"Plot limits: x-axis [{self.xlower}, {self.xupper}], y-axis [{self.ylower}, {self.yupper}]"
+
+
 class PresetColumnNames:
     """
     Class to handle loading and managing column names for light curve conversion
@@ -823,6 +884,42 @@ def hexstring_to_int(hexstring):
 
 def combine_flags(flags: List[int]) -> int:
     return reduce(lambda x, y: x | y, flags, 0)
+
+
+def get_config_custom_cuts(config: ConfigParser) -> List:
+    print("\nSearching config file for custom cuts...")
+
+    required_keys = {"column", "flag", "max_value", "min_value"}
+    custom_cuts = []
+
+    for key in config:
+        if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
+            if not required_keys.issubset(config[key].keys()):
+                print(
+                    f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys}); skipping..."
+                )
+            else:
+                custom_cuts.append(config[key])
+
+    print(f"Found {len(custom_cuts)}")
+    return custom_cuts
+
+
+def get_config_flags(config: ConfigParser) -> List[int]:
+    # get main flags for Uncertainty Cut, Chi-Square Cut, Control Light Curve Cut, and Bad Day Cut
+    flags = [
+        hexstring_to_int(config["uncert_cut"]["flag"]),
+        hexstring_to_int(config["x2_cut"]["flag"]),
+        hexstring_to_int(config["controls_cut"]["bad_flag"]),
+        hexstring_to_int(config["averaging"]["flag"]),
+    ]
+
+    # add custom cuts flags to flags list
+    custom_cuts = get_config_custom_cuts(config)
+    for cut in custom_cuts:
+        flags.append(hexstring_to_int(cut["flag"]))
+
+    return combine_flags(flags)
 
 
 class Cut(ABC):
