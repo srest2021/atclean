@@ -693,7 +693,6 @@ class LightCurve(pdastrostatsclass):
 
         start = self.t.at[0, self.colnames.mjd]
         end = self.t.at[len(self.t) - 1, self.colnames.mjd] if mjd0 is None else mjd0
-
         return [start, end]
 
     def can_plot(self, ix: List[int], columns: List[str] = None):
@@ -1290,6 +1289,14 @@ class AveragedLightCurve(LightCurve):
         LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
         self.mjdbinsize = mjdbinsize
 
+    def get_xlims(self, mjd0: float = None):
+        if self.t.empty or len(self.t) < 2:
+            return [None, None]
+
+        start = self.t.at[0, self.colnames.mjdbin]
+        end = self.t.at[len(self.t) - 1, self.colnames.mjdbin] if mjd0 is None else mjd0
+        return [start, end]
+
     def load_lc_by_filename(self, filename):
         self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
         self.check_column_names(
@@ -1650,7 +1657,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         self._pre_mjd0_ix = None
         if mjd0 is not None:
-            self._pre_mjd0_ix = self.ix_inrange(self.colnames.mjd, uplim=mjd0)
+            self._pre_mjd0_ix = self.ix_inrange(self.colnames.mjdbin, uplim=mjd0)
 
         self._valid_mjd_ix = None
 

@@ -1125,7 +1125,9 @@ class CutList:
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
-            raise RuntimeError(f"cut by the name {cut.name()} already exists.")
+            print(
+                f"WARNING: cut by the name {cut.name()} already exists; overwriting..."
+            )
         self.list[cut.name()] = cut
 
     def get(self, name: str):
