@@ -4,6 +4,7 @@ import os
 from typing import List, Optional
 import matplotlib
 from matplotlib import gridspec
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -34,8 +35,8 @@ matplotlib.rcParams["ytick.major.width"] = 1
 matplotlib.rcParams["ytick.minor.size"] = 3
 matplotlib.rcParams["ytick.minor.width"] = 1
 matplotlib.rcParams["axes.linewidth"] = 1
-marker_size = 30
-marker_edgewidth = 1.5
+MARKER_SIZE = 30
+MARKER_EDGEWIDTH = 1.5
 
 # color scheme
 SN_FLUX_COLORS = {
@@ -100,21 +101,93 @@ class Plot:
     ) -> PlotLimits:
         lims = PlotLimits()
 
+        lims.set_xlims(
+            sn.lcs[control_index].get_xlims(mjd0=sn.mjd0 if pre_sn else None)
+        )
         if custom_lims is not None and custom_lims.get_xlims() is not None:
             lims.set_xlims(custom_lims.get_xlims())
-        else:
-            lims.set_xlims(
-                sn.lcs[control_index].get_xlims(
-                    mjd0=sn.mjd0 if pre_sn else None,
-                )
-            )
 
+        lims.set_ylims(sn.lcs[control_index].get_ylims(indices=indices, flag=flag))
         if custom_lims is not None and custom_lims.get_ylims() is not None:
             lims.set_ylims(custom_lims.get_ylims())
-        else:
-            lims.set_ylims(sn.lcs[control_index].get_ylims(indices=indices, flag=flag))
 
         return lims
+
+    def _setup_ax(
+        self,
+        ax: Axes,
+        lims: PlotLimits,
+        xlabel: bool = True,
+        ylabel: bool = True,
+        xticks: bool = True,
+        yticks: bool = True,
+    ):
+        ax.minorticks_on()
+        ax.tick_params(direction="in", which="both")
+        ax.set_facecolor(FACE_COLOR)
+        ax.axhline(color="k", linewidth=1.5, zorder=0)
+
+        if lims.get_xlims():
+            ax.set_xlim(lims.get_xlims())
+        if lims.get_ylims():
+            ax.set_ylim(lims.get_ylims())
+
+        if xlabel:
+            ax.set_xlabel("MJD")
+        if not xticks:
+            ax.set_xticklabels([])
+
+        if ylabel:
+            ax.set_ylabel(r"Flux ($\mu$Jy)")
+        if not yticks:
+            ax.set_yticklabels([])
+
+    def _plot_lc(
+        self,
+        ax: Axes,
+        obj: Supernova | LightCurve,
+        control_index: int,
+        color: str,
+        indices: Optional[List[int]] = None,
+        label: Optional[str] = None,
+        open: bool = False,
+    ):
+        if isinstance(obj, Supernova):
+            obj = obj.lcs[control_index]
+
+        if indices is None:
+            indices = obj.getindices()
+        if not obj.can_plot(indices):
+            print(
+                f"WARNING: Light curve (control index #{control_index}) cannot be plotted with indices of length {len(indices)}; skipping..."
+            )
+            return
+
+        ax.errorbar(
+            obj.t.loc[indices, obj.colnames.mjd],
+            obj.t.loc[indices, obj.colnames.flux],
+            yerr=obj.t.loc[indices, obj.colnames.dflux_new],
+            fmt="none",
+            ecolor=color,
+            elinewidth=1.5,
+            capsize=1.2,
+            c=color,
+            alpha=0.5,
+            zorder=10,
+        )
+        ax.scatter(
+            obj.t.loc[indices, obj.colnames.mjd],
+            obj.t.loc[indices, obj.colnames.flux],
+            s=MARKER_SIZE,
+            lw=MARKER_EDGEWIDTH,
+            color=color,
+            marker="o",
+            alpha=0.5,
+            zorder=10,
+            label=label,
+            facecolors="none" if open else None,
+            edgecolors=color if open else None,
+        )
 
     def plot_SN(
         self,
@@ -129,105 +202,35 @@ class Plot:
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
+        self._setup_ax(ax1, lims)
+
         title = f"SN {sn.tnsname}"
         if plot_controls and sn.num_controls > 0:
             title += f" & control light curves"
         title += f" {sn.filt}-band flux"
         ax1.set_title(title)
 
-        ax1.minorticks_on()
-        ax1.tick_params(direction="in", which="both")
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel(sn.colnames.mjd)
-        ax1.axhline(linewidth=1, color="k")
-
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"{sn.num_controls} control light curves"
             for control_index in sn.get_control_lc_indices():
-                lc = sn.lcs[control_index]
-
-                plt.errorbar(
-                    lc.t[lc.colnames.mjd],
-                    lc.t[lc.colnames.flux],
-                    yerr=lc.t[lc.colnames.dflux],
-                    fmt="none",
-                    ecolor=CONTROL_FLUX_COLOR,
-                    elinewidth=1.5,
-                    capsize=1.2,
-                    c=CONTROL_FLUX_COLOR,
-                    alpha=0.5,
-                    zorder=0,
-                )
-                plt.scatter(
-                    lc.t[lc.colnames.mjd],
-                    lc.t[lc.colnames.flux],
-                    s=marker_size,
-                    color=CONTROL_FLUX_COLOR,
-                    marker="o",
-                    alpha=0.5,
-                    zorder=0,
-                    label=label,
-                )
-
+                self._plot_lc(ax1, sn, control_index, CONTROL_FLUX_COLOR, label=label)
                 if not label is None:
                     label = None
 
-        sn_lc = sn.lcs[0]
-        preMJD0_ix = sn_lc.get_preMJD0_indices(sn.mjd0)
-        postMJD0_ix = sn_lc.get_postMJD0_indices(sn.mjd0)
+        preMJD0_ix = sn.lcs[0].get_preMJD0_indices(sn.mjd0)
+        postMJD0_ix = sn.lcs[0].get_postMJD0_indices(sn.mjd0)
 
-        if sn_lc.can_plot(preMJD0_ix):
-            # plot pre-MJD0 SN light curve
-            plt.errorbar(
-                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.flux],
-                yerr=sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.dflux],
-                fmt="none",
-                ecolor="magenta",
-                elinewidth=1,
-                capsize=1.2,
-                c="magenta",
-                alpha=0.5,
-                zorder=10,
-            )
-            plt.scatter(
-                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[preMJD0_ix, sn_lc.colnames.flux],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color="magenta",
-                marker="o",
-                alpha=0.5,
-                zorder=10,
-                label="Pre-MJD0 light curve",
-            )
+        # plot pre-MJD0 SN light curve
+        self._plot_lc(
+            ax1, sn, 0, "magenta", indices=preMJD0_ix, label="Pre-MJD0 light curve"
+        )
 
-        if sn_lc.can_plot(postMJD0_ix):
-            # plot post-MJD0 SN light curve
-            plt.errorbar(
-                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.flux],
-                yerr=sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.dflux],
-                fmt="none",
-                ecolor="lime",
-                elinewidth=1,
-                capsize=1.2,
-                c="lime",
-                alpha=0.5,
-                zorder=10,
-            )
-            plt.scatter(
-                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[postMJD0_ix, sn_lc.colnames.flux],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color="lime",
-                marker="o",
-                alpha=0.5,
-                zorder=10,
-                label="Post-MJD0 light curve",
-            )
+        # plot post-MJD0 SN light curve
+        self._plot_lc(
+            ax1, sn, 0, "lime", indices=postMJD0_ix, label="Post-MJD0 light curve"
+        )
 
         if plot_template_changes:
             ax1.axvline(
@@ -240,12 +243,6 @@ class Plot:
             ax1.axvline(
                 x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100
             )
-
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
 
@@ -263,7 +260,9 @@ class Plot:
         title: str | None = None,
         save_filename: str = None,
     ):
-        fig, (ax2, ax1) = plt.subplots(2, constrained_layout=True)
+        fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        ax1: Axes
+        ax2: Axes
         fig.set_figwidth(7)
         fig.set_figheight(5)
 
@@ -271,128 +270,41 @@ class Plot:
             title = "Cut"
         fig.suptitle(f"{title} (flag {hex(flag)})")
 
-        ax1.minorticks_on()
-        ax1.tick_params(direction="in", which="both")
-        ax2.get_xaxis().set_ticks([])
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.axhline(linewidth=1, color="k")
-
-        ax2.minorticks_on()
-        ax2.tick_params(direction="in", which="both")
-        ax2.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel(sn.lcs[control_index].colnames.mjd)
-        ax2.axhline(linewidth=1, color="k")
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        self._setup_ax(ax1, lims, ylabel=False, xticks=False, xlabel=False)
+        self._setup_ax(ax2, lims, ylabel=False)
 
         good_ix = sn.lcs[control_index].get_good_indices(flag)
         bad_ix = sn.lcs[control_index].get_bad_indices(flag)
 
-        if sn.lcs[control_index].can_plot(good_ix):
-            ax1.errorbar(
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.mjd
-                ],
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.flux
-                ],
-                yerr=sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.dflux_new
-                ],
-                fmt="none",
-                ecolor=SN_FLUX_COLORS[sn.filt],
-                elinewidth=1,
-                capsize=1.2,
-                c=SN_FLUX_COLORS[sn.filt],
-                alpha=0.5,
-            )
-            ax1.scatter(
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.mjd
-                ],
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.flux
-                ],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color=SN_FLUX_COLORS[sn.filt],
-                marker="o",
-                alpha=0.5,
-                label="Cleaned measurements",
-            )
+        self._plot_lc(
+            ax1,
+            sn,
+            control_index,
+            SN_FLUX_COLORS[sn.filt],
+            indices=good_ix,
+            label="Cleaned measurements",
+        )
+        self._plot_lc(
+            ax2,
+            sn,
+            control_index,
+            SN_FLUX_COLORS[sn.filt],
+            indices=good_ix,
+            label="Cleaned measurements",
+        )
 
-            ax2.errorbar(
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.mjd
-                ],
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.flux
-                ],
-                yerr=sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.dflux_new
-                ],
-                fmt="none",
-                ecolor=SN_FLUX_COLORS[sn.filt],
-                elinewidth=1,
-                capsize=1.2,
-                c=SN_FLUX_COLORS[sn.filt],
-                alpha=0.5,
-                zorder=5,
-            )
-            ax2.scatter(
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.mjd
-                ],
-                sn.lcs[control_index].t.loc[
-                    good_ix, sn.lcs[control_index].colnames.flux
-                ],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color=SN_FLUX_COLORS[sn.filt],
-                marker="o",
-                alpha=0.5,
-                label="Cleaned measurements",
-                zorder=5,
-            )
+        self._plot_lc(
+            ax1,
+            sn,
+            control_index,
+            SN_FLAGGED_FLUX_COLOR,
+            indices=bad_ix,
+            label="Flagged measurements",
+            open=True,
+        )
 
-        if sn.lcs[control_index].can_plot(bad_ix):
-            ax2.errorbar(
-                sn.lcs[control_index].t.loc[bad_ix, sn.lcs[control_index].colnames.mjd],
-                sn.lcs[control_index].t.loc[
-                    bad_ix, sn.lcs[control_index].colnames.flux
-                ],
-                yerr=sn.lcs[control_index].t.loc[
-                    bad_ix, sn.lcs[control_index].colnames.dflux_new
-                ],
-                fmt="none",
-                ecolor=SN_FLAGGED_FLUX_COLOR,
-                elinewidth=1,
-                capsize=1.2,
-                c=SN_FLAGGED_FLUX_COLOR,
-                alpha=0.5,
-                zorder=10,
-            )
-            ax2.scatter(
-                sn.lcs[control_index].t.loc[bad_ix, sn.lcs[control_index].colnames.mjd],
-                sn.lcs[control_index].t.loc[
-                    bad_ix, sn.lcs[control_index].colnames.flux
-                ],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color=SN_FLAGGED_FLUX_COLOR,
-                facecolors="none",
-                edgecolors=SN_FLAGGED_FLUX_COLOR,
-                marker="o",
-                alpha=0.5,
-                label="Flagged measurements",
-                zorder=10,
-            )
-
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-            ax2.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
-            ax2.set_ylim(lims.get_ylims())
+        fig.supylabel(r"Flux ($\mu$Jy)")
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
         ax2.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
@@ -413,6 +325,7 @@ class Plot:
         filename: str = "cleaned",
     ):
         fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
@@ -422,109 +335,46 @@ class Plot:
         title += f" {sn.filt}-band flux"
         ax1.set_title(title)
 
-        ax1.minorticks_on()
-        ax1.tick_params(direction="in", which="both")
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel(sn.colnames.mjd)
-        ax1.axhline(linewidth=1, color="k")
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        self._setup_ax(ax1, lims)
 
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"Cleaned control measurements"
             for control_index in sn.get_control_lc_indices():
-                lc = sn.lcs[control_index]
-                good_ix = lc.get_good_indices(flag)
-
-                if lc.can_plot(good_ix):
-                    plt.errorbar(
-                        lc.t.loc[good_ix, lc.colnames.mjd],
-                        lc.t.loc[good_ix, lc.colnames.flux],
-                        yerr=lc.t.loc[good_ix, lc.colnames.dflux_new],
-                        fmt="none",
-                        ecolor=CONTROL_FLUX_COLOR,
-                        elinewidth=1.5,
-                        capsize=1.2,
-                        c=CONTROL_FLUX_COLOR,
-                        alpha=0.5,
-                        zorder=0,
-                    )
-                    plt.scatter(
-                        lc.t.loc[good_ix, lc.colnames.mjd],
-                        lc.t.loc[good_ix, lc.colnames.flux],
-                        s=marker_size,
-                        color=CONTROL_FLUX_COLOR,
-                        marker="o",
-                        alpha=0.5,
-                        zorder=0,
-                        label=label,
-                    )
-
+                good_ix = sn.lcs[control_index].get_good_indices(flag)
+                self._plot_lc(
+                    ax1,
+                    sn,
+                    control_index,
+                    CONTROL_FLUX_COLOR,
+                    indices=good_ix,
+                    label=label,
+                )
                 if not label is None:
                     label = None
 
-        sn_lc = sn.lcs[0]
-        good_ix = sn_lc.get_good_indices(flag)
-
         if plot_flagged:
-            bad_ix = sn_lc.get_bad_indices(flag)
-
-            if sn_lc.can_plot(bad_ix):
-                ax1.errorbar(
-                    sn_lc.t.loc[bad_ix, sn_lc.colnames.mjd],
-                    sn_lc.t.loc[bad_ix, sn_lc.colnames.flux],
-                    yerr=sn_lc.t.loc[bad_ix, sn_lc.colnames.dflux_new],
-                    fmt="none",
-                    ecolor=SN_FLAGGED_FLUX_COLOR,
-                    elinewidth=1,
-                    capsize=1.2,
-                    c=SN_FLAGGED_FLUX_COLOR,
-                    alpha=0.5,
-                    zorder=10,
-                )
-                ax1.scatter(
-                    sn_lc.t.loc[bad_ix, sn_lc.colnames.mjd],
-                    sn_lc.t.loc[bad_ix, sn_lc.colnames.flux],
-                    s=marker_size,
-                    lw=marker_edgewidth,
-                    color=SN_FLAGGED_FLUX_COLOR,
-                    facecolors="none",
-                    edgecolors=SN_FLAGGED_FLUX_COLOR,
-                    marker="o",
-                    alpha=0.5,
-                    label=f"Flagged SN {sn.tnsname} measurements",
-                    zorder=10,
-                )
-
-        if sn_lc.can_plot(good_ix):
-            plt.errorbar(
-                sn_lc.t.loc[good_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[good_ix, sn_lc.colnames.flux],
-                yerr=sn_lc.t.loc[good_ix, sn_lc.colnames.dflux_new],
-                fmt="none",
-                ecolor=SN_FLUX_COLORS[sn.filt],
-                elinewidth=1,
-                capsize=1.2,
-                c=SN_FLUX_COLORS[sn.filt],
-                alpha=0.5,
-                zorder=10,
-            )
-            plt.scatter(
-                sn_lc.t.loc[good_ix, sn_lc.colnames.mjd],
-                sn_lc.t.loc[good_ix, sn_lc.colnames.flux],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color=SN_FLUX_COLORS[sn.filt],
-                marker="o",
-                alpha=0.5,
-                zorder=10,
-                label=f"Cleaned SN {sn.tnsname} measurements",
+            bad_ix = sn.lcs[0].get_bad_indices(flag)
+            self._plot_lc(
+                ax1,
+                sn,
+                0,
+                SN_FLAGGED_FLUX_COLOR,
+                indices=bad_ix,
+                label=f"Flagged SN measurements",
+                open=True,
             )
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
+        good_ix = sn.lcs[0].get_good_indices(flag)
+        self._plot_lc(
+            ax1,
+            sn,
+            0,
+            SN_FLUX_COLORS[sn.filt],
+            indices=good_ix,
+            label=f"Cleaned SN measurements",
+        )
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
 
@@ -544,6 +394,7 @@ class Plot:
         filename: str = "averaged",
     ):
         fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
@@ -553,109 +404,47 @@ class Plot:
         title += f" {avg_sn.filt}-band flux"
         ax1.set_title(title)
 
-        ax1.minorticks_on()
-        ax1.tick_params(direction="in", which="both")
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.set_xlabel(avg_sn.colnames.mjd)
-        ax1.axhline(linewidth=1, color="k")
+        lims = self.get_lims(sn=avg_sn, custom_lims=custom_lims, flag=flag)
+        self._setup_ax(ax1, lims)
 
         if plot_controls and avg_sn.num_controls > 0:
             # plot control light curves
-            label = f"Cleaned & averaged control measurements"
+            label = f"Cleaned control bins"
             for control_index in avg_sn.get_control_lc_indices():
-                lc = avg_sn.lcs[control_index]
-                good_ix = lc.get_good_indices(flag)
-
-                if lc.can_plot(good_ix):
-                    plt.errorbar(
-                        lc.t.loc[good_ix, lc.colnames.mjd],
-                        lc.t.loc[good_ix, lc.colnames.flux],
-                        yerr=lc.t.loc[good_ix, lc.colnames.dflux],
-                        fmt="none",
-                        ecolor=CONTROL_FLUX_COLOR,
-                        elinewidth=1.5,
-                        capsize=1.2,
-                        c=CONTROL_FLUX_COLOR,
-                        alpha=0.5,
-                        zorder=0,
-                    )
-                    plt.scatter(
-                        lc.t.loc[good_ix, lc.colnames.mjd],
-                        lc.t.loc[good_ix, lc.colnames.flux],
-                        s=marker_size,
-                        color=CONTROL_FLUX_COLOR,
-                        marker="o",
-                        alpha=0.5,
-                        zorder=0,
-                        label=label,
-                    )
+                good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
+                self._plot_lc(
+                    ax1,
+                    avg_sn,
+                    control_index,
+                    CONTROL_FLUX_COLOR,
+                    indices=good_ix,
+                    label=label,
+                )
 
                 if not label is None:
                     label = None
 
-        avg_sn_lc = avg_sn.lcs[0]
-        good_ix = avg_sn_lc.get_good_indices(flag)
-
         if plot_flagged:
-            bad_ix = avg_sn_lc.get_bad_indices(flag)
-
-            if avg_sn_lc.can_plot(bad_ix):
-                ax1.errorbar(
-                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.mjd],
-                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.flux],
-                    yerr=avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.dflux],
-                    fmt="none",
-                    ecolor=SN_FLAGGED_FLUX_COLOR,
-                    elinewidth=1,
-                    capsize=1.2,
-                    c=SN_FLAGGED_FLUX_COLOR,
-                    alpha=0.5,
-                    zorder=10,
-                )
-                ax1.scatter(
-                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.mjd],
-                    avg_sn_lc.t.loc[bad_ix, avg_sn_lc.colnames.flux],
-                    s=marker_size,
-                    lw=marker_edgewidth,
-                    color=SN_FLAGGED_FLUX_COLOR,
-                    facecolors="none",
-                    edgecolors=SN_FLAGGED_FLUX_COLOR,
-                    marker="o",
-                    alpha=0.5,
-                    label=f"Flagged averaged SN {avg_sn.tnsname} measurements",
-                    zorder=10,
-                )
-
-        if avg_sn_lc.can_plot(good_ix):
-            plt.errorbar(
-                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.mjd],
-                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.flux],
-                yerr=avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.dflux],
-                fmt="none",
-                ecolor=SN_FLUX_COLORS[avg_sn_lc.filt],
-                elinewidth=1,
-                capsize=1.2,
-                c=SN_FLUX_COLORS[avg_sn_lc.filt],
-                alpha=0.5,
-                zorder=10,
-            )
-            plt.scatter(
-                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.mjd],
-                avg_sn_lc.t.loc[good_ix, avg_sn_lc.colnames.flux],
-                s=marker_size,
-                lw=marker_edgewidth,
-                color=SN_FLUX_COLORS[avg_sn_lc.filt],
-                marker="o",
-                alpha=0.5,
-                zorder=10,
-                label=f"Cleaned & averaged SN {avg_sn.tnsname} measurements",
+            bad_ix = avg_sn.lcs[0].get_bad_indices(flag)
+            self._plot_lc(
+                ax1,
+                avg_sn,
+                0,
+                SN_FLAGGED_FLUX_COLOR,
+                indices=bad_ix,
+                label=f"Flagged SN bins",
+                open=True,
             )
 
-        lims = self.get_lims(sn=avg_sn, custom_lims=custom_lims, flag=flag)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
+        good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
+        self._plot_lc(
+            ax1,
+            avg_sn,
+            0,
+            SN_FLUX_COLORS[avg_sn.filt],
+            indices=good_ix,
+            label=f"Cleaned SN bins",
+        )
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
 
@@ -675,6 +464,7 @@ class Plot:
         contam_color = "teal"
 
         fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
         fig.set_figwidth(5.5)
         fig.set_figheight(3)
 
@@ -737,24 +527,20 @@ class Plot:
             return None
 
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        ax1: Axes
+        ax2: Axes
         fig.set_figwidth(7)
         fig.set_figheight(5)
+
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
 
         ax1.set_title(
             f"SN {sn.tnsname} {sn.filt}-band flux\nbefore true uncertainties estimation"
         )
-        ax1.minorticks_on()
-        ax1.tick_params(direction="in", which="both")
-        ax1.get_xaxis().set_ticks([])
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.axhline(linewidth=1, color="k")
+        self._setup_ax(ax1, lims, xticks=False, label=False)
 
         ax2.set_title(f"after true uncertainties estimation")
-        ax2.minorticks_on()
-        ax2.tick_params(direction="in", which="both")
-        ax2.set_ylabel(r"Flux ($\mu$Jy)")
-        ax2.set_xlabel(lc.colnames.mjd)
-        ax2.axhline(linewidth=1, color="k")
+        self._setup_ax(ax2, lims)
 
         ax1.errorbar(
             lc.t[lc.colnames.mjd],
@@ -770,8 +556,8 @@ class Plot:
         ax1.scatter(
             lc.t[lc.colnames.mjd],
             lc.t[lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
+            s=MARKER_SIZE,
+            lw=MARKER_EDGEWIDTH,
             color=SN_FLUX_COLORS[lc.filt],
             marker="o",
             alpha=0.5,
@@ -791,20 +577,12 @@ class Plot:
         ax2.scatter(
             lc.t[lc.colnames.mjd],
             lc.t[lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
+            s=MARKER_SIZE,
+            lw=MARKER_EDGEWIDTH,
             color=SN_FLUX_COLORS[lc.filt],
             marker="o",
             alpha=0.5,
         )
-
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-            ax2.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
-            ax2.set_ylim(lims.get_ylims())
 
         if save:
             self.save_plot(filename)
@@ -827,18 +605,14 @@ class Plot:
         )
         region3_ix = lc.ix_inrange(lc.colnames.mjd, lowlim=TEMPLATE_CHANGE_2_MJD)
 
-        region1_mean = lc.get_mean(
-            lc.colnames.flux, indices=region1_ix[-40:]
-        )  # last 40 measurements before t1
-        region2a_mean = lc.get_mean(
-            lc.colnames.flux, indices=region2_ix[:40]
-        )  # first 40 measurements after t1
-        region2b_mean = lc.get_mean(
-            lc.colnames.flux, indices=region2_ix[-40:]
-        )  # last 40 measurements before t2
-        region3_mean = lc.get_mean(
-            lc.colnames.flux, indices=region3_ix[:40]
-        )  # first 40 measurements after t2
+        # last 40 measurements before t1
+        region1_mean = lc.get_mean(lc.colnames.flux, indices=region1_ix[-40:])
+        # first 40 measurements after t1
+        region2a_mean = lc.get_mean(lc.colnames.flux, indices=region2_ix[:40])
+        # last 40 measurements before t2
+        region2b_mean = lc.get_mean(lc.colnames.flux, indices=region2_ix[-40:])
+        # first 40 measurements after t2
+        region3_mean = lc.get_mean(lc.colnames.flux, indices=region3_ix[:40])
 
         gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1], hspace=0.35, wspace=0.4)
         fig = plt.figure()
@@ -864,78 +638,9 @@ class Plot:
         if custom_lims.get_ylims() is not None:
             ax1.set_ylim(custom_lims.get_ylims())
 
-        ax1.errorbar(
-            lc.t.loc[region1_ix, lc.colnames.mjd],
-            lc.t.loc[region1_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region1_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[0],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax1.scatter(
-            lc.t.loc[region1_ix, lc.colnames.mjd],
-            lc.t.loc[region1_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[0],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-            label="Region 1 flux",
-        )
-        ax1.errorbar(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[1],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax1.scatter(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[1],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-            label="Region 2 flux",
-        )
-        ax1.errorbar(
-            lc.t.loc[region3_ix, lc.colnames.mjd],
-            lc.t.loc[region3_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region3_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[2],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax1.scatter(
-            lc.t.loc[region3_ix, lc.colnames.mjd],
-            lc.t.loc[region3_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[2],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-            label="Region 2 flux",
-        )
-        ax1.legend(
-            facecolor="white", framealpha=1, loc="upper left", bbox_to_anchor=(1, 1)
-        )
+        self._plot_lc(ax1, lc, 0, colors[0], region1_ix, label="Region 1 flux")
+        self._plot_lc(ax1, lc, 0, colors[1], region2_ix, label="Region 2 flux")
+        self._plot_lc(ax1, lc, 0, colors[2], region3_ix, label="Region 3 flux")
 
         # ax2: zoom in on first template change transition
         ax2 = plt.subplot(gs[1, 0])
@@ -949,50 +654,8 @@ class Plot:
         if custom_lims.get_ylims() is not None:
             ax2.set_ylim(custom_lims.get_ylims())
 
-        ax2.errorbar(
-            lc.t.loc[region1_ix, lc.colnames.mjd],
-            lc.t.loc[region1_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region1_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[0],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax2.scatter(
-            lc.t.loc[region1_ix, lc.colnames.mjd],
-            lc.t.loc[region1_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[0],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-        )
-        ax2.errorbar(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[1],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax2.scatter(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[1],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-        )
+        self._plot_lc(ax2, lc, 0, colors[0], region1_ix)
+        self._plot_lc(ax2, lc, 0, colors[1], region2_ix)
 
         ax2.axhline(
             y=region1_mean, color=colors[0], linestyle="dashed", label="Region 1 mean"
@@ -1000,7 +663,6 @@ class Plot:
         ax2.axhline(
             y=region2a_mean, color=colors[1], linestyle="dashed", label="Region 2 mean"
         )
-        ax2.legend(facecolor="white", framealpha=1)
 
         # ax3: zoom in on second template change transition
         ax3 = plt.subplot(gs[1, 1])
@@ -1014,50 +676,8 @@ class Plot:
         if custom_lims.get_ylims() is not None:
             ax3.set_ylim(custom_lims.get_ylims())
 
-        ax3.errorbar(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region2_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[1],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax3.scatter(
-            lc.t.loc[region2_ix, lc.colnames.mjd],
-            lc.t.loc[region2_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[1],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-        )
-        ax3.errorbar(
-            lc.t.loc[region3_ix, lc.colnames.mjd],
-            lc.t.loc[region3_ix, lc.colnames.flux],
-            yerr=lc.t.loc[region3_ix, lc.colnames.dflux_new],
-            fmt="none",
-            ecolor=colors[2],
-            elinewidth=1,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
-            alpha=0.5,
-            zorder=10,
-        )
-        ax3.scatter(
-            lc.t.loc[region3_ix, lc.colnames.mjd],
-            lc.t.loc[region3_ix, lc.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=colors[2],
-            marker="o",
-            alpha=0.5,
-            zorder=10,
-        )
+        self._plot_lc(ax3, lc, 0, colors[1], region2_ix)
+        self._plot_lc(ax3, lc, 0, colors[2], region3_ix)
 
         ax3.axhline(
             y=region2b_mean, color=colors[1], linestyle="dashed", label="Region 2 mean"
@@ -1065,6 +685,11 @@ class Plot:
         ax3.axhline(
             y=region3_mean, color=colors[2], linestyle="dashed", label="Region 3 mean"
         )
+
+        ax1.legend(
+            facecolor="white", framealpha=1, loc="upper left", bbox_to_anchor=(1, 1)
+        )
+        ax2.legend(facecolor="white", framealpha=1)
         ax3.legend(facecolor="white", framealpha=1)
 
         for ax in (ax1, ax2, ax3):
@@ -1088,16 +713,14 @@ class Plot:
         filename: str = "pre_sn",
     ):
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        ax1: Axes
+        ax2: Axes
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
-        ax1.set_facecolor(FACE_COLOR)
-        ax2.set_facecolor(FACE_COLOR)
 
-        ax1.minorticks_on()
-        ax1.set_xticklabels([])
-        ax1.tick_params(direction="in", which="both")
-        ax1.set_ylabel(r"Flux ($\mu$Jy)")
-        ax1.axhline(linewidth=1.5, color="k", zorder=0)
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+
+        self._setup_ax(ax1, lims, xlabel=False, xticks=False)
         ax1.text(
             0.06,
             0.94,
@@ -1109,11 +732,7 @@ class Plot:
             zorder=100,
         ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
 
-        ax2.minorticks_on()
-        ax2.tick_params(direction="in", which="both")
-        ax2.set_ylabel(r"Flux ($\mu$Jy)")
-        ax2.set_xlabel("MJD")
-        ax2.axhline(linewidth=1.5, color="k", zorder=0)
+        self._setup_ax(ax2, lims)
         ax2.text(
             0.06,
             0.94,
@@ -1126,111 +745,41 @@ class Plot:
         ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
 
         # cleaned original light curve
-
-        good_ix = sn.lcs[0].get_good_indices(flag)
-        bad_ix = sn.lcs[0].get_bad_indices(flag)
-
-        ax1.errorbar(
-            sn.lcs[0].t.loc[good_ix, sn.colnames.mjd],
-            sn.lcs[0].t.loc[good_ix, sn.colnames.flux],
-            yerr=sn.lcs[0].t.loc[good_ix, sn.colnames.dflux_new],
-            fmt="none",
-            ecolor=SN_FLUX_COLORS[sn.filt],
-            elinewidth=1.5,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[sn.filt],
-            alpha=0.5,
-            zorder=0,
+        self._plot_lc(
+            ax1,
+            sn,
+            0,
+            SN_FLUX_COLORS[sn.filt],
+            indices=sn.lcs[0].get_good_indices(flag),
+            label="Cleaned Measurements",
         )
-        ax1.scatter(
-            sn.lcs[0].t.loc[good_ix, sn.colnames.mjd],
-            sn.lcs[0].t.loc[good_ix, sn.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=SN_FLUX_COLORS[sn.filt],
-            marker="o",
-            alpha=0.5,
-            label=f"Cleaned Measurements",
-            zorder=0,
-        )
-
-        ax1.errorbar(
-            sn.lcs[0].t.loc[bad_ix, sn.colnames.mjd],
-            sn.lcs[0].t.loc[bad_ix, sn.colnames.flux],
-            yerr=sn.lcs[0].t.loc[bad_ix, sn.colnames.dflux_new],
-            fmt="none",
-            ecolor=SN_FLAGGED_FLUX_COLOR,
-            elinewidth=1.5,
-            capsize=1.2,
-            c=SN_FLAGGED_FLUX_COLOR,
-            alpha=0.5,
-            zorder=10,
-        )
-        ax1.scatter(
-            sn.lcs[0].t.loc[bad_ix, sn.colnames.mjd],
-            sn.lcs[0].t.loc[bad_ix, sn.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            facecolors="none",
-            edgecolors=SN_FLAGGED_FLUX_COLOR,
-            marker="o",
-            alpha=0.5,
-            label=f"Flagged Measurements",
-            zorder=10,
+        self._plot_lc(
+            ax1,
+            sn,
+            0,
+            SN_FLAGGED_FLUX_COLOR,
+            indices=sn.lcs[0].get_bad_indices(flag),
+            label="Flagged Measurements",
+            open=True,
         )
 
         # averaged light curve
-
-        good_ix = avg_sn.lcs[0].get_good_indices(flag)
-        bad_ix = avg_sn.lcs[0].get_bad_indices(flag)
-
-        ax2.errorbar(
-            avg_sn.lcs[0].t.loc[good_ix, avg_sn.colnames.mjd],
-            avg_sn.lcs[0].t.loc[good_ix, avg_sn.colnames.flux],
-            yerr=avg_sn.lcs[0].t.loc[good_ix, avg_sn.colnames.dflux],
-            fmt="none",
-            ecolor=SN_FLUX_COLORS[sn.filt],
-            elinewidth=1.5,
-            capsize=1.2,
-            c=SN_FLUX_COLORS[sn.filt],
-            alpha=0.5,
-            zorder=0,
+        self._plot_lc(
+            ax2,
+            avg_sn,
+            0,
+            SN_FLUX_COLORS[sn.filt],
+            indices=avg_sn.lcs[0].get_good_indices(flag),
+            label="Cleaned Measurements",
         )
-        ax2.scatter(
-            avg_sn.lcs[0].t.loc[good_ix, avg_sn.colnames.mjd],
-            avg_sn.lcs[0].t.loc[good_ix, avg_sn.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            color=SN_FLUX_COLORS[sn.filt],
-            marker="o",
-            alpha=0.5,
-            label=f"Cleaned Measurements",
-            zorder=0,
-        )
-
-        ax2.errorbar(
-            avg_sn.lcs[0].t.loc[bad_ix, avg_sn.colnames.mjd],
-            avg_sn.lcs[0].t.loc[bad_ix, avg_sn.colnames.flux],
-            yerr=avg_sn.lcs[0].t.loc[bad_ix, avg_sn.colnames.dflux],
-            fmt="none",
-            ecolor=SN_FLAGGED_FLUX_COLOR,
-            elinewidth=1.5,
-            capsize=1.2,
-            c=SN_FLAGGED_FLUX_COLOR,
-            alpha=0.5,
-            zorder=10,
-        )
-        ax2.scatter(
-            avg_sn.lcs[0].t.loc[bad_ix, avg_sn.colnames.mjd],
-            avg_sn.lcs[0].t.loc[bad_ix, avg_sn.colnames.flux],
-            s=marker_size,
-            lw=marker_edgewidth,
-            facecolors="none",
-            edgecolors=SN_FLAGGED_FLUX_COLOR,
-            marker="o",
-            alpha=0.5,
-            label=f"Flagged Measurements",
-            zorder=10,
+        self._plot_lc(
+            ax2,
+            avg_sn,
+            0,
+            SN_FLAGGED_FLUX_COLOR,
+            indices=avg_sn.lcs[0].get_bad_indices(flag),
+            label="Flagged Measurements",
+            open=True,
         )
 
         ax2.legend(
@@ -1244,14 +793,6 @@ class Plot:
             ncol=1,
         ).set_zorder(100)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
-        if lims.get_xlims() is not None:
-            ax1.set_xlim(lims.get_xlims())
-            ax2.set_xlim(lims.get_xlims())
-        if lims.get_ylims() is not None:
-            ax1.set_ylim(lims.get_ylims())
-            ax2.set_ylim(lims.get_ylims())
-
         if save:
             self.save_plot(filename, bbox_inches="tight")
 
@@ -1264,6 +805,251 @@ class Plot:
                 ax2.axvline(mjd_range[0], color="k", linestyle="dashed", zorder=100)
                 ax2.axvline(mjd_range[1], color="k", linestyle="dashed", zorder=100)
         """
+
+        return fig
+
+    def plot_all_controls(
+        self,
+        sn: Supernova,
+        flag: int,
+        custom_lims: Optional[PlotLimits] = None,
+        two_columns: bool = False,
+        save: bool = False,
+        filename: str = "all_controls",
+    ):
+        if sn.num_controls < 1:
+            print("WARNING: No control light curves to plot")
+            return
+
+        if two_columns and sn.num_controls % 2 != 0:
+            raise RuntimeError(
+                f"Number of control light curves ({sn.num_controls}) must be even; "
+                "set two_columns=False for one column"
+            )
+
+        control_indices = sn.get_control_lc_indices()
+        lims = self.get_lims(
+            sn=sn, control_index=control_indices[0], custom_lims=custom_lims
+        )
+
+        # set up figure and axes
+        if two_columns:
+            num_rows = sn.num_controls // 2
+            fig, axes = plt.subplots(
+                num_rows, 2, constrained_layout=True, figsize=(7, num_rows * 1.2)
+            )
+            axes = axes.flatten()
+        else:
+            fig, axes = plt.subplots(
+                sn.num_controls,
+                1,
+                constrained_layout=True,
+                figsize=(5, sn.num_controls),
+            )
+            axes = np.atleast_1d(axes)
+
+        # loop over control light curves
+        for idx, control_index in enumerate(control_indices):
+            ax: Axes = axes[idx]
+
+            is_last_row = idx >= len(control_indices) - (2 if two_columns else 1)
+            is_rightmost_col = idx % 2 == 1 if two_columns else False
+            self._setup_ax(
+                ax,
+                lims,
+                xlabel=is_last_row,
+                xticks=is_last_row,
+                ylabel=False,
+                yticks=not is_rightmost_col,
+            )
+
+            good_ix = sn.lcs[control_index].get_good_indices(flag)
+            self._plot_lc(
+                ax, sn, control_index, SELECT_CONTROL_FLUX_COLOR, indices=good_ix
+            )
+
+            label_text = (
+                f"Binned & Cleaned Control Light Curve #{control_index}"
+                if idx == 0
+                else f"#{control_index}"
+            )
+            ax.text(
+                0.02,
+                0.95,
+                label_text,
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                fontsize=11,
+                zorder=20,
+            )
+
+        fig.supylabel(r"Flux (µJy)")
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
+    # def plot_all_controls(
+    #     self,
+    #     sn: Supernova,
+    #     flag: int,
+    #     custom_lims: Optional[PlotLimits] = None,
+    #     two_columns: bool = False,
+    #     save: bool = False,
+    #     filename: str = "all_controls",
+    # ):
+    #     if sn.num_controls == 0:
+    #         print("WARNING: No control light curves to plot")
+    #         return None
+    #     if two_columns and sn.num_controls % 2 != 0:
+    #         raise RuntimeError(
+    #             f"Number of control light curves ({sn.num_controls}) must be even; set two_columns=False for one column"
+    #         )
+
+    #     lims = self.get_lims(
+    #         sn=sn, control_index=sn.get_control_lc_indices()[0], custom_lims=custom_lims
+    #     )
+
+    #     if two_columns:
+    #         num_rows = int(sn.num_controls / 2)
+    #         fig, axes = plt.subplots(num_rows, 2, constrained_layout=True)
+    #         fig.set_figheight(num_rows * 1.2)
+    #         fig.set_figwidth(7)
+
+    #         for i, row in enumerate(axes):
+    #             for j, ax in enumerate(row):
+    #                 control_index = sn.get_control_lc_indices()[
+    #                     j * (sn.num_controls / 2) + i
+    #                 ]
+
+    #                 if i == num_rows - 1:  # bottom row
+    #                     ax.set_xlabel("MJD")
+    #                 else:
+    #                     ax.set_xticklabels([])
+
+    #                 if control_index == 1:
+    #                     text = f"Binned & Cleaned Control Light Curve #{int(control_index)}"
+    #                 else:
+    #                     text = f"#{int(control_index)}"
+    #                 ax.text(
+    #                     0.04,
+    #                     0.95,
+    #                     text,
+    #                     ha="left",
+    #                     va="top",
+    #                     transform=ax.transAxes,
+    #                     fontsize=11,
+    #                     zorder=20,
+    #                 )
+
+    #                 ax.tick_params(which="both", direction="in")
+    #                 ax.minorticks_on()
+    #                 ax.set_facecolor(FACE_COLOR)
+    #                 ax.axhline(color="k", zorder=0)
+
+    #                 if lims.get_xlims() is not None:
+    #                     ax.set_xlim(lims.get_xlims())
+    #                 if lims.get_ylims() is not None:
+    #                     ax.set_ylim(lims.get_ylims())
+
+    #                 good_ix = sn.lcs[control_index].get_good_indices(flag)
+    #                 ax.errorbar(
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.mjd],
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.flux],
+    #                     yerr=sn.lcs[control_index].t.loc[
+    #                         good_ix, sn.colnames.dflux_new
+    #                     ],
+    #                     fmt="none",
+    #                     ecolor=SELECT_CONTROL_FLUX_COLOR,
+    #                     elinewidth=1.5,
+    #                     capsize=1.2,
+    #                     c=SELECT_CONTROL_FLUX_COLOR,
+    #                     alpha=0.5,
+    #                     zorder=10,
+    #                 )
+    #                 ax.scatter(
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.mjd],
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.flux],
+    #                     s=marker_size,
+    #                     lw=marker_edgewidth,
+    #                     color=SELECT_CONTROL_FLUX_COLOR,
+    #                     marker="o",
+    #                     alpha=0.5,
+    #                     zorder=10,
+    #                 )
+
+    #     else:
+    #         fig, axes = plt.subplots(sn.num_controls, constrained_layout=True)
+    #         fig.set_figheight(sn.num_controls)
+    #         fig.set_figwidth(5)
+
+    #         for i in range(sn.num_controls):
+    #             control_index = sn.get_control_lc_indices()[i]
+
+    #             axes[i].minorticks_on()
+    #             axes[i].tick_params(direction="in", which="both")
+    #             axes[i].set_facecolor(FACE_COLOR)
+
+    #             if i < sn.num_controls - 1:
+    #                 axes[i].set_xticklabels([])
+    #             else:
+    #                 axes[i].set_xlabel("MJD")
+
+    #             if lims.get_xlims() is not None:
+    #                 axes[i].set_xlim(lims.get_xlims())
+    #             if lims.get_ylims() is not None:
+    #                 axes[i].set_ylim(lims.get_ylims())
+
+    #             axes[i].axhline(linewidth=1.5, color="k", zorder=0)
+
+    #             good_ix = sn.lcs[control_index].get_good_indices(flag)
+    #             if sn.lcs[control_index].can_plot(good_ix):
+    #                 axes[i].errorbar(
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.mjd],
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.flux],
+    #                     yerr=sn.lcs[control_index].t.loc[
+    #                         good_ix, sn.colnames.dflux_new
+    #                     ],
+    #                     fmt="none",
+    #                     ecolor=SELECT_CONTROL_FLUX_COLOR,
+    #                     elinewidth=1.5,
+    #                     capsize=1.2,
+    #                     c=SELECT_CONTROL_FLUX_COLOR,
+    #                     alpha=0.5,
+    #                     zorder=10,
+    #                 )
+    #                 axes[i].scatter(
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.mjd],
+    #                     sn.lcs[control_index].t.loc[good_ix, sn.colnames.flux],
+    #                     s=marker_size,
+    #                     lw=marker_edgewidth,
+    #                     color=SELECT_CONTROL_FLUX_COLOR,
+    #                     marker="o",
+    #                     alpha=0.5,
+    #                     zorder=10,
+    #                 )
+
+    #             if i == 0:
+    #                 text = f"Binned & Cleaned Control Light Curve #{control_index}"
+    #             else:
+    #                 text = f"#{control_index}"
+    #             axes[i].text(
+    #                 0.02,
+    #                 0.95,
+    #                 text,
+    #                 ha="left",
+    #                 va="top",
+    #                 transform=axes[i].transAxes,
+    #                 fontsize=11,
+    #                 zorder=20,
+    #             )
+
+    #     fig.supylabel(r"Flux (µJy)")
+
+    #     if save:
+    #         self.save_plot(filename, bbox_inches="tight")
 
 
 class PlotPdf(Plot):
@@ -1297,12 +1083,15 @@ class PlotPdf(Plot):
         self,
         sn: Supernova,
         flag: int,
+        control_index: bool = 0,
         custom_lims: Optional[PlotLimits] = None,
         title: str | None = None,
         save_filename: str = None,
     ):
         print(f"Plotting cut for flag {hex(flag)}...")
-        fig = super().plot_cut(sn, flag, custom_lims, title, save_filename)
+        fig = super().plot_cut(
+            sn, flag, control_index, custom_lims, title, save_filename
+        )
         self.pdf.savefig(fig)
 
     def plot_cleaned_SN(

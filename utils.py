@@ -208,31 +208,37 @@ class PlotLimits:
         if len(xlims) != 2:
             raise ValueError(f"xlims must be a tuple of length 2, got {len(xlims)}")
 
-        if xlims[0] >= xlims[1]:
+        if xlims[0] is not None and xlims[1] is not None and xlims[0] >= xlims[1]:
             raise ValueError(
                 f"xlims lower limit {xlims[0]} must be less than upper limit {xlims[1]}"
             )
 
-        self.xlower, self.xupper = xlims
+        if xlims[0] is not None:
+            self.xlower = xlims[0]
+        if xlims[1] is not None:
+            self.xupper = xlims[1]
 
     def set_ylims(self, ylims: Tuple[float, float]):
         if len(ylims) != 2:
             raise ValueError(f"ylims must be a tuple of length 2, got {len(ylims)}")
 
-        if ylims[0] >= ylims[1]:
+        if ylims[0] is not None and ylims[1] is not None and ylims[0] >= ylims[1]:
             raise ValueError(
                 f"ylims lower limit {ylims[0]} must be less than upper limit {ylims[1]}"
             )
 
-        self.ylower, self.yupper = ylims
+        if ylims[0] is not None:
+            self.ylower = ylims[0]
+        if ylims[1] is not None:
+            self.yupper = ylims[1]
 
     def get_xlims(self):
-        if self.xlower is None or self.xupper is None:
+        if self.xlower is None and self.xupper is None:
             return None
         return self.xlower, self.xupper
 
     def get_ylims(self):
-        if self.ylower is None or self.yupper is None:
+        if self.ylower is None and self.yupper is None:
             return None
         return self.ylower, self.yupper
 
