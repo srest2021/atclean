@@ -191,7 +191,7 @@ class OutputReadMe:
         )
         self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
-            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
+            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
         )
         self.f.write(
             f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
