@@ -165,9 +165,19 @@ def extract_from_subdir(
     return extracted_values
 
 
+def has_match(subdir: str, pattern: re.Pattern):
+    if not os.path.isdir(subdir):
+        return False
+
+    for file in os.listdir(subdir):
+        if pattern.match(file):
+            return True
+    return False
+
+
 def find_all_filts(directory: str, tnsname: str):
     pattern = re.compile(
-        rf"^{re.escape(tnsname)}"  # starts with tnsname
+        rf"^{re.escape(tnsname)}"  # tnsname
         r"(?:_i\d{3})?"  # optional control index
         r"\.(?P<filt>\w+)"  # filter (captured)
         r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
@@ -185,6 +195,18 @@ def find_all_control_indices(directory: str, tnsname: str):
     )
     subdir = os.path.join(directory, tnsname, "controls")
     return extract_from_subdir(subdir, pattern, "index", convert_function=int)
+
+
+def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
+    pattern = re.compile(
+        rf"^{re.escape(tnsname)}"  # tnsname
+        r"\.[^\.]+"  # filter
+        r"(?:\.clean)?"  # optional '.clean'
+        r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+        r"\.lc\.txt$"  # ends with '.lc.txt'
+    )
+    subdir = os.path.join(directory, tnsname)
+    return has_match(subdir, pattern)
 
 
 class PlotLimits:
