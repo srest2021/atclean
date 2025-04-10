@@ -671,6 +671,7 @@ class LightCurve(pdastrostatsclass):
         indices: Optional[List[int]] = None,
         flag: Optional[int] = None,
         use_all: bool = False,
+        mjd0: Optional[float] = None,
     ):
         if self.t.empty or len(self.t) < 2:
             return [None, None]
@@ -680,6 +681,8 @@ class LightCurve(pdastrostatsclass):
                 indices = self.getindices()
             else:
                 indices = self.get_good_indices(flag)
+        if mjd0 is not None:
+            indices = AandB(indices, self.get_preMJD0_indices(mjd0))
 
         flux_min = self.t.loc[indices, self.colnames.flux].min()
         flux_max = self.t.loc[indices, self.colnames.flux].max()
@@ -687,7 +690,7 @@ class LightCurve(pdastrostatsclass):
 
         return [flux_min - offset, flux_max + offset]
 
-    def get_xlims(self, mjd0: float = None):
+    def get_xlims(self, mjd0: Optional[float] = None):
         if self.t.empty or len(self.t) < 2:
             return [None, None]
 

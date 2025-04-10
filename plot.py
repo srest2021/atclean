@@ -107,7 +107,11 @@ class Plot:
         if custom_lims is not None and custom_lims.get_xlims() is not None:
             lims.set_xlims(custom_lims.get_xlims())
 
-        lims.set_ylims(sn.lcs[control_index].get_ylims(indices=indices, flag=flag))
+        lims.set_ylims(
+            sn.lcs[control_index].get_ylims(
+                indices=indices, flag=flag, mjd0=sn.mjd0 if pre_sn else None
+            )
+        )
         if custom_lims is not None and custom_lims.get_ylims() is not None:
             lims.set_ylims(custom_lims.get_ylims())
 
@@ -718,31 +722,13 @@ class Plot:
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
-        ax1.text(
-            0.06,
-            0.94,
-            f"Pre-SN Light Curve",
-            ha="left",
-            va="top",
-            transform=ax1.transAxes,
-            fontsize=11,
-            zorder=100,
-        ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
+        ax1.set_title("Pre-SN Light Curve", fontsize=12)
 
         self._setup_ax(ax2, lims)
-        ax2.text(
-            0.06,
-            0.94,
-            f"Binned Pre-SN Light Curve",
-            ha="left",
-            va="top",
-            transform=ax2.transAxes,
-            fontsize=11,
-            zorder=100,
-        ).set_bbox(dict(facecolor=FACE_COLOR, alpha=0.8, edgecolor="silver"))
+        ax2.set_title("Binned Pre-SN Light Curve", fontsize=12)
 
         # cleaned original light curve
         self._plot_lc(
@@ -788,7 +774,7 @@ class Plot:
             fontsize=9,
             framealpha=0.8,
             handletextpad=0.1,
-            loc="lower right",
+            loc="upper right",
             borderaxespad=1,
             ncol=1,
         ).set_zorder(100)
@@ -796,15 +782,95 @@ class Plot:
         if save:
             self.save_plot(filename, bbox_inches="tight")
 
-        """
-        if plot_mjd_ranges and not mjd_ranges is None:
-            # valid mjd ranges
-            for mjd_range in mjd_ranges:
-                ax1.axvline(mjd_range[0], color="k", linestyle="dashed", zorder=100)
-                ax1.axvline(mjd_range[1], color="k", linestyle="dashed", zorder=100)
-                ax2.axvline(mjd_range[0], color="k", linestyle="dashed", zorder=100)
-                ax2.axvline(mjd_range[1], color="k", linestyle="dashed", zorder=100)
-        """
+        return fig
+
+    def plot_mjd_ranges(
+        self,
+        sn: Supernova,
+        avg_sn: AveragedSupernova,
+        flag: int,
+        mjd_ranges: List[List],
+        custom_lims: Optional[PlotLimits] = None,
+        save: bool = False,
+        filename: str = "mjd_ranges",
+    ):
+
+        fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        ax1: Axes
+        ax2: Axes
+        fig.set_figwidth(4)
+        fig.set_figheight(3.5)
+
+        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+
+        self._setup_ax(ax1, lims, xlabel=False, xticks=False)
+        ax1.set_title("SN Light Curve", fontsize=12)
+
+        self._setup_ax(ax2, lims)
+        ax2.set_title("Binned SN Light Curve", fontsize=12)
+
+        # cleaned original light curve
+        self._plot_lc(
+            ax1,
+            sn,
+            0,
+            SN_FLUX_COLORS[sn.filt],
+            indices=sn.lcs[0].get_good_indices(flag),
+            label="Cleaned Measurements",
+        )
+        self._plot_lc(
+            ax1,
+            sn,
+            0,
+            SN_FLAGGED_FLUX_COLOR,
+            indices=sn.lcs[0].get_bad_indices(flag),
+            label="Flagged Measurements",
+            open=True,
+        )
+
+        # averaged light curve
+        self._plot_lc(
+            ax2,
+            avg_sn,
+            0,
+            SN_FLUX_COLORS[sn.filt],
+            indices=avg_sn.lcs[0].get_good_indices(flag),
+            label="Cleaned Measurements",
+        )
+        self._plot_lc(
+            ax2,
+            avg_sn,
+            0,
+            SN_FLAGGED_FLUX_COLOR,
+            indices=avg_sn.lcs[0].get_bad_indices(flag),
+            label="Flagged Measurements",
+            open=True,
+        )
+
+        if mjd_ranges is not None:
+            for ax in [ax1, ax2]:
+                for mjd_range in mjd_ranges:
+                    ax.axvspan(
+                        mjd_range[0],
+                        mjd_range[1],
+                        color="gray",
+                        alpha=0.2,
+                        zorder=0,
+                    )
+
+        ax2.legend(
+            facecolor="white",
+            edgecolor="silver",
+            fontsize=9,
+            framealpha=0.8,
+            handletextpad=0.1,
+            loc="upper right",
+            borderaxespad=1,
+            ncol=1,
+        ).set_zorder(100)
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
 
         return fig
 
@@ -874,8 +940,8 @@ class Plot:
                 else f"#{control_index}"
             )
             ax.text(
-                0.02,
-                0.95,
+                0.03,
+                0.92,
                 label_text,
                 ha="left",
                 va="top",
@@ -885,6 +951,50 @@ class Plot:
             )
 
         fig.supylabel(r"Flux (µJy)")
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
+    def plot_binned_examples(
+        self,
+        avg_sn: AveragedSupernova,
+        select_control_index: int,
+        flag: int,
+        custom_lims: Optional[PlotLimits] = None,
+        save: bool = False,
+        filename: str = "binned_examples",
+    ):
+        fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
+        ax1: Axes
+        ax2: Axes
+        fig.set_figwidth(4)
+        fig.set_figheight(3.5)
+
+        lims = self.get_lims(sn=avg_sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
+
+        self._setup_ax(ax1, lims, xlabel=False, xticks=False)
+        ax1.set_title("Binned & Cleaned Pre-SN Light Curve", fontsize=12)
+        self._plot_lc(
+            ax1,
+            avg_sn,
+            0,
+            SN_FLUX_COLORS[avg_sn.filt],
+            indices=avg_sn.lcs[0].get_good_indices(flag),
+        )
+
+        self._setup_ax(ax2, lims)
+        ax2.set_title(
+            f"Binned & Cleaned Control Light Curve #{select_control_index}", fontsize=12
+        )
+        self._plot_lc(
+            ax2,
+            avg_sn,
+            select_control_index,
+            SELECT_CONTROL_FLUX_COLOR,
+            indices=avg_sn.lcs[select_control_index].get_good_indices(flag),
+        )
 
         if save:
             self.save_plot(filename, bbox_inches="tight")
