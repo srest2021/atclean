@@ -209,6 +209,107 @@ def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
     return has_match(subdir, pattern)
 
 
+def validate_mjd_ranges(ranges: List[List[int]], var_name: str = "MJD_RANGES") -> None:
+    """
+    Validates that a list of MJD ranges is properly formatted.
+    """
+    if not isinstance(ranges, list):
+        raise TypeError(f"{var_name} must be a list, got {type(ranges).__name__}")
+
+    for i, r in enumerate(ranges):
+        if not (isinstance(r, list) and len(r) == 2):
+            raise TypeError(f"{var_name}[{i}] must be a 2-element list, got: {r}")
+        if not all(isinstance(x, (int, float, np.integer, np.floating)) for x in r):
+            raise TypeError(f"{var_name}[{i}] must contain only integers, got: {r}")
+        if r[0] > r[1]:
+            raise ValueError(f"{var_name}[{i}] has start > end: {r}")
+
+
+def _merge_ranges(ranges: List[List[int]]) -> List[List[int]]:
+    """
+    Merges a list of [start, end] MJD ranges that may overlap or be adjacent.
+    """
+    if not ranges:
+        return []
+
+    ranges.sort()
+    merged = [ranges[0]]
+
+    for start, end in ranges[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+
+    return merged
+
+
+def _expand_ranges(
+    ranges: List[List[int]],
+    min_mjd: int,
+    max_mjd: int,
+    expand_edges: Optional[float] = 0.0,
+):
+    if expand_edges == 0.0 or expand_edges is None:
+        return ranges
+
+    print(f"Expanding range edges by {expand_edges}")
+
+    expanded = []
+    for start, end in ranges:
+        new_start = max(min_mjd, start - expand_edges)
+        new_end = min(max_mjd, end + expand_edges)
+        expanded.append([new_start, new_end])
+    if not expanded:
+        return []
+
+    # merge overlapping or adjacent ranges
+    return _merge_ranges(expanded)
+
+
+def get_inverse_mjd_ranges(
+    mjd_ranges: List[List[int]],
+    min_mjd: int,
+    max_mjd: int,
+    expand_edges: Optional[float] = 0.0,
+    exclude_mjd_ranges: Optional[List[List[int]]] = None,
+) -> List[List[int]]:
+    if expand_edges < 0:
+        raise ValueError(
+            f"Cannot expand edges of the inverse ranges by a negative amount {expand_edges}"
+        )
+    if len(mjd_ranges) < 1:
+        raise RuntimeError("MJD ranges must contain at least one range")
+
+    validate_mjd_ranges(mjd_ranges)
+
+    mjd_ranges = sorted(mjd_ranges)
+    mjd_ranges[0][0] = max(min_mjd, mjd_ranges[0][0])
+    mjd_ranges[-1][-1] = min(max_mjd, mjd_ranges[-1][-1])
+
+    inverse = []
+    cur = min_mjd
+    for start, end in mjd_ranges:
+        if start > cur:
+            inverse.append([cur, start - 1])
+        cur = max(cur, end + 1)
+
+    # check if there's a gap at the end
+    if cur <= max_mjd:
+        inverse.append([cur, max_mjd])
+
+    # merge exclude_mjd_ranges with the inverse list
+    if exclude_mjd_ranges is not None:
+        validate_mjd_ranges(exclude_mjd_ranges, var_name="EXCLUDE_MJD_RANGES")
+        print(f"Excluding additional MJD ranges {exclude_mjd_ranges}")
+        if len(exclude_mjd_ranges) > 0:
+            combined = inverse + exclude_mjd_ranges
+            inverse = _merge_ranges(combined)
+
+    return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
+
+
 class PlotLimits:
     def __init__(self, xlower=None, xupper=None, ylower=None, yupper=None):
         self.xlower = xlower

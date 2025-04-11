@@ -737,7 +737,7 @@ class Plot:
             0,
             SN_FLUX_COLORS[sn.filt],
             indices=sn.lcs[0].get_good_indices(flag),
-            label="Cleaned Measurements",
+            label="Cleaned",
         )
         self._plot_lc(
             ax1,
@@ -745,7 +745,7 @@ class Plot:
             0,
             SN_FLAGGED_FLUX_COLOR,
             indices=sn.lcs[0].get_bad_indices(flag),
-            label="Flagged Measurements",
+            label="Flagged",
             open=True,
         )
 
@@ -756,7 +756,7 @@ class Plot:
             0,
             SN_FLUX_COLORS[sn.filt],
             indices=avg_sn.lcs[0].get_good_indices(flag),
-            label="Cleaned Measurements",
+            label="Cleaned",
         )
         self._plot_lc(
             ax2,
@@ -764,7 +764,7 @@ class Plot:
             0,
             SN_FLAGGED_FLUX_COLOR,
             indices=avg_sn.lcs[0].get_bad_indices(flag),
-            label="Flagged Measurements",
+            label="Flagged",
             open=True,
         )
 
@@ -774,7 +774,7 @@ class Plot:
             fontsize=9,
             framealpha=0.8,
             handletextpad=0.1,
-            loc="upper right",
+            loc="upper left",
             borderaxespad=1,
             ncol=1,
         ).set_zorder(100)
@@ -791,6 +791,7 @@ class Plot:
         flag: int,
         mjd_ranges: List[List],
         custom_lims: Optional[PlotLimits] = None,
+        suptitle: Optional[str] = None,
         save: bool = False,
         filename: str = "mjd_ranges",
     ):
@@ -800,6 +801,8 @@ class Plot:
         ax2: Axes
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
+        if suptitle:
+            fig.suptitle(suptitle)
 
         lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
 
@@ -816,7 +819,7 @@ class Plot:
             0,
             SN_FLUX_COLORS[sn.filt],
             indices=sn.lcs[0].get_good_indices(flag),
-            label="Cleaned Measurements",
+            label="Cleaned",
         )
         self._plot_lc(
             ax1,
@@ -824,7 +827,7 @@ class Plot:
             0,
             SN_FLAGGED_FLUX_COLOR,
             indices=sn.lcs[0].get_bad_indices(flag),
-            label="Flagged Measurements",
+            label="Flagged",
             open=True,
         )
 
@@ -835,7 +838,7 @@ class Plot:
             0,
             SN_FLUX_COLORS[sn.filt],
             indices=avg_sn.lcs[0].get_good_indices(flag),
-            label="Cleaned Measurements",
+            label="Cleaned",
         )
         self._plot_lc(
             ax2,
@@ -843,7 +846,7 @@ class Plot:
             0,
             SN_FLAGGED_FLUX_COLOR,
             indices=avg_sn.lcs[0].get_bad_indices(flag),
-            label="Flagged Measurements",
+            label="Flagged",
             open=True,
         )
 
@@ -864,7 +867,7 @@ class Plot:
             fontsize=9,
             framealpha=0.8,
             handletextpad=0.1,
-            loc="upper right",
+            loc="upper left",
             borderaxespad=1,
             ncol=1,
         ).set_zorder(100)

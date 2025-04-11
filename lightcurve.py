@@ -1292,6 +1292,17 @@ class AveragedLightCurve(LightCurve):
         LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
         self.mjdbinsize = mjdbinsize
 
+    def get_min_and_max_mjd(self):
+        if self.t.empty:
+            raise RuntimeError("Light curve empty; cannot return min or max MJD ")
+        return (
+            np.floor(self.t[self.colnames.mjdbin].iloc[0]),
+            np.floor(self.t[self.colnames.mjdbin].iloc[-1]),
+        )
+
+    def get_mjd_ranges_ix(self, mjd_ranges: List[List:int]):
+        pass
+
     def get_xlims(self, mjd0: float = None):
         if self.t.empty or len(self.t) < 2:
             return [None, None]
