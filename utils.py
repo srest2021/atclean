@@ -225,7 +225,7 @@ def validate_mjd_ranges(ranges: List[List[int]], var_name: str = "MJD_RANGES") -
             raise ValueError(f"{var_name}[{i}] has start > end: {r}")
 
 
-def _merge_ranges(ranges: List[List[int]]) -> List[List[int]]:
+def _merge_ranges(ranges: List[List[float]]) -> List[List[float]]:
     """
     Merges a list of [start, end] MJD ranges that may overlap or be adjacent.
     """
@@ -246,7 +246,7 @@ def _merge_ranges(ranges: List[List[int]]) -> List[List[int]]:
 
 
 def _expand_ranges(
-    ranges: List[List[int]],
+    ranges: List[List[float]],
     min_mjd: int,
     max_mjd: int,
     expand_edges: Optional[float] = 0.0,
@@ -254,7 +254,7 @@ def _expand_ranges(
     if expand_edges == 0.0 or expand_edges is None:
         return ranges
 
-    print(f"Expanding range edges by {expand_edges}")
+    print(f"Expanding range edges by {expand_edges}...")
 
     expanded = []
     for start, end in ranges:
@@ -269,12 +269,12 @@ def _expand_ranges(
 
 
 def get_inverse_mjd_ranges(
-    mjd_ranges: List[List[int]],
+    mjd_ranges: List[List[float]],
     min_mjd: int,
     max_mjd: int,
     expand_edges: Optional[float] = 0.0,
-    exclude_mjd_ranges: Optional[List[List[int]]] = None,
-) -> List[List[int]]:
+    exclude_mjd_ranges: Optional[List[List[float]]] = None,
+) -> List[List[float]]:
     if expand_edges < 0:
         raise ValueError(
             f"Cannot expand edges of the inverse ranges by a negative amount {expand_edges}"
@@ -302,7 +302,7 @@ def get_inverse_mjd_ranges(
     # merge exclude_mjd_ranges with the inverse list
     if exclude_mjd_ranges is not None:
         validate_mjd_ranges(exclude_mjd_ranges, var_name="EXCLUDE_MJD_RANGES")
-        print(f"Excluding additional MJD ranges {exclude_mjd_ranges}")
+        print(f"Excluding additional MJD ranges {exclude_mjd_ranges}...")
         if len(exclude_mjd_ranges) > 0:
             combined = inverse + exclude_mjd_ranges
             inverse = _merge_ranges(combined)

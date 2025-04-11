@@ -218,7 +218,7 @@ class Plot:
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"{sn.num_controls} control light curves"
-            for control_index in sn.get_control_lc_indices():
+            for control_index in sn.control_lc_indices:
                 self._plot_lc(ax1, sn, control_index, CONTROL_FLUX_COLOR, label=label)
                 if not label is None:
                     label = None
@@ -345,7 +345,7 @@ class Plot:
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
             label = f"Cleaned control measurements"
-            for control_index in sn.get_control_lc_indices():
+            for control_index in sn.control_lc_indices:
                 good_ix = sn.lcs[control_index].get_good_indices(flag)
                 self._plot_lc(
                     ax1,
@@ -414,7 +414,7 @@ class Plot:
         if plot_controls and avg_sn.num_controls > 0:
             # plot control light curves
             label = f"Cleaned control bins"
-            for control_index in avg_sn.get_control_lc_indices():
+            for control_index in avg_sn.control_lc_indices:
                 good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
                 self._plot_lc(
                     ax1,
@@ -897,7 +897,7 @@ class Plot:
                 "set two_columns=False for one column"
             )
 
-        control_indices = sn.get_control_lc_indices()
+        control_indices = sn.control_lc_indices
         lims = self.get_lims(
             sn=sn, control_index=control_indices[0], custom_lims=custom_lims
         )

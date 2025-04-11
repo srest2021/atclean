@@ -716,8 +716,10 @@ class EfficiencyTable(pdastrostatsclass):
 
 
 class ContaminationTable(pdastrostatsclass):
-    def __init__(self, **kwargs):
+    def __init__(self, skip_control_ix: Optional[List[int]] = None, **kwargs):
         pdastrostatsclass.__init__(self, **kwargs)
+
+        self.skip_control_ix = skip_control_ix if skip_control_ix else []
 
     def calculate_row(
         self,
@@ -734,9 +736,9 @@ class ContaminationTable(pdastrostatsclass):
             "pct_pos_controls": np.nan,
         }
 
-        for control_index in sn.get_lc_indices():
+        for control_index in sn.lc_indices:
             n_falsepos = sn.lcs[control_index].get_n_falsepos(
-                sigma_kern, fom_limit, mjd_ranges
+                sigma_kern, fom_limit, mjd_ranges, sn.mjd0
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
 
@@ -761,6 +763,13 @@ class ContaminationTable(pdastrostatsclass):
             for fom_limit in fom_limits[sigma_kern]:
                 row = self.calculate_row(sn, sigma_kern, fom_limit, mjd_ranges)
                 self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+        # number of false positives should always be 0 for min fom limits
+        invalid_rows = self.t.iloc[1::2][self.t.iloc[1::2]["n_falsepos"] != 0]
+        if not invalid_rows.empty:
+            raise ValueError(
+                f"Invalid `n_falsepos` values found at row(s): {invalid_rows.index.tolist()}"
+            )
 
     def get_initial_limits(
         self, index: int, prelim_fom_limit_ranges: Dict[int, List[float]]
@@ -865,6 +874,9 @@ class ContaminationTable(pdastrostatsclass):
         for i in range(len(self.t)):
             fom_limits[self.t.loc[i, "sigma_kern"]].append(self.t.loc[i, "fom_limit"])
         return dict(fom_limits)
+
+    def __str__(self):
+        return self.t.to_string()
 
 
 class SimDetecLoop(ABC):
