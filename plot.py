@@ -792,6 +792,7 @@ class Plot:
         mjd_ranges: List[List],
         custom_lims: Optional[PlotLimits] = None,
         suptitle: Optional[str] = None,
+        range_color: str = "gray",
         save: bool = False,
         filename: str = "mjd_ranges",
     ):
@@ -856,7 +857,7 @@ class Plot:
                     ax.axvspan(
                         mjd_range[0],
                         mjd_range[1],
-                        color="gray",
+                        color=range_color,
                         alpha=0.2,
                         zorder=0,
                     )
