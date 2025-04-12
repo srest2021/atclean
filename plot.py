@@ -1005,6 +1005,9 @@ class Plot:
 
         return fig
 
+    def plot_fom(self):
+        pass
+
 
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):

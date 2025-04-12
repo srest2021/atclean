@@ -501,7 +501,7 @@ class Supernova:
             raise ValueError(
                 f"Cannot remove control index {index} because there is no such light curve"
             )
-        if index not in self.lc_indices:
+        if index not in self.lc_indices or index not in self.control_lc_indices:
             print(
                 f"WARNING: Cannot remove control index {index} because it has already been removed"
             )
@@ -560,6 +560,7 @@ class AveragedSupernova(Supernova):
     ):
         Supernova.__init__(self, colnames, tnsname, ra, dec, mjd0, filt)
         self.mjdbinsize = mjdbinsize
+        self._mjd_ranges = None
 
         self.lcs: Dict[int, AveragedLightCurve] = {}
 
@@ -577,6 +578,26 @@ class AveragedSupernova(Supernova):
                 f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
 
+    def set_mjd_ranges(self, mjd_ranges: List[List[float]]):
+        if self._mjd_ranges is not None and set(map(tuple, mjd_ranges)) == set(
+            map(tuple, self._mjd_ranges)
+        ):
+            return
+
+        mjd_ranges.sort()
+        self._mjd_ranges = mjd_ranges
+        for control_index in self.lc_indices:
+            self.lcs[control_index].set_valid_mjd_ix(self._mjd_ranges)
+
+    def set_pre_MJD0_ix(self, mjd0: Optional[float] = None):
+        if self.mjd0 is None and mjd0 is None:
+            raise RuntimeError("Cannot set pre-MJD0 indices without MJD0")
+
+        if mjd0 is not None:
+            self.mjd0 = mjd0
+
+        self.lcs[0].set_pre_MJD0_ix(self.mjd0)
+
     def load(self, input_dir, control_index=0):
         self.lcs[control_index] = AveragedLightCurve(
             self.colnames,
@@ -585,6 +606,9 @@ class AveragedSupernova(Supernova):
             mjdbinsize=self.mjdbinsize,
         )
         self.lcs[control_index].load_lc(input_dir, self.tnsname)
+
+        if control_index == 0 and self.mjd0 is not None:
+            self.set_pre_MJD0_ix()
 
     def load_all(self, input_dir, num_controls=0):
         self.lcs = {}
@@ -631,20 +655,6 @@ class AveragedSupernova(Supernova):
                 output_dir, self.tnsname, overwrite=overwrite
             )
         print("Success")
-
-    def get_lc_indices(self):
-        if not self.all_indices:
-            self.all_indices = list(self.lcs.keys())
-            self.all_indices.sort()
-        return self.all_indices
-
-    def get_control_lc_indices(self):
-        if not self.control_indices:
-            self.control_indices = list(self.lcs.keys())
-            if 0 in self.control_indices:
-                self.control_indices.remove(0)
-            self.control_indices.sort()
-        return self.control_indices
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -1330,6 +1340,56 @@ class AveragedLightCurve(LightCurve):
         LightCurve.__init__(self, colnames, control_index, filt, **kwargs)
         self.mjdbinsize = mjdbinsize
 
+        self._pre_mjd0_ix = None
+        self._valid_mjd_ix = None
+
+    @property
+    def valid_mjd_ix(self):
+        if self._valid_mjd_ix is None:
+            raise RuntimeError(
+                "Call self.set_valid_mjd_ix() first before accessing self.valid_mjd_ix"
+            )
+        if len(self._valid_mjd_ix) < 1:
+            raise RuntimeError(
+                f"No valid MJD indices found in light curve (control index {self.control_index})"
+            )
+        return self._valid_mjd_ix
+
+    @property
+    def pre_mjd0_ix(self):
+        if self._pre_mjd0_ix is None:
+            raise RuntimeError(
+                "Call self.set_pre_MJD0_ix() first before accessing self.pre_mjd0_ix"
+            )
+        if len(self._pre_mjd0_ix) < 1:
+            raise RuntimeError(
+                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+        return self._pre_mjd0_ix
+
+    def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]) -> List[int]:
+        def in_range(value, mjd_ranges):
+            return any(r[0] <= value <= r[1] for r in mjd_ranges)
+
+        self._valid_mjd_ix = self.t.index[
+            self.t[self.colnames.mjdbin].apply(lambda x: in_range(x, mjd_ranges))
+        ].tolist()
+
+        if len(self._valid_mjd_ix) < 1:
+            raise RuntimeError(
+                f"No valid MJD indices found in light curve (control index {self.control_index}) for ranges: {mjd_ranges}"
+            )
+
+    def set_pre_MJD0_ix(self, mjd0: float):
+        self._pre_mjd0_ix = self.ix_inrange(
+            colnames=self.colnames.mjdbin, uplim=mjd0, exclude_uplim=True
+        )
+
+        if len(self._pre_mjd0_ix) < 1:
+            raise RuntimeError(
+                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+
     def get_min_and_max_mjd(self):
         if self.t.empty:
             raise RuntimeError("Light curve empty; cannot return min or max MJD ")
@@ -1612,20 +1672,16 @@ class SimDetecSupernova(AveragedSupernova):
         )
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
-    def get_all_fom_dict(
-        self,
-        sigma_kerns: List[int],
-        mjd_ranges: List[List[float]],
-    ):
-        print(f"Getting all control FOM for MJD ranges {mjd_ranges}...")
-
+    def get_all_fom_dict(self, sigma_kerns: List[int]):
+        print(f"Getting all control FOM for MJD ranges {self._mjd_ranges}...")
+        if self._mjd_ranges is None:
+            raise RuntimeError(f"Valid MJD ranges cannot be None")
         res = {sigma_kern: None for sigma_kern in sigma_kerns}
 
         for sigma_kern in sigma_kerns:
             fom_list = []
             for control_index in self.control_lc_indices:
                 self.lcs[control_index].apply_rolling_sum(sigma_kern)
-                self.lcs[control_index].set_valid_mjd_ix(mjd_ranges)
 
                 fom = self.lcs[control_index].t.loc[
                     self.lcs[control_index].valid_mjd_ix,
@@ -1647,10 +1703,12 @@ class SimDetecSupernova(AveragedSupernova):
         sigma_kerns: List[int],
         mjd_ranges: List[List[float]],
     ):
-        print("Getting preliminary valid FOM limit range...")
+        print("Getting preliminary valid FOM limit ranges...")
         res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
 
-        all_fom_dict = self.get_all_fom_dict(sigma_kerns, mjd_ranges)
+        self.set_mjd_ranges(mjd_ranges)
+
+        all_fom_dict = self.get_all_fom_dict(sigma_kerns)
 
         for sigma_kern in sigma_kerns:
             max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
@@ -1687,7 +1745,6 @@ class SimDetecLightCurve(AveragedLightCurve):
         colnames: PresetColumnNames,
         control_index=0,
         filt="o",
-        mjd0=None,
         mjdbinsize=1.0,
         **kwargs,
     ):
@@ -1708,67 +1765,13 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         self.cur_sigma_kern = None
 
-        self._pre_mjd0_ix = None
-        if mjd0 is not None:
-            self._pre_mjd0_ix = self.ix_inrange(self.colnames.mjdbin, uplim=mjd0)
-
-        self._valid_mjd_ix = None
-
-    @property
-    def valid_mjd_ix(self):
-        if self._valid_mjd_ix is None:
-            raise RuntimeError(
-                "Call self.set_valid_mjd_ix() first before accessing self.valid_mjd_ix"
-            )
-        if len(self._valid_mjd_ix) < 1:
-            raise RuntimeError(
-                f"No valid MJD indices found in light curve (control index {self.control_index})"
-            )
-        return self._valid_mjd_ix
-
-    @property
-    def pre_mjd0_ix(self):
-        if self._pre_mjd0_ix is None:
-            raise RuntimeError("Provide MJD0 first before accessing self.pre_mjd0_ix")
-        if len(self._pre_mjd0_ix) < 1:
-            raise RuntimeError(
-                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
-            )
-        return self._pre_mjd0_ix
-
-    def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]) -> List[int]:
-        def in_range(value, mjd_ranges):
-            return any(r[0] <= value <= r[1] for r in mjd_ranges)
-
-        self._valid_mjd_ix = self.t.index[
-            self.t[self.colnames.mjdbin].apply(lambda x: in_range(x, mjd_ranges))
-        ].tolist()
-
-        if len(self._valid_mjd_ix) < 1:
-            raise RuntimeError(
-                f"No valid MJD indices found in light curve (control index {self.control_index}) for ranges: {mjd_ranges}"
-            )
-
-    def set_pre_MJD0_ix(self, mjd0: float):
-        self._pre_mjd0_ix = self.ix_inrange(
-            colnames=self.colnames.mjd, uplim=mjd0, exclude_uplim=True
-        )
-
-        if len(self._pre_mjd0_ix) < 1:
-            raise RuntimeError(
-                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
-            )
-
     def get_n_falsepos(
         self,
         sigma_kern: int,
         fom_limit: float,
-        mjd_ranges: List[List[float]],
         mjd0: float,
         verbose=False,
     ):
-        if self._valid_mjd_ix is None:
-            self.set_valid_mjd_ix(mjd_ranges)
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 

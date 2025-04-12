@@ -726,7 +726,6 @@ class ContaminationTable(pdastrostatsclass):
         sn: SimDetecSupernova,
         sigma_kern: int,
         fom_limit: float,
-        mjd_ranges: List[List[float]],
     ) -> Dict:
         row = {
             "sigma_kern": sigma_kern,
@@ -738,7 +737,7 @@ class ContaminationTable(pdastrostatsclass):
 
         for control_index in sn.lc_indices:
             n_falsepos = sn.lcs[control_index].get_n_falsepos(
-                sigma_kern, fom_limit, mjd_ranges, sn.mjd0
+                sigma_kern, fom_limit, sn.mjd0
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
 
@@ -758,10 +757,12 @@ class ContaminationTable(pdastrostatsclass):
         sigma_kerns: List[int],
         fom_limits: Dict[int, List[float]],
     ):
+        sn.set_mjd_ranges(mjd_ranges)
+
         self.t = pd.DataFrame()
         for sigma_kern in sigma_kerns:
             for fom_limit in fom_limits[sigma_kern]:
-                row = self.calculate_row(sn, sigma_kern, fom_limit, mjd_ranges)
+                row = self.calculate_row(sn, sigma_kern, fom_limit)
                 self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
 
         # number of false positives should always be 0 for min fom limits
