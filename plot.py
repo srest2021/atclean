@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 import matplotlib
 from matplotlib import gridspec
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
+import pandas as pd
 from lightcurve import (
     LimCutsTable,
     LightCurve,
+    SimDetecLightCurve,
+    SimDetecSupernova,
     Supernova,
     AveragedSupernova,
 )
@@ -92,26 +95,61 @@ class Plot:
 
     def get_lims(
         self,
-        sn: Supernova = None,
+        sn: Supernova,
         control_index: int = 0,
         flag: Optional[int] = None,
         custom_lims: Optional[PlotLimits] = None,
-        indices: List[int] = None,
+        indices: Optional[List[int]] = None,
         pre_sn: bool = False,
     ) -> PlotLimits:
         lims = PlotLimits()
+        mjd0 = sn.mjd0 if pre_sn else None
 
-        lims.set_xlims(
-            sn.lcs[control_index].get_xlims(mjd0=sn.mjd0 if pre_sn else None)
-        )
+        # get auto xlims
+        lims.set_xlims(sn.lcs[control_index].get_xlims(mjd0=mjd0))
+        # override auto xlims with custom ones where they exist
         if custom_lims is not None and custom_lims.get_xlims() is not None:
             lims.set_xlims(custom_lims.get_xlims())
 
+        # get auto ylims
         lims.set_ylims(
-            sn.lcs[control_index].get_ylims(
-                indices=indices, flag=flag, mjd0=sn.mjd0 if pre_sn else None
-            )
+            sn.lcs[control_index].get_ylims(indices=indices, flag=flag, mjd0=mjd0)
         )
+        # override auto ylims with custom ones where they exist
+        if custom_lims is not None and custom_lims.get_ylims() is not None:
+            lims.set_ylims(custom_lims.get_ylims())
+
+        return lims
+
+    def get_snr_lims(
+        self,
+        sn: SimDetecSupernova,
+        all_fom: pd.Series,
+        fom_limit: Optional[float] = None,
+        custom_lims: Optional[PlotLimits] = None,
+    ) -> PlotLimits:
+        lims = PlotLimits()
+
+        # get auto xlims using min and max of mjd ranges
+        lims.set_xlims([sn._mjd_ranges[0][0], sn._mjd_ranges[-1][-1]])
+
+        # override auto xlims with custom ones where they exist
+        if custom_lims is not None and custom_lims.get_xlims() is not None:
+            lims.set_xlims(custom_lims.get_xlims())
+
+        # get auto ylims using min and max of FOM distribution
+        lims.set_ylims(
+            [
+                min(all_fom) * 1.5,
+                (
+                    max(max(all_fom) * 1.2, fom_limit * 1.4)
+                    if fom_limit
+                    else max(all_fom) * 1.2
+                ),
+            ]
+        )
+
+        # override auto ylims with custom ones where they exist
         if custom_lims is not None and custom_lims.get_ylims() is not None:
             lims.set_ylims(custom_lims.get_ylims())
 
@@ -125,15 +163,17 @@ class Plot:
         ylabel: bool = True,
         xticks: bool = True,
         yticks: bool = True,
+        axhline: bool = True,
     ):
         ax.minorticks_on()
         ax.tick_params(direction="in", which="both")
         ax.set_facecolor(FACE_COLOR)
-        ax.axhline(color="k", linewidth=1.5, zorder=0)
+        if axhline:
+            ax.axhline(color="k", linewidth=1.5, zorder=0)
 
-        if lims.get_xlims():
+        if lims is not None and lims.get_xlims() is not None:
             ax.set_xlim(lims.get_xlims())
-        if lims.get_ylims():
+        if lims is not None and lims.get_ylims() is not None:
             ax.set_ylim(lims.get_ylims())
 
         if xlabel:
@@ -145,6 +185,38 @@ class Plot:
             ax.set_ylabel(r"Flux ($\mu$Jy)")
         if not yticks:
             ax.set_yticklabels([])
+
+    def _plot_snr(
+        self,
+        ax: Axes,
+        obj: SimDetecSupernova | SimDetecLightCurve,
+        control_index: int,
+        color: str,
+        y_colname_attr: Optional[str] = "snrsumnorm",
+        indices: Optional[List[int]] = None,
+        label: Optional[str] = None,
+    ):
+        if isinstance(obj, SimDetecSupernova):
+            obj = obj.lcs[control_index]
+
+        if indices is None:
+            indices = obj.getindices()
+
+        y_colname = getattr(obj.colnames, y_colname_attr)
+        if not obj.can_plot(indices, columns=[y_colname]):
+            print(
+                f"WARNING: Light curve (control index #{control_index}) '{y_colname_attr}' column cannot be plotted with indices of length {len(indices)}; skipping..."
+            )
+            return
+
+        ax.plot(
+            obj.t.loc[indices, obj.colnames.mjdbin],
+            obj.t.loc[indices, y_colname],
+            color=color,
+            linewidth=1.5,
+            alpha=0.7,
+            label=label,
+        )
 
     def _plot_lc(
         self,
@@ -206,7 +278,7 @@ class Plot:
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
+        lims = self.get_lims(sn, custom_lims=custom_lims)
         self._setup_ax(ax1, lims)
 
         title = f"SN {sn.tnsname}"
@@ -274,7 +346,7 @@ class Plot:
             title = "Cut"
         fig.suptitle(f"{title} (flag {hex(flag)})")
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag)
         self._setup_ax(ax1, lims, ylabel=False, xticks=False, xlabel=False)
         self._setup_ax(ax2, lims, ylabel=False)
 
@@ -339,7 +411,7 @@ class Plot:
         title += f" {sn.filt}-band flux"
         ax1.set_title(title)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag)
         self._setup_ax(ax1, lims)
 
         if plot_controls and sn.num_controls > 0:
@@ -408,7 +480,7 @@ class Plot:
         title += f" {avg_sn.filt}-band flux"
         ax1.set_title(title)
 
-        lims = self.get_lims(sn=avg_sn, custom_lims=custom_lims, flag=flag)
+        lims = self.get_lims(avg_sn, custom_lims=custom_lims, flag=flag)
         self._setup_ax(ax1, lims)
 
         if plot_controls and avg_sn.num_controls > 0:
@@ -536,7 +608,7 @@ class Plot:
         fig.set_figwidth(7)
         fig.set_figheight(5)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims)
+        lims = self.get_lims(sn, custom_lims=custom_lims)
 
         ax1.set_title(
             f"SN {sn.tnsname} {sn.filt}-band flux\nbefore true uncertainties estimation"
@@ -722,7 +794,7 @@ class Plot:
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
+        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
         ax1.set_title("Pre-SN Light Curve", fontsize=12)
@@ -805,7 +877,7 @@ class Plot:
         if suptitle:
             fig.suptitle(suptitle)
 
-        lims = self.get_lims(sn=sn, custom_lims=custom_lims, flag=flag)
+        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
         ax1.set_title("SN Light Curve", fontsize=12)
@@ -899,7 +971,7 @@ class Plot:
 
         control_indices = sn.control_lc_indices
         lims = self.get_lims(
-            sn=sn, control_index=control_indices[0], custom_lims=custom_lims
+            sn, control_index=control_indices[0], custom_lims=custom_lims
         )
 
         # set up figure and axes
@@ -976,7 +1048,7 @@ class Plot:
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
 
-        lims = self.get_lims(sn=avg_sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
+        lims = self.get_lims(avg_sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
         ax1.set_title("Binned & Cleaned Pre-SN Light Curve", fontsize=12)
@@ -1005,8 +1077,142 @@ class Plot:
 
         return fig
 
-    def plot_fom(self):
-        pass
+    def plot_fom(
+        self,
+        sn: SimDetecSupernova,
+        all_fom_dict: Dict[int, pd.Series],
+        sigma_kerns: List[int],
+        select_control_index: int,
+        flag: int,
+        fom_limits: Optional[Dict[int, float]] = None,
+        save: bool = False,
+        filename: str = "all_fom",
+    ):
+        fig, axes = plt.subplots(
+            len(sigma_kerns), 2, gridspec_kw={"width_ratios": [4, 1]}
+        )
+        fig.set_figheight(len(sigma_kerns) * 1.9)
+        fig.set_figwidth(5.5)
+        fig.subplots_adjust(wspace=0.07, hspace=0.07, bottom=0.1, top=0.9)
+
+        max_freq = 0
+        for sigma_kern, all_fom in all_fom_dict.items():
+            counts, _ = np.histogram(all_fom.dropna(), bins=20)
+            max_freq = max(max_freq, counts.max())
+
+        for i, row in enumerate(axes):
+            sigma_kern = sigma_kerns[i]
+            sn.apply_rolling_sums(sigma_kern, flag=flag, pre_mjd0_ix=True)
+
+            if len(sigma_kerns) == 1:
+                ax1, ax2 = axes[0], axes[1]
+            else:
+                ax1, ax2 = axes[i][0], axes[i][1]
+            ax1: Axes
+            ax2: Axes
+
+            lims = self.get_snr_lims(
+                sn,
+                all_fom_dict[sigma_kern],
+                fom_limit=fom_limits[sigma_kern] if fom_limits else None,
+            )
+            self._setup_ax(ax1, lims, ylabel=False)
+            self._setup_ax(ax2, lims, ylabel=False, yticks=False, axhline=False)
+            ax1.set_ylabel(r"$\Sigma_{\rm FOM}$")
+            if i >= len(sigma_kerns) - 1:  # bottom row
+                ax1.set_xlabel("MJD")
+                ax2.set_xlabel("Freq")
+            else:
+                ax1.set_xticklabels([])
+                ax2.set_xticklabels([])
+
+            # control lc fom
+            label_control_lc_indices = [
+                x for x in sn.control_lc_indices if x != select_control_index
+            ]
+            for control_index in sn.control_lc_indices:
+                if control_index == select_control_index:
+                    continue
+                label = None
+                if control_index == sn.control_lc_indices[0]:
+                    label = f"{len(sn.control_lc_indices) - 1} Control Light Curves (#s: {label_control_lc_indices})"
+                self._plot_snr(ax1, sn, control_index, CONTROL_FOM_COLOR, label=label)
+
+            # selected control lc fom
+            self._plot_snr(
+                ax1,
+                sn,
+                select_control_index,
+                SELECT_CONTROL_FOM_COLOR,
+                label=f"Selected Control Light Curve #{select_control_index}",
+            )
+
+            # pre-SN lc fom
+            self._plot_snr(ax1, sn, 0, SN_FOM_COLOR, label="Pre-SN Light Curve")
+
+            # sigma_kern label
+            ax1.text(
+                0.98,
+                0.07,
+                r"$\sigma_{\rm kernel}$ = " + str(sigma_kern),
+                ha="right",
+                va="bottom",
+                transform=ax1.transAxes,
+                fontsize=11,
+                zorder=40,
+            )
+
+            # fom limit
+            if fom_limits:
+                ax1.axhline(
+                    fom_limits[sigma_kern],
+                    linewidth=1.5,
+                    color="k",
+                    linestyle=FOM_LIMIT_LS,
+                    zorder=40,
+                )
+                ax2.axhline(
+                    fom_limits[sigma_kern],
+                    linewidth=1.5,
+                    color="k",
+                    linestyle=FOM_LIMIT_LS,
+                    zorder=40,
+                )
+                ax1.text(
+                    0.05,
+                    1.1 * fom_limits[sigma_kern],
+                    r"$\Sigma_{\rm FOM, limit}$ = " + str(fom_limits[sigma_kern]),
+                    color="k",
+                    transform=ax1.get_yaxis_transform(),
+                    zorder=40,
+                )
+
+            # fom distribution
+            ax2.set_ylim(ax1.get_ylim())
+            ax2.set_xlim(0, max_freq * 1.1)
+            ax2.hist(
+                all_fom_dict[sigma_kern],
+                bins=20,
+                orientation="horizontal",
+                color=CONTROL_FOM_COLOR,
+            )
+
+            if i == 0:
+                ax1.legend(
+                    facecolor="white",
+                    fontsize=10,
+                    framealpha=0,
+                    bbox_to_anchor=(0, 1.3, 0.8, 0.2),
+                    loc="upper center",
+                    mode="expand",
+                    borderaxespad=0,
+                    ncol=1,
+                )
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
 
 
 class PlotPdf(Plot):

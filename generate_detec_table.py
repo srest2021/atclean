@@ -721,6 +721,8 @@ class ContaminationTable(pdastrostatsclass):
 
         self.skip_control_ix = skip_control_ix if skip_control_ix else []
 
+        self.is_prelim = False
+
     def calculate_row(
         self,
         sn: SimDetecSupernova,
@@ -757,19 +759,34 @@ class ContaminationTable(pdastrostatsclass):
         sigma_kerns: List[int],
         fom_limits: Dict[int, List[float]],
     ):
-        sn.set_mjd_ranges(mjd_ranges)
+        print(
+            "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limit ranges..."
+        )
+        print(f"Using preliminary FOM limit ranges: {fom_limits}")
 
-        self.t = pd.DataFrame()
-        for sigma_kern in sigma_kerns:
-            for fom_limit in fom_limits[sigma_kern]:
-                row = self.calculate_row(sn, sigma_kern, fom_limit)
-                self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+        try:
+            sn.set_mjd_ranges(mjd_ranges)
 
-        # number of false positives should always be 0 for min fom limits
-        invalid_rows = self.t.iloc[1::2][self.t.iloc[1::2]["n_falsepos"] != 0]
-        if not invalid_rows.empty:
-            raise ValueError(
-                f"Invalid `n_falsepos` values found at row(s): {invalid_rows.index.tolist()}"
+            self.t = pd.DataFrame()
+            for sigma_kern in sigma_kerns:
+                for fom_limit in fom_limits[sigma_kern]:
+                    row = self.calculate_row(sn, sigma_kern, fom_limit)
+                    self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+
+            # number of false positives should always be 0 for min fom limits
+            invalid_rows = self.t.iloc[1::2][self.t.iloc[1::2]["n_falsepos"] != 0]
+            if not invalid_rows.empty:
+                raise ValueError(
+                    f"Invalid `n_falsepos` values found at row(s): {invalid_rows.index.tolist()}"
+                )
+
+            self.is_prelim = True
+            print("Success")
+        except Exception as e:
+            self.t = None
+            self.is_prelim = False
+            raise RuntimeError(
+                f"Could not construt preliminary contamination table: {str(e)}"
             )
 
     def get_initial_limits(
@@ -792,7 +809,7 @@ class ContaminationTable(pdastrostatsclass):
         prelim_fom_limit_ranges: Dict[int, List[float]],
         mjd_ranges: List[List[float]],
         sigma_kerns: List[int],
-        tgt_value: int = 2,
+        target_value: int = 2,
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
@@ -810,17 +827,17 @@ class ContaminationTable(pdastrostatsclass):
         :param convergence_threshold: Threshold for convergence of FOM limits.
         :return: Dictionary of refined FOM limits for each sigma_kern.
         """
-        print(
-            "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limits..."
-        )
-        print(f"Preliminary FOM limits: {prelim_fom_limit_ranges}")
-        self.construct_prelim_t(sn, mjd_ranges, sigma_kerns, prelim_fom_limit_ranges)
-        print("Success")
+
+        if self.t is None or not self.is_prelim:
+            self.construct_prelim_t(
+                sn, mjd_ranges, sigma_kerns, prelim_fom_limit_ranges
+            )
         if verbose:
+            print("Preliminary contamination table: ")
             print(self.t.to_string())
 
         print(
-            f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {tgt_value} positive control light curves..."
+            f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {target_value} positive control light curves..."
         )
         fom_limits = {}
         i = 0
@@ -837,7 +854,7 @@ class ContaminationTable(pdastrostatsclass):
 
             for step in range(n_steps):
                 new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
-                new_row = self.calculate_row(sn, sigma_kern, new_fom_limit, mjd_ranges)
+                new_row = self.calculate_row(sn, sigma_kern, new_fom_limit)
                 cur_value = new_row["n_pos_controls"]
                 if verbose:
                     print(
@@ -853,7 +870,7 @@ class ContaminationTable(pdastrostatsclass):
                     break
 
                 # update limits based on the current value
-                if cur_value > tgt_value:
+                if cur_value > target_value:
                     lower_limit = new_fom_limit
                 else:  # cur_value <= tgt_value
                     upper_limit = new_fom_limit
@@ -867,6 +884,10 @@ class ContaminationTable(pdastrostatsclass):
                 )
 
             i += 2
+
+        if verbose:
+            print("Final contamination table: ")
+            print(self.t.to_string())
 
         return fom_limits
 
