@@ -1688,30 +1688,28 @@ class SimDetecSupernova(AveragedSupernova):
         )
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
+    def get_all_fom(self, sigma_kern: int):
+        fom_list = []
+        for control_index in self.control_lc_indices:
+            self.lcs[control_index].apply_rolling_sum(sigma_kern)
+            fom = self.lcs[control_index].t.loc[
+                self.lcs[control_index].valid_mjd_ix, self.colnames.snrsumnorm
+            ]
+            if not fom.empty:
+                fom_list.append(fom)
+
+        if fom_list:
+            return pd.concat(fom_list, ignore_index=True)
+        return pd.Series(dtype=float)
+
     def get_all_fom_dict(self, sigma_kerns: List[int]):
         print(f"Getting all control FOM for MJD ranges {self._mjd_ranges}...")
         if self._mjd_ranges is None:
             raise RuntimeError(f"Valid MJD ranges cannot be None")
-        res = {sigma_kern: None for sigma_kern in sigma_kerns}
 
+        res = {}
         for sigma_kern in sigma_kerns:
-            fom_list = []
-            for control_index in self.control_lc_indices:
-                self.lcs[control_index].apply_rolling_sum(sigma_kern)
-
-                fom = self.lcs[control_index].t.loc[
-                    self.lcs[control_index].valid_mjd_ix,
-                    self.colnames.snrsumnorm,
-                ]
-                if not fom.empty:
-                    fom_list.append(fom)
-
-            if fom_list:
-                all_fom = pd.concat(fom_list, ignore_index=True)
-            else:
-                all_fom = pd.Series(dtype=float)
-
-            res[sigma_kern] = all_fom
+            res[sigma_kern] = self.get_all_fom(sigma_kern)
         return res
 
     def get_prelim_fom_limit_ranges(

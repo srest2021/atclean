@@ -846,47 +846,68 @@ class ContaminationTable(pdastrostatsclass):
                 i, prelim_fom_limit_ranges
             )
             if verbose:
-                print(
-                    f"# sigma_kern={sigma_kern}; starting limits: lower_limit={lower_limit}, upper_limit={upper_limit}"
-                )
+                print(f"\n--- sigma_kern = {sigma_kern} ---")
+                print(f"Preliminary FOM range: [{lower_limit}, {upper_limit}]")
 
-            # TODO: test this
-
+            best_row = None
             for step in range(n_steps):
                 new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
                 new_row = self.calculate_row(sn, sigma_kern, new_fom_limit)
                 cur_value = new_row["n_pos_controls"]
                 if verbose:
                     print(
-                        f"## Step {step + 1}/{n_steps}: new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}, lower_limit={lower_limit:0.2f}, upper_limit={upper_limit:0.2f}"
+                        f"Step {step + 1:>2}/{n_steps}: "
+                        f"FOM limit={new_fom_limit:.2f}, "
+                        f"Contamination={cur_value}, "
+                        f"Bounds=[{lower_limit:.2f}, {upper_limit:.2f}]"
                     )
 
+                if cur_value == target_value:
+                    # this one satisfies the target contamination value — keep track of it
+                    best_row = new_row
+
+                # update limits based on the current contamination value
+                if cur_value <= target_value:
+                    # not enough many positives — tighten upper bound
+                    upper_limit = new_fom_limit
+                else:
+                    # too many positives — tighten lower bound
+                    lower_limit = new_fom_limit
+
                 # check for convergence
-                if abs(upper_limit - lower_limit) < convergence_threshold:
+                if round(abs(upper_limit - lower_limit), 2) <= convergence_threshold:
                     if verbose:
-                        print(
-                            f"## Converged: new_fom_limit={new_fom_limit:0.2f}, cur_value={cur_value}"
-                        )
+                        if best_row:
+                            print(
+                                f"→ Converged at FOM={best_row['fom_limit']} (exact match)"
+                            )
+                        else:
+                            print(
+                                f"→ Converged at FOM={new_fom_limit} (best guess), Contamination={cur_value}"
+                            )
                     break
 
-                # update limits based on the current value
-                if cur_value > target_value:
-                    lower_limit = new_fom_limit
-                else:  # cur_value <= tgt_value
-                    upper_limit = new_fom_limit
-
             # finalize the FOM limit for this sigma_kern
-            self.t.loc[i + 1, :] = new_row
-            fom_limits[sigma_kern] = [self.t.loc[i + 1, "fom_limit"]]
+            if best_row is not None:
+                final_row = best_row
+            else:
+                # fallback: use latest (if none were valid)
+                final_row = new_row
+
+            self.t.loc[i + 1, :] = final_row
+            fom_limits[sigma_kern] = final_row["fom_limit"]
             if verbose:
                 print(
-                    f"## Final FOM limit for sigma_kern={sigma_kern}: {fom_limits[sigma_kern][0]:0.2f}"
+                    f"✔ Final FOM limit for sigma_kern={sigma_kern}: "
+                    f"{fom_limits[sigma_kern]:.2f} "
+                    f"(Contamination={final_row['n_pos_controls']})"
                 )
+                print("-" * 22)
 
             i += 2
 
         if verbose:
-            print("Final contamination table: ")
+            print("\nFinal contamination table: ")
             print(self.t.to_string())
 
         return fom_limits
