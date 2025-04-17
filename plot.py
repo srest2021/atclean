@@ -1214,6 +1214,71 @@ class Plot:
 
         return fig
 
+    def plot_fom_dists(
+        self,
+        sigma_kerns: List[int],
+        all_fom_dict: Dict[int, pd.Series],
+        fom_limits: Dict[int, float],
+        save: bool = False,
+        filename: str = "all_fom",
+    ):
+        n = len(sigma_kerns)
+        fig, axes = plt.subplots(n, constrained_layout=True)
+        fig.set_figheight(n)
+        fig.set_figwidth(5.5)
+
+        xlim_lower = np.inf
+        xlim_upper = -np.inf
+        for sigma_kern, all_fom in all_fom_dict.items():
+            xlim_lower = min(xlim_lower, min(all_fom))
+            xlim_upper = max(xlim_upper, max(all_fom), fom_limits[sigma_kern])
+        lims = PlotLimits(xlower=xlim_lower, xupper=xlim_upper)
+
+        for i in range(n):
+            sigma_kern = sigma_kerns[i]
+            all_fom = all_fom_dict[sigma_kern]
+            fom_limit = fom_limits[sigma_kern]
+            ax: Axes = axes[i]
+
+            self._setup_ax(
+                ax,
+                lims,
+                xlabel=False,
+                xticks=i >= n - 1,
+                ylabel=False,
+                yticks=False,
+            )
+            if i >= n - 1:
+                ax.set_xlabel(r"$\Sigma_{\rm FOM}$")
+
+            ax.text(
+                0.02,
+                0.95,
+                r"$\sigma_{\rm kernel}$ = " + str(sigma_kern),
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                fontsize=11,
+            )
+            ax.hist(
+                all_fom,
+                bins=np.linspace(min(all_fom), max(all_fom), 20),
+                color=CONTROL_FOM_COLOR,
+            )
+
+            ax.axvline(fom_limit, linewidth=1.5, color="k", linestyle=FOM_LIMIT_LS)
+            ax.text(
+                fom_limit + 0.5,
+                0.5 * ax.get_ylim()[1],
+                r"$\Sigma_{\rm FOM, limit}$ = " + f"{fom_limit:0.2f}",
+                fontsize=11,
+            )
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
 
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):

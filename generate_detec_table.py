@@ -715,12 +715,8 @@ class EfficiencyTable(pdastrostatsclass):
         return self.t.to_string()
 
 
-class ContaminationTable(pdastrostatsclass):
-    def __init__(self, skip_control_ix: Optional[List[int]] = None, **kwargs):
-        pdastrostatsclass.__init__(self, **kwargs)
-
-        self.skip_control_ix = skip_control_ix if skip_control_ix else []
-
+class ContaminationTable:
+    def __init__(self):
         self.is_prelim = False
 
     def calculate_row(
@@ -906,17 +902,45 @@ class ContaminationTable(pdastrostatsclass):
 
             i += 2
 
+        # drop extra rows
+        self.t = self.t.iloc[1::2].reset_index(drop=True)
+
         if verbose:
             print("\nFinal contamination table: ")
-            print(self.t.to_string())
+            print(self.__str__())
 
         return fom_limits
 
     def get_fom_limits_from_t(self):
-        fom_limits: Dict[int, List[float]] = defaultdict(list)
-        for i in range(len(self.t)):
-            fom_limits[self.t.loc[i, "sigma_kern"]].append(self.t.loc[i, "fom_limit"])
-        return dict(fom_limits)
+        if self.t.empty:
+            return {}
+
+        if self.t["sigma_kern"].duplicated().any():
+            fom_limits: Dict[int, List[float]] = defaultdict(list)
+            for i in range(len(self.t)):
+                fom_limits[self.t.loc[i, "sigma_kern"]].append(
+                    self.t.loc[i, "fom_limit"]
+                )
+        else:
+            fom_limits: Dict[int, float] = {}
+            for i in range(len(self.t)):
+                fom_limits[self.t.loc[i, "sigma_kern"]] = self.t.loc[i, "fom_limit"]
+        return fom_limits
+
+    def load(self, detec_tables_dir: str, prelim: bool = False):
+        filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
+        print(f"Loading contamination table at {filename}...")
+        try:
+            self.t = pd.read_table(filename, delim_whitespace=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not load efficiency table at {filename}: {str(e)}"
+            )
+
+    def save(self, detec_tables_dir: str, prelim: bool = False):
+        filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
+        print(f"Saving contamination table as {filename}...")
+        self.t.to_string(filename, index=False)
 
     def __str__(self):
         return self.t.to_string()
