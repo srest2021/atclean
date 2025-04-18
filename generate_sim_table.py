@@ -64,6 +64,13 @@ class Param(ABC):
         :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
         :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
         """
+        out = f"Creating parameter {name}"
+        if is_time_param:
+            out += " (time param)"
+        if is_peak_appmag_param:
+            out += " (peak apparent magnitude param)"
+        print(out)
+
         if is_time_param and is_peak_appmag_param:
             raise ValueError(
                 "Param cannot be a time parameter and peak apparent magnitude parameter at the same time"
@@ -464,7 +471,7 @@ def parse_param(
     :is_time_param: Is this parameter defining the MJD of the simulation peak, onset, or other time-related property?
     :is_peak_appmag_param: Is this parameter defining the peak apparent magnitude?
     """
-    print(f"\nParsing parameter {param_name}:")
+    print(f"\nParsing config parameter {param_name}:")
 
     if param_info["type"] == "list":
         res = ListParam(
