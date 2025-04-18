@@ -1,6 +1,7 @@
 {
   "gaussian": {
     "time_parameter_name": "peak_mjd",
+    "peak_appmag_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
@@ -63,7 +64,7 @@
             [59836,60072], 
             [60195,60401]
           ],
-          "n": 500
+          "n": 2
         }
       }
     }
@@ -71,6 +72,7 @@
 
   "asymmetric_gaussian": {
     "time_parameter_name": "peak_mjd",
+    "peak_appmag_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
@@ -168,6 +170,7 @@
     "flux_column_name": false,
     "filename": "./extern/eruption_m3e-07.dat",
     "time_parameter_name": "peak_mjd",
+    "peak_appmag_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
@@ -219,6 +222,7 @@
     "flux_column_name": "uJy",
     "filename": "",
     "time_parameter_name": "peak_mjd",
+    "peak_appmag_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {

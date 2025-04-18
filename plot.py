@@ -1250,6 +1250,7 @@ class Plot:
             )
             if i >= n - 1:
                 ax.set_xlabel(r"$\Sigma_{\rm FOM}$")
+            ax.set_ylabel("Freq")
 
             ax.text(
                 0.02,

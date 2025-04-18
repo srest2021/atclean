@@ -127,8 +127,21 @@ def parse_comma_separated_string(string: str | None):
 
 
 def make_dir_if_not_exists(directory):
+    """
+    Creates a directory if it does not exist. Handles permission errors and other exceptions.
+
+    :param directory: Path to the directory to create.
+    """
     if not os.path.isdir(directory):
-        os.makedirs(directory)
+        try:
+            os.makedirs(directory)
+        except PermissionError:
+            print(f"Permission denied: Cannot create directory at {directory}")
+        except FileExistsError:
+            # This can occur if the directory is created between the `isdir` check and `makedirs` call.
+            print(f"Directory already exists: {directory}")
+        except Exception as e:
+            print(f"An error occurred while creating directory {directory}: {str(e)}")
 
 
 # load a .ini config file
@@ -149,7 +162,8 @@ def extract_from_subdir(
     convert_function: Callable = lambda x: x,
 ):
     if not os.path.isdir(subdir):
-        raise RuntimeError(f"Cannot search because the path does not exist: {subdir}")
+        print(f"WARNING: Cannot search because the path does not exist: {subdir}")
+        return []
 
     extracted_values = set()
 
