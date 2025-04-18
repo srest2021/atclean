@@ -49,17 +49,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 class Param(ABC):
     """
     Abstract base class for defining simulation parameters.
-
-    Attributes:
-        name (str): The name of the parameter.
-        values (Optional[List]): The list of values for the parameter.
-        is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
-
-    Methods:
-        generate(**kwargs): Abstract method to generate parameter values.
-        validate_time_param(): Validates and adjusts time parameter values to match the MJDbin format.
-        validate_peak_appmag_param(): Validates and adjusts peak apparent magnitude values to two decimal places.
     """
 
     def __init__(
@@ -69,6 +58,12 @@ class Param(ABC):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param values (Optional[List]): The list of values for the parameter.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         if is_time_param and is_peak_appmag_param:
             raise ValueError(
                 "Param cannot be a time parameter and peak apparent magnitude parameter at the same time"
@@ -81,9 +76,15 @@ class Param(ABC):
 
     @abstractmethod
     def generate(self, **kwargs):
+        """
+        Abstract method to generate parameter values.
+        """
         pass
 
     def validate_time_param(self):
+        """
+        Validates and adjusts time parameter values to match the MJDbin format.
+        """
         print(
             f"Making sure the time parameter '{self.name}' values match the MJDbin column format..."
         )
@@ -91,6 +92,9 @@ class Param(ABC):
             self.values = list(np.floor(self.values) + 0.5)
 
     def validate_peak_appmag_param(self):
+        """
+        Validates and adjusts peak apparent magnitude values to two decimal places.
+        """
         print(
             f"Making sure the peak apparent magnitude parameter '{self.name}' values have up to 2 decimal places..."
         )
@@ -112,6 +116,10 @@ class Param(ABC):
 
 
 class ListParam(Param):
+    """
+    A parameter defined by a fixed list of values.
+    """
+
     def __init__(
         self,
         name: str,
@@ -119,6 +127,12 @@ class ListParam(Param):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param values (Optional[List]): The list of values for the parameter.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         super().__init__(
             name,
             values=values,
@@ -131,6 +145,10 @@ class ListParam(Param):
 
 
 class RangeParam(Param):
+    """
+    A parameter defined by a range of values with a fixed step size.
+    """
+
     def __init__(
         self,
         name: str,
@@ -140,6 +158,14 @@ class RangeParam(Param):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param minval (float): The minimum value of the range.
+        :param maxval (float): The maximum value of the range.
+        :param step (float): The step size between consecutive values in the range.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         super().__init__(
             name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
         )
@@ -161,6 +187,10 @@ class RangeParam(Param):
 
 
 class LogRangeParam(Param):
+    """
+    A parameter defined by a logarithmic range of values.
+    """
+
     def __init__(
         self,
         name: str,
@@ -172,6 +202,16 @@ class LogRangeParam(Param):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param minval (float): The minimum value of the range.
+        :param maxval (float): The maximum value of the range.
+        :param base (int): The logarithmic base to use.
+        :param n (int): The number of values to generate in the range.
+        :param to_int (bool): Whether to round the generated values to integers.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         super().__init__(
             name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
         )
@@ -196,6 +236,10 @@ class LogRangeParam(Param):
 
 
 class RandomParam(Param):
+    """
+    A parameter defined by a random set of values within a specified range.
+    """
+
     def __init__(
         self,
         name: str,
@@ -206,6 +250,15 @@ class RandomParam(Param):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param minval (float): The minimum value of the range.
+        :param maxval (float): The maximum value of the range.
+        :param n (int): The number of random values to generate.
+        :param to_int (bool): Whether to round the generated values to integers.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         super().__init__(
             name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
         )
@@ -226,6 +279,10 @@ class RandomParam(Param):
 
 
 class RandomInRangeParam(Param):
+    """
+    A parameter defined by a random set of values within specified valid ranges.
+    """
+
     def __init__(
         self,
         name,
@@ -234,6 +291,13 @@ class RandomInRangeParam(Param):
         is_time_param: bool = False,
         is_peak_appmag_param: bool = False,
     ):
+        """
+        :param name (str): The name of the parameter.
+        :param valid_ranges (List[List[float]]): A list of valid ranges, where each range is a list of two floats [min, max].
+        :param n (int): The number of random values to generate.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
+        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        """
         super().__init__(
             name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
         )
@@ -270,18 +334,31 @@ class RandomInRangeParam(Param):
 
 
 class Params:
+    """
+    A collection of simulation parameters.
+    """
+
     def __init__(self):
         self.d: Dict[str, Param] = {}
 
     def add(self, param: Param):
+        """
+        Adds a parameter to the collection.
+        """
         if self.has(param):
             print(f"WARNING: Param {param.name} already exists in list; overwriting...")
         self.d[param.name] = param
 
     def has(self, param_name):
+        """
+        Checks if a parameter exists in the collection.
+        """
         return param_name in self.d.keys()
 
     def validate(self):
+        """
+        Validates the collection, ensuring required parameters are present.
+        """
         if self.d:
             if not self.has_peak_appmag_param():
                 raise RuntimeError(
@@ -293,6 +370,9 @@ class Params:
             print("WARNING: Cannot validate params because it is empty")
 
     def get_num_rows(self):
+        """
+        Calculates the total number of rows in the simulation table based on parameter combinations.
+        """
         total = 1
         for param in self.d.values():
             if param.values and not param.is_peak_appmag_param:
@@ -300,24 +380,36 @@ class Params:
         return total
 
     def has_time_param(self):
+        """
+        Checks if a time parameter exists in the collection.
+        """
         for param in self.d.values():
             if param.is_time_param:
                 return True
         return False
 
     def get_time_param(self):
+        """
+        Retrieves the first time parameter from the collection.
+        """
         for param in self.d.values():
             if param.is_time_param:
                 return param
         raise RuntimeError(f"Time parameter missing from parameters: {self.d.keys()}")
 
     def has_peak_appmag_param(self):
+        """
+        Checks if a peak apparent magnitude parameter exists in the collection.
+        """
         for param in self.d.values():
             if param.is_peak_appmag_param:
                 return True
         return False
 
     def get_peak_appmag_param(self):
+        """
+        Retrieves the first peak apparent magnitude parameter from the collection.
+        """
         for param in self.d.values():
             if param.is_peak_appmag_param:
                 return param
@@ -326,17 +418,29 @@ class Params:
         )
 
     def all_names_except_peak_appmag(self):
+        """
+        Returns the names of all parameters except the peak apparent magnitude parameter.
+        """
         return [
             param.name for param in self.d.values() if not param.is_peak_appmag_param
         ]
 
     def all_names_except_time(self):
+        """
+        Returns the names of all parameters except the time parameter.
+        """
         return [param.name for param in self.d.values() if not param.is_time_param]
 
     def all_params_except_peak_appmag(self):
+        """
+        Returns all parameters except the peak apparent magnitude parameter.
+        """
         return [param for param in self.d.values() if not param.is_peak_appmag_param]
 
     def all_params_except_time(self):
+        """
+        Returns all parameters except the time parameter.
+        """
         return [param for param in self.d.values() if not param.is_time_param]
 
     def __str__(self):
@@ -511,7 +615,7 @@ class SimTables:
         """
         Generate the table content of each SimTable using parsed parameters from the config file.
 
-        :param params: Params object containing dictionary of Param names and objects.
+        :param params: A Params object containing a dictionary of parameter names and their corresponding Param objects.
         :param filename: File name of the model to be used (None if using Gaussian model).
         :param mjd_colname: MJD column name in the model file (None if present but no column name; False if not present).
         :param mag_colname: Magnitude column name in the model file (None if present but no column name; False if not present).
