@@ -376,15 +376,33 @@ class Params:
         else:
             print("WARNING: Cannot validate params because it is empty")
 
-    def get_num_rows(self):
+    def get_num_combinations(self, except_peak_appmag: bool = True):
         """
         Calculates the total number of rows in the simulation table based on parameter combinations.
         """
         total = 1
-        for param in self.d.values():
-            if param.values and not param.is_peak_appmag_param:
+        params = (
+            self.all_params_except_peak_appmag()
+            if except_peak_appmag
+            else self.d.values()
+        )
+        for param in params:
+            if param.values:
                 total *= len(param.values)
         return total
+
+    def get_combinations(self, except_peak_appmag: bool = True):
+        """
+        Generates all possible combinations of parameter values, excluding the peak apparent magnitude parameter.
+        This method uses the Cartesian product of the values of all parameters except the peak apparent magnitude
+        parameter to generate a list of all possible combinations.
+        """
+        params = (
+            self.all_params_except_peak_appmag()
+            if except_peak_appmag
+            else self.d.values()
+        )
+        return list(itertools.product(*(param.values for param in params)))
 
     def has_time_param(self):
         """
@@ -641,7 +659,7 @@ class SimTables:
 
         print()
         self.d = {}
-        num_rows = params.get_num_rows()
+        num_rows = params.get_num_combinations()
         self.set_peak_appmags(params.get_peak_appmag_param())
         for peak_appmag in self.peak_appmags.values:
             print(
@@ -649,11 +667,7 @@ class SimTables:
             )
             self.d[peak_appmag] = SimTable(peak_appmag)
 
-            combinations = list(
-                itertools.product(
-                    *(param.values for param in params.all_params_except_peak_appmag())
-                )
-            )
+            combinations = params.get_combinations()
             combinations_dicts = [
                 dict(zip(params.all_names_except_peak_appmag(), combo))
                 for combo in combinations

@@ -1893,6 +1893,11 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     # apply a rolling sum to the light curve and add SNR, SNRsum, and SNRsumnorm columns
     def apply_rolling_sum(self, sigma_kern, indices=None, flag=0x800000, verbose=False):
+        if sigma_kern < self.mjdbinsize:
+            raise ValueError(
+                f"Cannot apply rolling sum with sigma_kern ({sigma_kern} days) less than MJD bin size ({self.mjdbinsize} days)"
+            )
+
         if indices is None:
             indices = self.getindices()
         if len(indices) < 1:
@@ -1908,6 +1913,13 @@ class SimDetecLightCurve(AveragedLightCurve):
         )
 
         new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
+        """
+        for TESS/other lcs:
+        - if ratio > 3, leave it
+        - if ratio < 3, round to 1 decimal places
+        - if ratio < .3, don't round at all, or round to 5 decimal places
+        """
+
         windowsize = int(6 * new_gaussian_sigma)
         halfwindowsize = int(windowsize * 0.5) + 1
         if verbose:

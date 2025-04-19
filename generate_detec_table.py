@@ -707,6 +707,7 @@ class EfficiencyTable(pdastrostatsclass):
             )
 
     def save(self, detec_tables_dir: str, model_name: str):
+        make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/efficiencies_{model_name}.txt"
         print(f"Saving efficiency table as {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
@@ -938,6 +939,7 @@ class ContaminationTable:
             )
 
     def save(self, detec_tables_dir: str, prelim: bool = False):
+        make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
         print(f"Saving contamination table as {filename}...")
         self.t.to_string(filename, index=False)

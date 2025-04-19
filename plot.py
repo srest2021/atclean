@@ -1101,12 +1101,13 @@ class Plot:
             max_freq = max(max_freq, counts.max())
 
         for i, row in enumerate(axes):
-            sigma_kern = sigma_kerns[i]
             sn.apply_rolling_sums(sigma_kern, flag=flag, pre_mjd0_ix=True)
 
             if len(sigma_kerns) == 1:
+                sigma_kern = sigma_kerns[0]
                 ax1, ax2 = axes[0], axes[1]
             else:
+                sigma_kern = sigma_kerns[i]
                 ax1, ax2 = axes[i][0], axes[i][1]
             ax1: Axes
             ax2: Axes
@@ -1226,6 +1227,7 @@ class Plot:
         fig, axes = plt.subplots(n, constrained_layout=True)
         fig.set_figheight(n)
         fig.set_figwidth(5.5)
+        fig.supylabel("Freq")
 
         xlim_lower = np.inf
         xlim_upper = -np.inf
@@ -1235,10 +1237,14 @@ class Plot:
         lims = PlotLimits(xlower=xlim_lower, xupper=xlim_upper)
 
         for i in range(n):
-            sigma_kern = sigma_kerns[i]
+            if len(sigma_kerns) == 1:
+                sigma_kern = sigma_kerns[0]
+                ax: Axes = axes
+            else:
+                sigma_kern = sigma_kerns[i]
+                ax: Axes = axes[i]
             all_fom = all_fom_dict[sigma_kern]
             fom_limit = fom_limits[sigma_kern]
-            ax: Axes = axes[i]
 
             self._setup_ax(
                 ax,
@@ -1250,7 +1256,7 @@ class Plot:
             )
             if i >= n - 1:
                 ax.set_xlabel(r"$\Sigma_{\rm FOM}$")
-            ax.set_ylabel("Freq")
+            # ax.set_ylabel("Freq")
 
             ax.text(
                 0.02,

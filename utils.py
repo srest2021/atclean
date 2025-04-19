@@ -294,7 +294,8 @@ def get_inverse_mjd_ranges(
             f"Cannot expand edges of the inverse ranges by a negative amount {expand_edges}"
         )
     if len(mjd_ranges) < 1:
-        raise RuntimeError("MJD ranges must contain at least one range")
+        return [[min_mjd, max_mjd]]
+        # raise RuntimeError("MJD ranges must contain at least one range")
 
     validate_mjd_ranges(mjd_ranges)
 
