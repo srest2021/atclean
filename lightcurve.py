@@ -212,7 +212,8 @@ class Supernova:
 
     def get_uncert_est_stats(self, cut: UncertaintyEstimation):
         def get_sigma_extra(median_dflux, stdev):
-            return max(0, np.sqrt(stdev**2 - median_dflux**2))
+            diff = stdev**2 - median_dflux**2
+            return max(0, np.sqrt(diff)) if diff > 0 else 0
 
         stats = pd.DataFrame(
             columns=["control_index", "median_dflux", "stdev", "sigma_extra"]
@@ -220,16 +221,25 @@ class Supernova:
         stats["control_index"] = self.control_lc_indices
         stats.set_index("control_index", inplace=True)
 
+        use_x2_clean_ix = (
+            self.colnames.chisquare is not None
+            and self.colnames.chisquare in self.lcs[0].t.columns
+        )
+
         for control_index in self.control_lc_indices:
             dflux_clean_ix = self.lcs[control_index].ix_unmasked(
                 self.colnames.mask, maskval=cut.uncert_cut_flag
             )
-            x2_clean_ix = self.lcs[control_index].ix_inrange(
-                colnames=[self.colnames.chisquare],
-                uplim=cut.temp_x2_max_value,
-                exclude_uplim=True,
-            )
-            clean_ix = AandB(dflux_clean_ix, x2_clean_ix)
+
+            if use_x2_clean_ix:
+                x2_clean_ix = self.lcs[control_index].ix_inrange(
+                    colnames=[self.colnames.chisquare],
+                    uplim=cut.temp_x2_max_value,
+                    exclude_uplim=True,
+                )
+                clean_ix = AandB(dflux_clean_ix, x2_clean_ix)
+            else:
+                clean_ix = dflux_clean_ix
 
             median_dflux = self.lcs[control_index].get_median_dflux(indices=clean_ix)
 

@@ -364,7 +364,7 @@ class Params:
 
     def validate(self):
         """
-        Validates the collection, ensuring required parameters are present.
+        Validates the collection, ensuring required parameters (time and peak apparent magnitude) are present.
         """
         if self.d:
             if not self.has_peak_appmag_param():

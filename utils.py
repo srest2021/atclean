@@ -814,6 +814,16 @@ class SnInfoTable:
         return self.t.to_string()
 
 
+def format_mjdbinsize(value):
+    """
+    Format with up to 5 decimals, strip trailing zeros, then ensure at least 1 decimal
+    """
+    formatted = f"{value:.5f}".rstrip("0").rstrip(".")
+    if "." not in formatted:
+        formatted += ".0"
+    return formatted
+
+
 def get_filename(
     directory, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
 ):
@@ -830,7 +840,7 @@ def get_filename(
     filename += f".{filt}"
 
     if mjdbinsize:
-        filename += f".{mjdbinsize:0.2f}days"
+        filename += f".{format_mjdbinsize(mjdbinsize)}days"
 
     if cleaned:
         filename += f".clean"

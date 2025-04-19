@@ -375,7 +375,7 @@ if __name__ == "__main__":
         raise RuntimeError(
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
-    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
     print("Success")

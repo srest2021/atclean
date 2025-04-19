@@ -170,6 +170,9 @@ class ConvertLightCurve(LightCurve):
             ]
             self.t = self.t[existing_columns]
 
+        # move MJD, flux, and dflux columns to the front of the file
+        self.move_required_cols_to_front()
+
         # save
         if self.colnames.filt is None:
             self._save_single_df(input_dir, overwrite=overwrite)
@@ -235,9 +238,6 @@ class ConvertLoop:
             control_index=control_index,
         )
         lc.load_raw_t(old_filename)
-
-        # move MJD, flux, and dflux columns to the front of the file
-        lc.move_required_cols_to_front()
 
         # try to get coordinates from either command line or ra/dec columns
         coords = lc.get_coords(arg_ra, arg_dec)
@@ -379,7 +379,7 @@ if __name__ == "__main__":
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
 
-    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
     print("Success")

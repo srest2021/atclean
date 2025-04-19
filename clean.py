@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from configparser import ConfigParser
+from datetime import datetime
 import os
 import re
 from typing import Callable, Dict, List
@@ -43,23 +44,27 @@ from utils import (
 
 class OutputReadMe:
     def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
-        filename = f"{output_dir}/{tnsname}/README.md"
+        timestamp = datetime.now()
+        filename = (
+            f"{output_dir}/{tnsname}/README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
+        )
         print(
             f"\nOpening README.md file for outputting cut information at {filename}..."
         )
         self.f = open(filename, "w+")
         self.tnsname: str = tnsname
         self.cut_list: CutList = cut_list
-        self.begin(num_controls=num_controls)
+        self.begin(timestamp, num_controls=num_controls)
         print("Success")
 
-    def begin(self, num_controls=0):
+    def begin(self, timestamp: datetime, num_controls: int = 0):
         badday_cut = self.cut_list.get(BadDayCut.name())
         mjdbinsize = 1.0 if badday_cut is None else badday_cut.mjd_bin_size
 
         self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
+        self.f.write(f"\n\nTimestamp: {timestamp.strftime('%B %d, %Y at %I:%M:%S %p')}")
         self.f.write(
-            f'\n\nThe ATLAS SN light curves are separated by filter (orange and cyan) and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.'
+            f'\n\nThe SN light curves are separated by filter and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.'
         )
 
         self.f.write(
@@ -450,14 +455,14 @@ class CleanLoop:
 
     def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
         if cut is None:
-            return
+            return None
 
         print(f"\nApplying chi-square cut ({cut}):")
         if self.sn.colnames.chisquare is None:
             print(
                 "WARNING: No chi-square column name provided in config file; skipping..."
             )
-            return
+            return None
 
         if cut.use_pre_mjd0_lc:
             print("Using pre-MJD0 light curve to determine contamination and loss")
@@ -643,7 +648,7 @@ class CleanLoop:
         x2_info_row = self.apply_x2_cut(
             self.cut_list.get(ChiSquareCut.name()), plot=plot
         )
-        if self.cut_list.has(ChiSquareCut.name()):
+        if x2_info_row is not None and self.cut_list.has(ChiSquareCut.name()):
             self.x2_cut_info.add_row(x2_info_row)
 
         # control light curve cut
@@ -662,7 +667,8 @@ class CleanLoop:
 
         # plot the cleaned light curves so far
         previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
-        if plot:
+        if plot and previous_flags > 0:
+            print()
             self.p.plot_cut(self.sn, previous_flags, title="All previous cuts")
             self.p.plot_cleaned_SN(
                 self.sn, previous_flags, plot_controls=True, plot_flagged=False
@@ -997,7 +1003,7 @@ if __name__ == "__main__":
         raise RuntimeError(
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
-    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
     print("Success")
