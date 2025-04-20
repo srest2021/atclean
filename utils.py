@@ -307,11 +307,11 @@ def get_inverse_mjd_ranges(
     cur = min_mjd
     for start, end in mjd_ranges:
         if start > cur:
-            inverse.append([cur, start - 1])
-        cur = max(cur, end + 1)
+            inverse.append([cur, start])
+        cur = max(cur, end)
 
     # check if there's a gap at the end
-    if cur <= max_mjd:
+    if cur < max_mjd:
         inverse.append([cur, max_mjd])
 
     # merge exclude_mjd_ranges with the inverse list
@@ -814,7 +814,7 @@ class SnInfoTable:
         return self.t.to_string()
 
 
-def format_mjdbinsize(value):
+def format_float(value):
     """
     Format with up to 5 decimals, strip trailing zeros, then ensure at least 1 decimal
     """
@@ -840,7 +840,7 @@ def get_filename(
     filename += f".{filt}"
 
     if mjdbinsize:
-        filename += f".{format_mjdbinsize(mjdbinsize)}days"
+        filename += f".{format_float(mjdbinsize)}days"
 
     if cleaned:
         filename += f".clean"

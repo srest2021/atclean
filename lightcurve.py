@@ -27,6 +27,7 @@ from utils import (
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
+    format_float,
     get_filename,
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
@@ -603,14 +604,14 @@ class AveragedSupernova(Supernova):
         for control_index in self.lc_indices:
             self.lcs[control_index].set_valid_mjd_ix(self._mjd_ranges)
 
-    def set_pre_MJD0_ix(self, mjd0: Optional[float] = None):
+    def set_pre_MJD0_ix(self, mjd0: Optional[float] = None, control_index: int = 0):
         if self.mjd0 is None and mjd0 is None:
             raise RuntimeError("Cannot set pre-MJD0 indices without MJD0")
 
         if mjd0 is not None:
             self.mjd0 = mjd0
 
-        self.lcs[0].set_pre_MJD0_ix(self.mjd0)
+        self.lcs[control_index].set_pre_MJD0_ix(self.mjd0)
 
     def load(self, input_dir, control_index=0):
         self.lcs[control_index] = AveragedLightCurve(
@@ -623,7 +624,7 @@ class AveragedSupernova(Supernova):
         self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
         if self.mjd0 is not None:
-            self.set_pre_MJD0_ix()
+            self.set_pre_MJD0_ix(control_index=control_index)
 
     def load_all(self, input_dir, num_controls=0):
         self.lcs = {}
@@ -745,7 +746,9 @@ class LightCurve(pdastrostatsclass):
             else:
                 indices = self.get_good_indices(flag)
         if mjd0 is not None:
-            indices = AandB(indices, self.get_preMJD0_indices(mjd0))
+            pre_mjd0_ix = self.get_preMJD0_indices(mjd0)
+            if len(pre_mjd0_ix) > 0:
+                indices = AandB(indices, pre_mjd0_ix)
 
         flux_min = self.t.loc[indices, self.colnames.flux].min()
         flux_max = self.t.loc[indices, self.colnames.flux].max()
@@ -761,8 +764,10 @@ class LightCurve(pdastrostatsclass):
             raise AttributeError(f"Invalid colname_attr: '{colname_attr}'")
         colname = getattr(self.colnames, colname_attr)
 
-        if mjd0 is None:
-            end = self.t.at[len(self.t) - 1, colname]
+        first_mjd = self.t.at[0, colname]
+        last_mjd = self.t.at[len(self.t) - 1, colname]
+        if mjd0 is None or mjd0 >= last_mjd or mjd0 <= first_mjd:
+            end = last_mjd
         else:
             if colname_attr != "mjd" and colname_attr != "mjdbin":
                 raise ValueError(
@@ -770,8 +775,7 @@ class LightCurve(pdastrostatsclass):
                 )
             end = mjd0
 
-        start = self.t.at[0, colname]
-        return [start, end]
+        return [first_mjd, end]
 
     def can_plot(self, ix: List[int], columns: List[str] = None):
         if columns is None:
@@ -1386,6 +1390,9 @@ class AveragedLightCurve(LightCurve):
             )
         return self._valid_mjd_ix
 
+    def has_pre_mjd0_ix(self):
+        return self._pre_mjd0_ix is not None and len(self._pre_mjd0_ix) > 0
+
     @property
     def pre_mjd0_ix(self):
         if self._pre_mjd0_ix is None:
@@ -1417,8 +1424,8 @@ class AveragedLightCurve(LightCurve):
         )
 
         if len(self._pre_mjd0_ix) < 1:
-            raise RuntimeError(
-                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            print(
+                f"WARNING: No pre-MJD0 indices found in light curve (control index {self.control_index})"
             )
 
     def get_min_and_max_mjd(self):
@@ -1426,7 +1433,7 @@ class AveragedLightCurve(LightCurve):
             raise RuntimeError("Light curve empty; cannot return min or max MJD ")
         return (
             np.floor(self.t[self.colnames.mjdbin].iloc[0]),
-            np.floor(self.t[self.colnames.mjdbin].iloc[-1]),
+            np.ceil(self.t[self.colnames.mjdbin].iloc[-1]),
         )
 
     def get_xlims(self, mjd0: float = None, colname_attr: str = "mjdbin"):
@@ -1727,7 +1734,9 @@ class SimDetecSupernova(AveragedSupernova):
         sigma_kerns: List[int],
         mjd_ranges: List[List[float]],
     ):
-        print("Getting preliminary valid FOM limit ranges...")
+        print(
+            f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}..."
+        )
         res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
 
         self.set_mjd_ranges(mjd_ranges)
@@ -1748,7 +1757,7 @@ class SimDetecSupernova(AveragedSupernova):
         valid_ix: bool = False,
         pre_mjd0_ix: bool = False,
     ):
-        msg = f"Applying rolling sum of sigma_kern={sigma_kern} to all light curves"
+        msg = f"Applying rolling sum of sigma_kern={format_float(sigma_kern)} to all light curves"
         details = []
         if valid_ix:
             details.append(
@@ -1764,7 +1773,7 @@ class SimDetecSupernova(AveragedSupernova):
         sn_indices = self.lcs[0].getindices(
             indices=self.lcs[0].valid_mjd_ix if valid_ix else None
         )
-        if pre_mjd0_ix:
+        if pre_mjd0_ix and self.lcs[0].has_pre_mjd0_ix():
             sn_indices = AandB(sn_indices, self.lcs[0].pre_mjd0_ix)
 
         # apply rolling sum to SN lc
@@ -1801,7 +1810,7 @@ class SimDetecSupernova(AveragedSupernova):
         self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
         if self.mjd0 is not None:
-            self.set_pre_MJD0_ix()
+            self.set_pre_MJD0_ix(control_index=control_index)
 
 
 class SimDetecLightCurve(AveragedLightCurve):
@@ -1840,7 +1849,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 
-        if self.control_index == 0:
+        if self.control_index == 0 and self.has_pre_mjd0_ix():
             self.apply_rolling_sum(sigma_kern, indices=self.pre_mjd0_ix)
         else:
             self.apply_rolling_sum(sigma_kern)
@@ -1848,7 +1857,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         # for control light curves, loop through all valid indices
         # for the SN light curve, only loop through valid indices before MJD0
         ix = self.valid_mjd_ix
-        if self.control_index == 0:
+        if self.control_index == 0 and self.has_pre_mjd0_ix():
             ix = AandB(ix, self.pre_mjd0_ix)
 
         # find any triggers above the FOM limit
@@ -1858,7 +1867,9 @@ class SimDetecLightCurve(AveragedLightCurve):
         for k in ix:
             if self.t.at[k, self.colnames.snrsumnorm] > fom_limit:
                 if not above_lim:
-                    mjds.append(self.t.at[k, self.colnames.mjdbin])
+                    mjds.append(
+                        self.t.loc[k, [self.colnames.mjdbin, self.colnames.flux]]
+                    )
                     count += 1
                 above_lim = True
             else:
@@ -1901,6 +1912,15 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
         )
 
+    def get_new_gaussian_sigma(self, sigma_kern):
+        ratio = sigma_kern / self.mjdbinsize
+        if ratio > 3:
+            return round(ratio)
+        elif ratio < 0.3:
+            return round(ratio, 5)
+        else:  # 0.3 < ratio < 3
+            return round(ratio, 1)
+
     # apply a rolling sum to the light curve and add SNR, SNRsum, and SNRsumnorm columns
     def apply_rolling_sum(self, sigma_kern, indices=None, flag=0x800000, verbose=False):
         if sigma_kern < self.mjdbinsize:
@@ -1922,11 +1942,12 @@ class SimDetecLightCurve(AveragedLightCurve):
             / self.t.loc[good_ix, self.colnames.dflux]
         )
 
-        new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
+        new_gaussian_sigma = self.get_new_gaussian_sigma(sigma_kern)
         """
+        new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
         for TESS/other lcs:
         - if ratio > 3, leave it
-        - if ratio < 3, round to 1 decimal places
+        - if ratio < 3, round to 1 decimal place
         - if ratio < .3, don't round at all, or round to 5 decimal places
         """
 

@@ -783,7 +783,7 @@ class ContaminationTable:
             self.t = None
             self.is_prelim = False
             raise RuntimeError(
-                f"Could not construt preliminary contamination table: {str(e)}"
+                f"Could not construct preliminary contamination table: {str(e)}"
             )
 
     def get_initial_limits(

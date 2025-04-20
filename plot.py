@@ -17,7 +17,13 @@ from lightcurve import (
     Supernova,
     AveragedSupernova,
 )
-from utils import TEMPLATE_CHANGE_1_MJD, TEMPLATE_CHANGE_2_MJD, ChiSquareCut, PlotLimits
+from utils import (
+    TEMPLATE_CHANGE_1_MJD,
+    TEMPLATE_CHANGE_2_MJD,
+    ChiSquareCut,
+    PlotLimits,
+    format_float,
+)
 
 # plotting styles
 plt.rc("axes", titlesize=17)
@@ -41,41 +47,64 @@ matplotlib.rcParams["axes.linewidth"] = 1
 MARKER_SIZE = 30
 MARKER_EDGEWIDTH = 1.5
 
-# color scheme
-SN_FLUX_COLORS = {
-    # ATLAS
-    "o": "orange",  # Orange filter
-    "c": "cyan",  # Cyan filter
-    # Rubin
-    "u": "purple",  # Ultraviolet (u-band)
-    "g": "green",  # Green (g-band)
-    "r": "salmon",  # Red (r-band)
-    "i": "indigo",  # Near-infrared (i-band)
-    "z": "brown",  # Deep red (z-band)
-    "y": "darkred",  # Near-infrared (y-band)
-    # TESS
-    "tess": "pink",  # TESS uses a single wide bandpass (red-sensitive)
+# # color scheme
+# SN_FLUX_COLORS = {
+#     # ATLAS
+#     "o": "orange",  # Orange filter
+#     "c": "cyan",  # Cyan filter
+#     # Rubin
+#     "u": "purple",  # Ultraviolet (u-band)
+#     "g": "green",  # Green (g-band)
+#     "r": "salmon",  # Red (r-band)
+#     "i": "indigo",  # Near-infrared (i-band)
+#     "z": "brown",  # Deep red (z-band)
+#     "y": "darkred",  # Near-infrared (y-band)
+#     # TESS
+#     "tess": "palevioletred",  # TESS uses a single wide bandpass (red-sensitive)
+# }
+# SN_FLAGGED_FLUX_COLOR = "red"
+# CONTROL_FLUX_COLOR = "steelblue"
+# SELECT_CONTROL_FLUX_COLOR = "forestgreen"
+# FACE_COLOR = "whitesmoke"
+# SN_FOM_COLOR = "deeppink"
+# CONTROL_FOM_COLOR = "cornflowerblue"
+# SELECT_CONTROL_FOM_COLOR = "mediumblue"
+
+COLOR_SCHEME = {
+    "sn_flux": {
+        "o": "orange",
+        "c": "cyan",
+        "u": "purple",
+        "g": "green",
+        "r": "salmon",
+        "i": "indigo",
+        "z": "brown",
+        "y": "darkred",
+        "tess": "palevioletred",
+    },
+    "sn_flagged_flux": "red",
+    "control_flux": "steelblue",
+    "select_control_flux": "forestgreen",
+    "face": "whitesmoke",
+    "sn_fom": "deeppink",
+    "control_fom": "cornflowerblue",
+    "select_control_fom": "mediumblue",
 }
-SN_FLAGGED_FLUX_COLOR = "red"
-CONTROL_FLUX_COLOR = "steelblue"
-SELECT_CONTROL_FLUX_COLOR = "forestgreen"
-FACE_COLOR = "whitesmoke"
-SN_FOM_COLOR = "deeppink"
-CONTROL_FOM_COLOR = "cornflowerblue"
-SELECT_CONTROL_FOM_COLOR = "mediumblue"
-colors = [
-    "indianred",
-    "salmon",
-    "sandybrown",
-    "gold",
-    "yellowgreen",
-    "mediumseagreen",
-    "turquoise",
-    "lightskyblue",
-    "plum",
-    "palevioletred",
-]
-plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(color=colors)
+
+plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(
+    color=[
+        "indianred",
+        "salmon",
+        "sandybrown",
+        "gold",
+        "yellowgreen",
+        "mediumseagreen",
+        "turquoise",
+        "lightskyblue",
+        "plum",
+        "palevioletred",
+    ]
+)
 
 # line styles
 SIM_BUMP_LS = "dashed"
@@ -83,10 +112,19 @@ FOM_LIMIT_LS = "dotted"
 
 
 class Plot:
-    def __init__(self, output_dir: str = None):
+    def __init__(self, output_dir: str = None, color_scheme: Dict = None):
         self.output_dir = output_dir
 
+        if color_scheme:
+            print("Using custom color scheme for plots")
+            self.color_scheme = color_scheme
+        else:
+            print("Using default color scheme for plots")
+            self.color_scheme = COLOR_SCHEME
+
     def save_plot(self, filename, **kwargs):
+        if self.output_dir is None:
+            raise RuntimeError(f"No output_dir set; cananot save plot")
         filename = f"{self.output_dir}/{filename}.png"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -167,7 +205,7 @@ class Plot:
     ):
         ax.minorticks_on()
         ax.tick_params(direction="in", which="both")
-        ax.set_facecolor(FACE_COLOR)
+        ax.set_facecolor(self.color_scheme["face"])
         if axhline:
             ax.axhline(color="k", linewidth=1.5, zorder=0)
 
@@ -291,7 +329,13 @@ class Plot:
             # plot control light curves
             label = f"{sn.num_controls} control light curves"
             for control_index in sn.control_lc_indices:
-                self._plot_lc(ax1, sn, control_index, CONTROL_FLUX_COLOR, label=label)
+                self._plot_lc(
+                    ax1,
+                    sn,
+                    control_index,
+                    self.color_scheme["control_flux"],
+                    label=label,
+                )
                 if not label is None:
                     label = None
 
@@ -357,7 +401,7 @@ class Plot:
             ax1,
             sn,
             control_index,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
             label="Cleaned measurements",
         )
@@ -365,7 +409,7 @@ class Plot:
             ax2,
             sn,
             control_index,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
             label="Cleaned measurements",
         )
@@ -374,7 +418,7 @@ class Plot:
             ax1,
             sn,
             control_index,
-            SN_FLAGGED_FLUX_COLOR,
+            self.color_scheme["sn_flagged_flux"],
             indices=bad_ix,
             label="Flagged measurements",
             open=True,
@@ -423,7 +467,7 @@ class Plot:
                     ax1,
                     sn,
                     control_index,
-                    CONTROL_FLUX_COLOR,
+                    self.color_scheme["control_flux"],
                     indices=good_ix,
                     label=label,
                 )
@@ -436,7 +480,7 @@ class Plot:
                 ax1,
                 sn,
                 0,
-                SN_FLAGGED_FLUX_COLOR,
+                self.color_scheme["sn_flagged_flux"],
                 indices=bad_ix,
                 label=f"Flagged SN measurements",
                 open=True,
@@ -447,7 +491,7 @@ class Plot:
             ax1,
             sn,
             0,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
             label=f"Cleaned SN measurements",
         )
@@ -492,7 +536,7 @@ class Plot:
                     ax1,
                     avg_sn,
                     control_index,
-                    CONTROL_FLUX_COLOR,
+                    self.color_scheme["control_flux"],
                     indices=good_ix,
                     label=label,
                 )
@@ -506,7 +550,7 @@ class Plot:
                 ax1,
                 avg_sn,
                 0,
-                SN_FLAGGED_FLUX_COLOR,
+                self.color_scheme["sn_flagged_flux"],
                 indices=bad_ix,
                 label=f"Flagged SN bins",
                 open=True,
@@ -517,7 +561,7 @@ class Plot:
             ax1,
             avg_sn,
             0,
-            SN_FLUX_COLORS[avg_sn.filt],
+            self.color_scheme["sn_flux"][avg_sn.filt],
             indices=good_ix,
             label=f"Cleaned SN bins",
         )
@@ -623,10 +667,10 @@ class Plot:
             lc.t[lc.colnames.flux],
             yerr=lc.t[lc.colnames.dflux],
             fmt="none",
-            ecolor=SN_FLUX_COLORS[lc.filt],
+            ecolor=self.color_scheme["sn_flux"][lc.filt],
             elinewidth=1,
             capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
+            c=self.color_scheme["sn_flux"][lc.filt],
             alpha=0.5,
         )
         ax1.scatter(
@@ -634,7 +678,7 @@ class Plot:
             lc.t[lc.colnames.flux],
             s=MARKER_SIZE,
             lw=MARKER_EDGEWIDTH,
-            color=SN_FLUX_COLORS[lc.filt],
+            color=self.color_scheme["sn_flux"][lc.filt],
             marker="o",
             alpha=0.5,
         )
@@ -644,10 +688,10 @@ class Plot:
             lc.t[lc.colnames.flux],
             yerr=lc.t[lc.colnames.dflux_new],
             fmt="none",
-            ecolor=SN_FLUX_COLORS[lc.filt],
+            ecolor=self.color_scheme["sn_flux"][lc.filt],
             elinewidth=1,
             capsize=1.2,
-            c=SN_FLUX_COLORS[lc.filt],
+            c=self.color_scheme["sn_flux"][lc.filt],
             alpha=0.5,
         )
         ax2.scatter(
@@ -655,7 +699,7 @@ class Plot:
             lc.t[lc.colnames.flux],
             s=MARKER_SIZE,
             lw=MARKER_EDGEWIDTH,
-            color=SN_FLUX_COLORS[lc.filt],
+            color=self.color_scheme["sn_flux"][lc.filt],
             marker="o",
             alpha=0.5,
         )
@@ -797,17 +841,23 @@ class Plot:
         lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
-        ax1.set_title("Pre-SN Light Curve", fontsize=12)
+        ax1.set_title(
+            f"{'Pre-SN ' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}Light Curve",
+            fontsize=12,
+        )
 
         self._setup_ax(ax2, lims)
-        ax2.set_title("Binned Pre-SN Light Curve", fontsize=12)
+        ax2.set_title(
+            f"Binned {'Pre-SN ' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}Light Curve",
+            fontsize=12,
+        )
 
         # cleaned original light curve
         self._plot_lc(
             ax1,
             sn,
             0,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=sn.lcs[0].get_good_indices(flag),
             label="Cleaned",
         )
@@ -815,7 +865,7 @@ class Plot:
             ax1,
             sn,
             0,
-            SN_FLAGGED_FLUX_COLOR,
+            self.color_scheme["sn_flagged_flux"],
             indices=sn.lcs[0].get_bad_indices(flag),
             label="Flagged",
             open=True,
@@ -826,7 +876,7 @@ class Plot:
             ax2,
             avg_sn,
             0,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=avg_sn.lcs[0].get_good_indices(flag),
             label="Cleaned",
         )
@@ -834,7 +884,7 @@ class Plot:
             ax2,
             avg_sn,
             0,
-            SN_FLAGGED_FLUX_COLOR,
+            self.color_scheme["sn_flagged_flux"],
             indices=avg_sn.lcs[0].get_bad_indices(flag),
             label="Flagged",
             open=True,
@@ -890,7 +940,7 @@ class Plot:
             ax1,
             sn,
             0,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=sn.lcs[0].get_good_indices(flag),
             label="Cleaned",
         )
@@ -898,7 +948,7 @@ class Plot:
             ax1,
             sn,
             0,
-            SN_FLAGGED_FLUX_COLOR,
+            self.color_scheme["sn_flagged_flux"],
             indices=sn.lcs[0].get_bad_indices(flag),
             label="Flagged",
             open=True,
@@ -909,7 +959,7 @@ class Plot:
             ax2,
             avg_sn,
             0,
-            SN_FLUX_COLORS[sn.filt],
+            self.color_scheme["sn_flux"][sn.filt],
             indices=avg_sn.lcs[0].get_good_indices(flag),
             label="Cleaned",
         )
@@ -917,7 +967,7 @@ class Plot:
             ax2,
             avg_sn,
             0,
-            SN_FLAGGED_FLUX_COLOR,
+            self.color_scheme["sn_flagged_flux"],
             indices=avg_sn.lcs[0].get_bad_indices(flag),
             label="Flagged",
             open=True,
@@ -930,6 +980,7 @@ class Plot:
                         mjd_range[0],
                         mjd_range[1],
                         color=range_color,
+                        hatch="xx",
                         alpha=0.2,
                         zorder=0,
                     )
@@ -969,9 +1020,8 @@ class Plot:
                 "set two_columns=False for one column"
             )
 
-        control_indices = sn.control_lc_indices
         lims = self.get_lims(
-            sn, control_index=control_indices[0], custom_lims=custom_lims
+            sn, control_index=sn.control_lc_indices[0], custom_lims=custom_lims
         )
 
         # set up figure and axes
@@ -991,10 +1041,10 @@ class Plot:
             axes = np.atleast_1d(axes)
 
         # loop over control light curves
-        for idx, control_index in enumerate(control_indices):
+        for idx, control_index in enumerate(sn.control_lc_indices):
             ax: Axes = axes[idx]
 
-            is_last_row = idx >= len(control_indices) - (2 if two_columns else 1)
+            is_last_row = idx >= len(sn.control_lc_indices) - (2 if two_columns else 1)
             is_rightmost_col = idx % 2 == 1 if two_columns else False
             self._setup_ax(
                 ax,
@@ -1007,7 +1057,11 @@ class Plot:
 
             good_ix = sn.lcs[control_index].get_good_indices(flag)
             self._plot_lc(
-                ax, sn, control_index, SELECT_CONTROL_FLUX_COLOR, indices=good_ix
+                ax,
+                sn,
+                control_index,
+                self.color_scheme["select_control_flux"],
+                indices=good_ix,
             )
 
             label_text = (
@@ -1051,12 +1105,15 @@ class Plot:
         lims = self.get_lims(avg_sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
-        ax1.set_title("Binned & Cleaned Pre-SN Light Curve", fontsize=12)
+        ax1.set_title(
+            f"Binned & Cleaned {'Pre-SN ' if lims.xlower <= avg_sn.mjd0 <= lims.xupper else ''}Light Curve",
+            fontsize=12,
+        )
         self._plot_lc(
             ax1,
             avg_sn,
             0,
-            SN_FLUX_COLORS[avg_sn.filt],
+            self.color_scheme["sn_flux"][avg_sn.filt],
             indices=avg_sn.lcs[0].get_good_indices(flag),
         )
 
@@ -1068,7 +1125,7 @@ class Plot:
             ax2,
             avg_sn,
             select_control_index,
-            SELECT_CONTROL_FLUX_COLOR,
+            self.color_scheme["select_control_flux"],
             indices=avg_sn.lcs[select_control_index].get_good_indices(flag),
         )
 
@@ -1137,25 +1194,33 @@ class Plot:
                 label = None
                 if control_index == sn.control_lc_indices[0]:
                     label = f"{len(sn.control_lc_indices) - 1} Control Light Curves (#s: {label_control_lc_indices})"
-                self._plot_snr(ax1, sn, control_index, CONTROL_FOM_COLOR, label=label)
+                self._plot_snr(
+                    ax1,
+                    sn,
+                    control_index,
+                    self.color_scheme["control_fom"],
+                    label=label,
+                )
 
             # selected control lc fom
             self._plot_snr(
                 ax1,
                 sn,
                 select_control_index,
-                SELECT_CONTROL_FOM_COLOR,
+                self.color_scheme["select_control_fom"],
                 label=f"Selected Control Light Curve #{select_control_index}",
             )
 
             # pre-SN lc fom
-            self._plot_snr(ax1, sn, 0, SN_FOM_COLOR, label="Pre-SN Light Curve")
+            self._plot_snr(
+                ax1, sn, 0, self.color_scheme["sn_fom"], label="Pre-SN Light Curve"
+            )
 
             # sigma_kern label
             ax1.text(
                 0.98,
                 0.07,
-                r"$\sigma_{\rm kernel}$ = " + str(sigma_kern),
+                r"$\sigma_{\rm kernel}$ = " + format_float(sigma_kern),
                 ha="right",
                 va="bottom",
                 transform=ax1.transAxes,
@@ -1182,7 +1247,8 @@ class Plot:
                 ax1.text(
                     0.05,
                     1.1 * fom_limits[sigma_kern],
-                    r"$\Sigma_{\rm FOM, limit}$ = " + str(fom_limits[sigma_kern]),
+                    r"$\Sigma_{\rm FOM, limit}$ = "
+                    + format_float(fom_limits[sigma_kern]),
                     color="k",
                     transform=ax1.get_yaxis_transform(),
                     zorder=40,
@@ -1195,7 +1261,7 @@ class Plot:
                 all_fom_dict[sigma_kern],
                 bins=20,
                 orientation="horizontal",
-                color=CONTROL_FOM_COLOR,
+                color=self.color_scheme["control_fom"],
             )
 
             if i == 0:
@@ -1261,7 +1327,7 @@ class Plot:
             ax.text(
                 0.02,
                 0.95,
-                r"$\sigma_{\rm kernel}$ = " + str(sigma_kern),
+                r"$\sigma_{\rm kernel}$ = " + format_float(sigma_kern),
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
@@ -1270,14 +1336,14 @@ class Plot:
             ax.hist(
                 all_fom,
                 bins=np.linspace(min(all_fom), max(all_fom), 20),
-                color=CONTROL_FOM_COLOR,
+                color=self.color_scheme["control_fom"],
             )
 
             ax.axvline(fom_limit, linewidth=1.5, color="k", linestyle=FOM_LIMIT_LS)
             ax.text(
                 fom_limit + 0.5,
                 0.5 * ax.get_ylim()[1],
-                r"$\Sigma_{\rm FOM, limit}$ = " + f"{fom_limit:0.2f}",
+                r"$\Sigma_{\rm FOM, limit}$ = " + f"{format_float(fom_limit)}",
                 fontsize=11,
             )
 
