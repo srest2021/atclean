@@ -1758,23 +1758,17 @@ class SimDetecSupernova(AveragedSupernova):
         pre_mjd0_ix: bool = False,
     ):
         msg = f"Applying rolling sum of sigma_kern={format_float(sigma_kern)} to all light curves"
-        details = []
+        out = []
+        sn_indices = self.lcs[0].getindices()
         if valid_ix:
-            details.append(
-                "using only MJDs in included MJD ranges for all light curves"
-            )
-        if pre_mjd0_ix:
-            details.append("using only pre-MJD0 MJDs for SN light curve")
-        if details:
-            msg += " (" + "; ".join(details) + ")"
-        print(msg + "...")
-
-        # filter SN indices by pre-MJD0 and valid MJD ranges if needed
-        sn_indices = self.lcs[0].getindices(
-            indices=self.lcs[0].valid_mjd_ix if valid_ix else None
-        )
+            out.append("using only MJDs in included MJD ranges for all light curves")
+            sn_indices = AandB(sn_indices, valid_ix)
         if pre_mjd0_ix and self.lcs[0].has_pre_mjd0_ix():
+            out.append("using only pre-MJD0 MJDs for SN light curve")
             sn_indices = AandB(sn_indices, self.lcs[0].pre_mjd0_ix)
+        if out:
+            msg += " (" + "; ".join(out) + ")"
+        print(msg + "...")
 
         # apply rolling sum to SN lc
         self.lcs[0].apply_rolling_sum(
@@ -1867,9 +1861,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         for k in ix:
             if self.t.at[k, self.colnames.snrsumnorm] > fom_limit:
                 if not above_lim:
-                    mjds.append(
-                        self.t.loc[k, [self.colnames.mjdbin, self.colnames.flux]]
-                    )
+                    mjds.append(self.t.at[k, self.colnames.mjdbin])
                     count += 1
                 above_lim = True
             else:

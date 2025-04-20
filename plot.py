@@ -1158,6 +1158,7 @@ class Plot:
             max_freq = max(max_freq, counts.max())
 
         for i, row in enumerate(axes):
+            sigma_kern = sigma_kerns[i]
             sn.apply_rolling_sums(sigma_kern, flag=flag, pre_mjd0_ix=True)
 
             if len(sigma_kerns) == 1:
@@ -1193,7 +1194,7 @@ class Plot:
                     continue
                 label = None
                 if control_index == sn.control_lc_indices[0]:
-                    label = f"{len(sn.control_lc_indices) - 1} Control Light Curves (#s: {label_control_lc_indices})"
+                    label = f"{len(sn.control_lc_indices) - 1} Controls (#s: {label_control_lc_indices})"
                 self._plot_snr(
                     ax1,
                     sn,
@@ -1208,12 +1209,16 @@ class Plot:
                 sn,
                 select_control_index,
                 self.color_scheme["select_control_fom"],
-                label=f"Selected Control Light Curve #{select_control_index}",
+                label=f"Selected Control #{select_control_index}",
             )
 
             # pre-SN lc fom
             self._plot_snr(
-                ax1, sn, 0, self.color_scheme["sn_fom"], label="Pre-SN Light Curve"
+                ax1,
+                sn,
+                0,
+                self.color_scheme["sn_fom"],
+                label=f"{'Pre-' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}SN",
             )
 
             # sigma_kern label
