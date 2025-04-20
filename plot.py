@@ -47,29 +47,6 @@ matplotlib.rcParams["axes.linewidth"] = 1
 MARKER_SIZE = 30
 MARKER_EDGEWIDTH = 1.5
 
-# # color scheme
-# SN_FLUX_COLORS = {
-#     # ATLAS
-#     "o": "orange",  # Orange filter
-#     "c": "cyan",  # Cyan filter
-#     # Rubin
-#     "u": "purple",  # Ultraviolet (u-band)
-#     "g": "green",  # Green (g-band)
-#     "r": "salmon",  # Red (r-band)
-#     "i": "indigo",  # Near-infrared (i-band)
-#     "z": "brown",  # Deep red (z-band)
-#     "y": "darkred",  # Near-infrared (y-band)
-#     # TESS
-#     "tess": "palevioletred",  # TESS uses a single wide bandpass (red-sensitive)
-# }
-# SN_FLAGGED_FLUX_COLOR = "red"
-# CONTROL_FLUX_COLOR = "steelblue"
-# SELECT_CONTROL_FLUX_COLOR = "forestgreen"
-# FACE_COLOR = "whitesmoke"
-# SN_FOM_COLOR = "deeppink"
-# CONTROL_FOM_COLOR = "cornflowerblue"
-# SELECT_CONTROL_FOM_COLOR = "mediumblue"
-
 COLOR_SCHEME = {
     "sn_flux": {
         "o": "orange",
@@ -322,12 +299,12 @@ class Plot:
         title = f"SN {sn.tnsname}"
         if plot_controls and sn.num_controls > 0:
             title += f" & control light curves"
-        title += f" {sn.filt}-band flux"
+        title += f" ({sn.filt}-band)"
         ax1.set_title(title)
 
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
-            label = f"{sn.num_controls} control light curves"
+            label = f"{sn.num_controls} controls"
             for control_index in sn.control_lc_indices:
                 self._plot_lc(
                     ax1,
@@ -343,14 +320,10 @@ class Plot:
         postMJD0_ix = sn.lcs[0].get_postMJD0_indices(sn.mjd0)
 
         # plot pre-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "magenta", indices=preMJD0_ix, label="Pre-MJD0 light curve"
-        )
+        self._plot_lc(ax1, sn, 0, "magenta", indices=preMJD0_ix, label="Pre-MJD0 SN")
 
         # plot post-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "lime", indices=postMJD0_ix, label="Post-MJD0 light curve"
-        )
+        self._plot_lc(ax1, sn, 0, "lime", indices=postMJD0_ix, label="Post-MJD0 SN")
 
         if plot_template_changes:
             ax1.axvline(
@@ -403,7 +376,7 @@ class Plot:
             control_index,
             self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
-            label="Cleaned measurements",
+            label=f"Cleaned {'SN' if control_index==0 else f'control #{control_index}'}",
         )
         self._plot_lc(
             ax2,
@@ -411,7 +384,7 @@ class Plot:
             control_index,
             self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
-            label="Cleaned measurements",
+            label=f"Cleaned {'SN' if control_index==0 else f'control #{control_index}'}",
         )
 
         self._plot_lc(
@@ -420,7 +393,7 @@ class Plot:
             control_index,
             self.color_scheme["sn_flagged_flux"],
             indices=bad_ix,
-            label="Flagged measurements",
+            label=f"Flagged {'SN' if control_index==0 else f'control #{control_index}'}",
             open=True,
         )
 
@@ -452,7 +425,7 @@ class Plot:
         title = f"Cleaned SN {sn.tnsname}"
         if plot_controls and sn.num_controls > 0:
             title += f" & control light curves"
-        title += f" {sn.filt}-band flux"
+        title += f" ({sn.filt}-band)"
         ax1.set_title(title)
 
         lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag)
@@ -460,7 +433,7 @@ class Plot:
 
         if plot_controls and sn.num_controls > 0:
             # plot control light curves
-            label = f"Cleaned control measurements"
+            label = f"Cleaned controls"
             for control_index in sn.control_lc_indices:
                 good_ix = sn.lcs[control_index].get_good_indices(flag)
                 self._plot_lc(
@@ -482,7 +455,7 @@ class Plot:
                 0,
                 self.color_scheme["sn_flagged_flux"],
                 indices=bad_ix,
-                label=f"Flagged SN measurements",
+                label=f"Flagged SN",
                 open=True,
             )
 
@@ -493,7 +466,7 @@ class Plot:
             0,
             self.color_scheme["sn_flux"][sn.filt],
             indices=good_ix,
-            label=f"Cleaned SN measurements",
+            label=f"Cleaned SN",
         )
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
@@ -521,7 +494,7 @@ class Plot:
         title = f"Cleaned & averaged SN {avg_sn.tnsname}"
         if plot_controls and avg_sn.num_controls > 0:
             title += f" & control light curves"
-        title += f" {avg_sn.filt}-band flux"
+        title += f" ({avg_sn.filt}-band)"
         ax1.set_title(title)
 
         lims = self.get_lims(avg_sn, custom_lims=custom_lims, flag=flag)
@@ -941,7 +914,7 @@ class Plot:
             sn,
             0,
             self.color_scheme["sn_flux"][sn.filt],
-            indices=sn.lcs[0].get_good_indices(flag),
+            indices=sn.lcs[0].get_good_indices(flag=flag),
             label="Cleaned",
         )
         self._plot_lc(
@@ -949,7 +922,7 @@ class Plot:
             sn,
             0,
             self.color_scheme["sn_flagged_flux"],
-            indices=sn.lcs[0].get_bad_indices(flag),
+            indices=sn.lcs[0].get_bad_indices(flag=flag),
             label="Flagged",
             open=True,
         )
@@ -960,7 +933,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][sn.filt],
-            indices=avg_sn.lcs[0].get_good_indices(flag),
+            indices=avg_sn.get_good_indices(flag=flag),
             label="Cleaned",
         )
         self._plot_lc(
@@ -968,7 +941,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flagged_flux"],
-            indices=avg_sn.lcs[0].get_bad_indices(flag),
+            indices=avg_sn.get_bad_indices(flag=flag),
             label="Flagged",
             open=True,
         )
@@ -1091,7 +1064,6 @@ class Plot:
         self,
         avg_sn: AveragedSupernova,
         select_control_index: int,
-        flag: int,
         custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "binned_examples",
@@ -1102,7 +1074,9 @@ class Plot:
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
 
-        lims = self.get_lims(avg_sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
+        lims = self.get_lims(
+            avg_sn, custom_lims=custom_lims, flag=avg_sn.flag, pre_sn=True
+        )
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
         ax1.set_title(
@@ -1114,7 +1088,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][avg_sn.filt],
-            indices=avg_sn.lcs[0].get_good_indices(flag),
+            indices=avg_sn.get_good_indices(),
         )
 
         self._setup_ax(ax2, lims)
@@ -1126,7 +1100,7 @@ class Plot:
             avg_sn,
             select_control_index,
             self.color_scheme["select_control_flux"],
-            indices=avg_sn.lcs[select_control_index].get_good_indices(flag),
+            indices=avg_sn.get_good_indices(),
         )
 
         if save:
@@ -1140,7 +1114,6 @@ class Plot:
         all_fom_dict: Dict[int, pd.Series],
         sigma_kerns: List[int],
         select_control_index: int,
-        flag: int,
         fom_limits: Optional[Dict[int, float]] = None,
         save: bool = False,
         filename: str = "all_fom",
@@ -1159,7 +1132,7 @@ class Plot:
 
         for i, row in enumerate(axes):
             sigma_kern = sigma_kerns[i]
-            sn.apply_rolling_sums(sigma_kern, flag=flag, pre_mjd0_ix=True)
+            sn.apply_rolling_sums(sigma_kern, pre_mjd0_ix=True)
 
             if len(sigma_kerns) == 1:
                 sigma_kern = sigma_kerns[0]

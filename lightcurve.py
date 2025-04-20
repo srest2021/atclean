@@ -45,7 +45,7 @@ class Supernova:
         ra: str = None,
         dec: str = None,
         mjd0: float = None,
-        filt="o",
+        filt: str = "o",
     ):
         self.colnames = deepcopy(colnames)
 
@@ -77,7 +77,7 @@ class Supernova:
             )
         )
 
-        lims.set_ylims(self.lcs[control_index].get_ylims(flag))
+        lims.set_ylims(self.lcs[control_index].get_ylims(flag=flag))
 
         return lims
 
@@ -404,6 +404,7 @@ class Supernova:
             mjd0=self.mjd0,
             filt=self.filt,
             mjdbinsize=cut.mjd_bin_size,
+            flag=cut.flag,
         )
         avg_sn.num_controls = self.num_controls
 
@@ -572,8 +573,10 @@ class AveragedSupernova(Supernova):
         mjd0: float | None = None,
         mjdbinsize: float = 1.0,
         filt: str = "o",
+        flag: int = 0x800000,
     ):
         Supernova.__init__(self, colnames, tnsname, ra, dec, mjd0, filt)
+        self.flag = flag
         self.mjdbinsize = mjdbinsize
         self._mjd_ranges = None
 
@@ -592,6 +595,34 @@ class AveragedSupernova(Supernova):
             raise RuntimeError(
                 f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
+
+    def get_good_indices(self, control_index: int = 0, flag: Optional[int] = None):
+        # if flag is 0 or no mask column, return all indices
+        if flag == 0 or not self.colnames.mask in self.lcs[control_index].t.columns:
+            return self.lcs[control_index].getindices()
+
+        if flag is None:
+            flag = self.flag
+
+        if flag is None:
+            # get all flags present in mask column
+            flag = self.lcs[control_index].get_flags()
+
+        return self.lcs[control_index].ix_unmasked(self.colnames.mask, maskval=flag)
+
+    def get_bad_indices(self, control_index: int = 0, flag: Optional[int] = None):
+        # if flag is 0 or no mask column, return no indices
+        if flag == 0 or not self.colnames.mask in self.lcs[control_index].t.columns:
+            return []
+
+        if flag is None:
+            flag = self.flag
+
+        if flag is None:
+            # get all flags present in mask column
+            flag = self.lcs[control_index].get_flags()
+
+        return self.lcs[control_index].ix_masked(self.colnames.mask, maskval=flag)
 
     def set_mjd_ranges(self, mjd_ranges: List[List[float]]):
         if self._mjd_ranges is not None and set(map(tuple, mjd_ranges)) == set(
@@ -1698,17 +1729,24 @@ class SimDetecSupernova(AveragedSupernova):
         tnsname: str = None,
         mjdbinsize: float = 1.0,
         filt: str = "o",
+        flag: int = 0x800000,
         **kwargs,
     ):
         AveragedSupernova.__init__(
-            self, colnames, tnsname=tnsname, mjdbinsize=mjdbinsize, filt=filt, **kwargs
+            self,
+            colnames,
+            tnsname=tnsname,
+            mjdbinsize=mjdbinsize,
+            filt=filt,
+            flag=flag,
+            **kwargs,
         )
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
     def get_all_fom(self, sigma_kern: int):
         fom_list = []
         for control_index in self.control_lc_indices:
-            self.lcs[control_index].apply_rolling_sum(sigma_kern)
+            self.lcs[control_index].apply_rolling_sum(sigma_kern, flag=self.flag)
             fom = self.lcs[control_index].t.loc[
                 self.lcs[control_index].valid_mjd_ix, self.colnames.snrsumnorm
             ]
@@ -1750,10 +1788,24 @@ class SimDetecSupernova(AveragedSupernova):
         print(f"Valid FOM limit ranges: {res}")
         return all_fom_dict, res
 
+    def get_n_falsepos(
+        self,
+        sigma_kern: int,
+        fom_limit: float,
+        control_index: int = 0,
+        verbose: bool = False,
+    ):
+        return self.lcs[control_index].get_n_falsepos(
+            sigma_kern,
+            fom_limit,
+            self.mjd0,
+            flag=self.flag,
+            verbose=verbose,
+        )
+
     def apply_rolling_sums(
         self,
         sigma_kern: float,
-        flag=0x800000,
         valid_ix: bool = False,
         pre_mjd0_ix: bool = False,
     ):
@@ -1773,7 +1825,7 @@ class SimDetecSupernova(AveragedSupernova):
         # apply rolling sum to SN lc
         self.lcs[0].apply_rolling_sum(
             sigma_kern,
-            flag=flag,
+            flag=self.flag,
             indices=sn_indices,
         )
 
@@ -1781,7 +1833,7 @@ class SimDetecSupernova(AveragedSupernova):
         for control_index in self.control_lc_indices:
             self.lcs[control_index].apply_rolling_sum(
                 sigma_kern,
-                flag=flag,
+                flag=self.flag,
                 indices=self.lcs[control_index].valid_mjd_ix if valid_ix else None,
             )
 
@@ -1838,15 +1890,16 @@ class SimDetecLightCurve(AveragedLightCurve):
         sigma_kern: int,
         fom_limit: float,
         mjd0: float,
+        flag=0x800000,
         verbose=False,
     ):
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 
         if self.control_index == 0 and self.has_pre_mjd0_ix():
-            self.apply_rolling_sum(sigma_kern, indices=self.pre_mjd0_ix)
+            self.apply_rolling_sum(sigma_kern, indices=self.pre_mjd0_ix, flag=flag)
         else:
-            self.apply_rolling_sum(sigma_kern)
+            self.apply_rolling_sum(sigma_kern, flag=flag)
 
         # for control light curves, loop through all valid indices
         # for the SN light curve, only loop through valid indices before MJD0

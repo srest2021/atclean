@@ -735,8 +735,8 @@ class ContaminationTable:
         }
 
         for control_index in sn.lc_indices:
-            n_falsepos = sn.lcs[control_index].get_n_falsepos(
-                sigma_kern, fom_limit, sn.mjd0
+            n_falsepos = sn.get_n_falsepos(
+                sigma_kern, fom_limit, control_index=control_index
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
 
