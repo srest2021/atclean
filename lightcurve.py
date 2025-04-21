@@ -1743,7 +1743,7 @@ class SimDetecSupernova(AveragedSupernova):
         )
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
-    def get_all_fom(self, sigma_kern: int):
+    def get_all_fom(self, sigma_kern: float):
         fom_list = []
         for control_index in self.control_lc_indices:
             self.lcs[control_index].apply_rolling_sum(sigma_kern, flag=self.flag)
@@ -1757,7 +1757,7 @@ class SimDetecSupernova(AveragedSupernova):
             return pd.concat(fom_list, ignore_index=True)
         return pd.Series(dtype=float)
 
-    def get_all_fom_dict(self, sigma_kerns: List[int]):
+    def get_all_fom_dict(self, sigma_kerns: List[float]):
         print(f"Getting all control FOM for MJD ranges {self._mjd_ranges}...")
         if self._mjd_ranges is None:
             raise RuntimeError(f"Valid MJD ranges cannot be None")
@@ -1769,7 +1769,7 @@ class SimDetecSupernova(AveragedSupernova):
 
     def get_prelim_fom_limit_ranges(
         self,
-        sigma_kerns: List[int],
+        sigma_kerns: List[float],
         mjd_ranges: List[List[float]],
     ):
         print(
@@ -1790,7 +1790,7 @@ class SimDetecSupernova(AveragedSupernova):
 
     def get_n_falsepos(
         self,
-        sigma_kern: int,
+        sigma_kern: float,
         fom_limit: float,
         control_index: int = 0,
         verbose: bool = False,
@@ -1845,7 +1845,7 @@ class SimDetecSupernova(AveragedSupernova):
         for control_index in self.lc_indices:
             self.lcs[control_index].remove_simulations()
 
-    def load(self, input_dir, control_index=0):
+    def load(self, input_dir: str, control_index: int = 0):
         self.lcs[control_index] = SimDetecLightCurve(
             self.colnames,
             control_index=control_index,
@@ -1887,7 +1887,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     def get_n_falsepos(
         self,
-        sigma_kern: int,
+        sigma_kern: float,
         fom_limit: float,
         mjd0: float,
         flag=0x800000,
@@ -1957,7 +1957,14 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
         )
 
-    def get_new_gaussian_sigma(self, sigma_kern):
+    def get_new_gaussian_sigma(self, sigma_kern: float):
+        """
+        new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
+        for TESS/other lcs:
+        - if ratio > 3, leave it
+        - if ratio < 3, round to 1 decimal place
+        - if ratio < .3, don't round at all, or round to 5 decimal places
+        """
         ratio = sigma_kern / self.mjdbinsize
         if ratio > 3:
             return round(ratio)
@@ -1967,7 +1974,9 @@ class SimDetecLightCurve(AveragedLightCurve):
             return round(ratio, 1)
 
     # apply a rolling sum to the light curve and add SNR, SNRsum, and SNRsumnorm columns
-    def apply_rolling_sum(self, sigma_kern, indices=None, flag=0x800000, verbose=False):
+    def apply_rolling_sum(
+        self, sigma_kern: float, indices=None, flag=0x800000, verbose=False
+    ):
         if sigma_kern < self.mjdbinsize:
             raise ValueError(
                 f"Cannot apply rolling sum with sigma_kern ({sigma_kern} days) less than MJD bin size ({self.mjdbinsize} days)"
@@ -1988,14 +1997,6 @@ class SimDetecLightCurve(AveragedLightCurve):
         )
 
         new_gaussian_sigma = self.get_new_gaussian_sigma(sigma_kern)
-        """
-        new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
-        for TESS/other lcs:
-        - if ratio > 3, leave it
-        - if ratio < 3, round to 1 decimal place
-        - if ratio < .3, don't round at all, or round to 5 decimal places
-        """
-
         windowsize = int(6 * new_gaussian_sigma)
         halfwindowsize = int(windowsize * 0.5) + 1
         if verbose:
@@ -2029,20 +2030,19 @@ class SimDetecLightCurve(AveragedLightCurve):
             * max(norm_temp_sum.loc[dataindices])
         )
 
-    # add simulated flux to the light curve and add SNRsim and SNRsimsum columns
     def add_sim_flux(
         self,
-        good_ix,
+        good_ix: List[int],
         sim_flux,
-        cur_sigma_kern=None,
-        verbose=False,
-        remove_old=True,
+        cur_sigma_kern: float = None,
+        verbose: bool = False,
+        remove_old: bool = True,
     ):
         """
         Add simulated flux to the light curve ("uJysim" column) and add "SNRsim" and "SNRsimsum" columns.
 
-        :param lc: Light curve to add the simulated flux to.
         :param good_ix: Unmasked/unflagged indices of the light curve.
+        :param sim_flux: Array of simulated flux to add to the light curve
         :param cur_sigma_kern: The current kernel size of the rolling sum.
         :param remove_old: Remove any old simulations before adding the simulated flux.
         """
@@ -2129,7 +2129,7 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices
-    def get_max_fom(self, indices=None):
+    def get_max_fom(self, indices: List[int] = None):
         if indices is None:
             indices = self.getindices()
 

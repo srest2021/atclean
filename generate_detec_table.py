@@ -39,8 +39,8 @@ from utils import (
 
 NON_PARAM_COLNAMES = {
     "sigma_kern",
-    "peak_appmag",
-    "peak_flux",
+    # "peak_appmag",
+    # "peak_flux",
     "filename",
     "model_name",
     "mjd_colname",
@@ -415,10 +415,14 @@ class SimDetecTable(SimTable):
 
 
 class SimDetecTables:
-    def __init__(self, peak_appmags: List, model_name: str, sigma_kerns: List):
-        self.peak_appmags = [round(peak_appmag, 2) for peak_appmag in peak_appmags]
-        self.model_name = model_name
-        self.sigma_kerns: List = sigma_kerns
+    def __init__(
+        self, peak_appmags: List[float], model_name: str, sigma_kerns: List[float]
+    ):
+        self.peak_appmags: List[float] = [
+            round(peak_appmag, 2) for peak_appmag in peak_appmags
+        ]
+        self.model_name: str = model_name
+        self.sigma_kerns: List[float] = sigma_kerns
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
     def get_table(self, sigma_kern: float, peak_appmag: float):
@@ -487,7 +491,7 @@ class SimDetecTables:
 class EfficiencyTable(pdastrostatsclass):
     def __init__(
         self,
-        sigma_kerns: List,
+        sigma_kerns: List[float],
         peak_appmags: List,
         params: Dict[str, List],
         **kwargs,
@@ -501,9 +505,9 @@ class EfficiencyTable(pdastrostatsclass):
         """
         pdastrostatsclass.__init__(self, **kwargs)
 
-        self.sigma_kerns: List = sigma_kerns
-        self.peak_appmags: List = peak_appmags
-        self.peak_fluxes: List = list(map(mag2flux, peak_appmags))
+        self.sigma_kerns: List[float] = sigma_kerns
+        self.peak_appmags: List[float] = peak_appmags
+        self.peak_fluxes: List[float] = list(map(mag2flux, peak_appmags))
 
         self.params: Dict[str, List] = params
         if "peak_appmag" in self.params.keys():
@@ -723,7 +727,7 @@ class ContaminationTable:
     def calculate_row(
         self,
         sn: SimDetecSupernova,
-        sigma_kern: int,
+        sigma_kern: float,
         fom_limit: float,
     ) -> Dict:
         row = {
@@ -753,7 +757,7 @@ class ContaminationTable:
         self,
         sn: SimDetecSupernova,
         mjd_ranges: List[List[float]],
-        sigma_kerns: List[int],
+        sigma_kerns: List[float],
         fom_limits: Dict[int, List[float]],
     ):
         print(
@@ -805,7 +809,7 @@ class ContaminationTable:
         sn: SimDetecSupernova,
         prelim_fom_limit_ranges: Dict[int, List[float]],
         mjd_ranges: List[List[float]],
-        sigma_kerns: List[int],
+        sigma_kerns: List[float],
         target_value: int = 2,
         n_steps: int = 15,
         verbose: bool = False,
@@ -949,10 +953,10 @@ class ContaminationTable:
 
 
 class SimDetecLoop(ABC):
-    def __init__(self, sigma_kerns: List, **kwargs):
-        self.sigma_kerns: List = sigma_kerns
-        self.peak_appmags: List = None
-        self.peak_fluxes: List = None
+    def __init__(self, sigma_kerns: List[float], **kwargs):
+        self.sigma_kerns: List[float] = sigma_kerns
+        self.peak_appmags: List[float] = None
+        self.peak_fluxes: List[float] = None
 
         self.sn: SimDetecSupernova = None
         self.e: EfficiencyTable = None

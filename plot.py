@@ -1163,8 +1163,6 @@ class Plot:
                 x for x in sn.control_lc_indices if x != select_control_index
             ]
             for control_index in sn.control_lc_indices:
-                if control_index == select_control_index:
-                    continue
                 label = None
                 if control_index == sn.control_lc_indices[0]:
                     label = f"{len(sn.control_lc_indices) - 1} Controls (#s: {label_control_lc_indices})"

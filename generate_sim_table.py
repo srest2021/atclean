@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Generate a table of simulations for each peak apparent magnitude
+Generate a table of simulations for each brightness
 using the parameters in simulation_settings.json.
 """
 
@@ -16,11 +16,12 @@ from typing import Callable, Dict, List, Optional
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from utils import load_config, load_json_config, abbreviate_list
+from utils import format_float, load_config, load_json_config, abbreviate_list
 
 GAUSSIAN_MODEL_NAME = "gaussian"
 ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
-SIM_TABLE_REQUIRED_COLUMNS = ["model_name", "filename"]
+TIME_PARAM_PREFIX = "time_"
+BRIGHTNESS_PARAM_PREFIX = "brightness_"
 
 
 # define command line arguments
@@ -56,30 +57,31 @@ class Param(ABC):
         name: str,
         values: Optional[List] = None,
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         out = f"Creating parameter {name}"
         if is_time_param:
             out += " (time param)"
-        if is_peak_appmag_param:
-            out += " (peak apparent magnitude param)"
+        if is_brightness_param:
+            out += " (brightness param)"
         print(out)
 
-        if is_time_param and is_peak_appmag_param:
+        if is_time_param and is_brightness_param:
             raise ValueError(
-                "Param cannot be a time parameter and peak apparent magnitude parameter at the same time"
+                "Param cannot be a time parameter and brightness magnitude parameter at the same time"
             )
 
         self.name = name
         self.values = values
         self.is_time_param = is_time_param
-        self.is_peak_appmag_param = is_peak_appmag_param
+        self.is_brightness_param = is_brightness_param
+        self.validate_name()
 
     @abstractmethod
     def generate(self, **kwargs):
@@ -98,22 +100,33 @@ class Param(ABC):
         if self.values:
             self.values = list(np.floor(self.values) + 0.5)
 
-    def validate_peak_appmag_param(self):
+    def validate_brightness_param(self):
         """
-        Validates and adjusts peak apparent magnitude values to two decimal places.
+        Validates and adjusts brightness values to two decimal places.
         """
         print(
-            f"Making sure the peak apparent magnitude parameter '{self.name}' values have up to 2 decimal places..."
+            f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places..."
         )
         if self.values:
             self.values = [round(v, 2) for v in self.values]
+
+    def validate_name(self):
+        if self.is_time_param and not self.name.startswith(TIME_PARAM_PREFIX):
+            self.name = TIME_PARAM_PREFIX + self.name
+            return
+
+        if self.is_brightness_param and not self.name.startswith(
+            BRIGHTNESS_PARAM_PREFIX
+        ):
+            self.name = BRIGHTNESS_PARAM_PREFIX + self.name
+            return
 
     def __str__(self):
         out = f"Parameter '{self.name}'"
         if self.is_time_param:
             out += " (time param)"
-        if self.is_peak_appmag_param:
-            out += " (peak apparent magnitude param)"
+        if self.is_brightness_param:
+            out += " (brightness param)"
         out += ": "
         if self.values:
             out += abbreviate_list(self.values)
@@ -132,19 +145,19 @@ class ListParam(Param):
         name: str,
         values: Optional[List],
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         super().__init__(
             name,
             values=values,
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     def generate(self, **kwargs):
@@ -163,24 +176,24 @@ class RangeParam(Param):
         maxval: float,
         step: float,
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
         :param minval (float): The minimum value of the range.
         :param maxval (float): The maximum value of the range.
         :param step (float): The step size between consecutive values in the range.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         super().__init__(
-            name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
+            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
         )
         self.generate(minval, maxval, step)
         if self.is_time_param:
             self.validate_time_param()
-        if self.is_peak_appmag_param:
-            self.validate_peak_appmag_param()
+        if self.is_brightness_param:
+            self.validate_brightness_param()
 
     def generate(self, minval: float, maxval: float, step: float):
         print(f"Setting to range from {minval} to {maxval} with step size {step}")
@@ -190,7 +203,7 @@ class RangeParam(Param):
             raise RuntimeError(
                 "Step size cannot be greater than the difference between min value and max value."
             )
-        self.values = list(np.arange(minval, maxval, step))
+        self.values = list(np.arange(minval, maxval + step, step))
 
 
 class LogRangeParam(Param):
@@ -207,7 +220,7 @@ class LogRangeParam(Param):
         n: int,
         to_int=False,
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
@@ -216,17 +229,17 @@ class LogRangeParam(Param):
         :param base (int): The logarithmic base to use.
         :param n (int): The number of values to generate in the range.
         :param to_int (bool): Whether to round the generated values to integers.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         super().__init__(
-            name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
+            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
         )
         self.generate(minval, maxval, base, n, to_int=to_int)
         if self.is_time_param:
             self.validate_time_param()
-        if self.is_peak_appmag_param:
-            self.validate_peak_appmag_param()
+        if self.is_brightness_param:
+            self.validate_brightness_param()
 
     def generate(self, minval: float, maxval: float, base: int, n: int, to_int=False):
         print(
@@ -255,7 +268,7 @@ class RandomParam(Param):
         n: int,
         to_int=False,
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
@@ -263,17 +276,17 @@ class RandomParam(Param):
         :param maxval (float): The maximum value of the range.
         :param n (int): The number of random values to generate.
         :param to_int (bool): Whether to round the generated values to integers.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         super().__init__(
-            name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
+            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
         )
         self.generate(minval, maxval, n, to_int=to_int)
         if self.is_time_param:
             self.validate_time_param()
-        if self.is_peak_appmag_param:
-            self.validate_peak_appmag_param()
+        if self.is_brightness_param:
+            self.validate_brightness_param()
 
     def generate(self, minval: float, maxval: float, n: int, to_int=False):
         print(f"Generating {n}-length random list")
@@ -296,23 +309,23 @@ class RandomInRangeParam(Param):
         valid_ranges: List[List[float]],
         n: int,
         is_time_param: bool = False,
-        is_peak_appmag_param: bool = False,
+        is_brightness_param: bool = False,
     ):
         """
         :param name (str): The name of the parameter.
         :param valid_ranges (List[List[float]]): A list of valid ranges, where each range is a list of two floats [min, max].
         :param n (int): The number of random values to generate.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., MJD).
-        :param is_peak_appmag_param (bool): Indicates if the parameter is the peak apparent magnitude.
+        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
         """
         super().__init__(
-            name, is_time_param=is_time_param, is_peak_appmag_param=is_peak_appmag_param
+            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
         )
         self.generate(valid_ranges, n)
         if self.is_time_param:
             self.validate_time_param()
-        if self.is_peak_appmag_param:
-            self.validate_peak_appmag_param()
+        if self.is_brightness_param:
+            self.validate_brightness_param()
 
     def _filter_valid_draws(self, valid_ranges: List[List[float]], draws: List):
         return [
@@ -346,131 +359,152 @@ class Params:
     """
 
     def __init__(self):
-        self.d: Dict[str, Param] = {}
+        self.time_param: Param = None
+        self.brightness_param: Param = None
+        self.other: Dict[str, Param] = {}
 
     def add(self, param: Param):
         """
         Adds a parameter to the collection.
         """
-        if self.has(param):
-            print(f"WARNING: Param {param.name} already exists in list; overwriting...")
-        self.d[param.name] = param
+        param.validate_name()
+
+        if param.is_time_param:
+            if self.time_param is not None:
+                print("WARNING: Time parameter already set")
+            self.time_param = param
+
+        elif param.is_brightness_param:
+            if self.brightness_param is not None:
+                print("WARNING: Brightness parameter already set")
+            self.brightness_param = param
+
+        else:
+            if self.has(param.name):
+                print(
+                    f"WARNING: Param {param.name} already exists in list; overwriting..."
+                )
+            self.other[param.name] = param
 
     def has(self, param_name):
         """
         Checks if a parameter exists in the collection.
         """
-        return param_name in self.d.keys()
+        return (
+            (self.time_param and self.time_param.name == param_name)
+            or (self.brightness_param and self.brightness_param.name == param_name)
+            or param_name in self.other.keys()
+        )
 
     def validate(self):
         """
-        Validates the collection, ensuring required parameters (time and peak apparent magnitude) are present.
+        Validates the collection, ensuring required parameters (time and brightness) are present.
         """
-        if self.d:
-            if not self.has_peak_appmag_param():
-                raise RuntimeError(
-                    "Peak apparent magnitude parameter missing from parameters"
-                )
-            if not self.has_time_param():
-                raise RuntimeError(f"Time parameter missing from parameters")
-        else:
-            print("WARNING: Cannot validate params because it is empty")
+        if not self.has_brightness_param():
+            raise RuntimeError("Brightness parameter missing from parameters")
 
-    def get_num_combinations(self, except_peak_appmag: bool = True):
+        if not self.has_time_param():
+            raise RuntimeError(f"Time parameter missing from parameters")
+
+    def get_num_combinations(self, except_brightness: bool = True) -> int:
         """
         Calculates the total number of rows in the simulation table based on parameter combinations.
         """
         total = 1
         params = (
-            self.all_params_except_peak_appmag()
-            if except_peak_appmag
-            else self.d.values()
+            self.all_params_except_brightness()
+            if except_brightness
+            else self.all_params()
         )
         for param in params:
             if param.values:
                 total *= len(param.values)
         return total
 
-    def get_combinations(self, except_peak_appmag: bool = True):
+    def get_combinations(self, except_brightness: bool = True) -> List:
         """
-        Generates all possible combinations of parameter values, excluding the peak apparent magnitude parameter.
-        This method uses the Cartesian product of the values of all parameters except the peak apparent magnitude
+        Generates all possible combinations of parameter values, excluding the brightness parameter.
+        This method uses the Cartesian product of the values of all parameters except the brightness
         parameter to generate a list of all possible combinations.
         """
         params = (
-            self.all_params_except_peak_appmag()
-            if except_peak_appmag
-            else self.d.values()
+            self.all_params_except_brightness()
+            if except_brightness
+            else self.all_params()
         )
         return list(itertools.product(*(param.values for param in params)))
 
-    def has_time_param(self):
+    def has_time_param(self) -> bool:
         """
         Checks if a time parameter exists in the collection.
         """
-        for param in self.d.values():
-            if param.is_time_param:
-                return True
-        return False
+        return self.time_param is not None
 
-    def get_time_param(self):
+    def get_time_param(self) -> Param:
         """
         Retrieves the first time parameter from the collection.
         """
-        for param in self.d.values():
-            if param.is_time_param:
-                return param
-        raise RuntimeError(f"Time parameter missing from parameters: {self.d.keys()}")
+        if self.has_time_param():
+            return self.time_param
+        raise RuntimeError(f"Time parameter missing from parameters")
 
-    def has_peak_appmag_param(self):
+    def has_brightness_param(self) -> bool:
         """
-        Checks if a peak apparent magnitude parameter exists in the collection.
+        Checks if a brightness parameter exists in the collection.
         """
-        for param in self.d.values():
-            if param.is_peak_appmag_param:
-                return True
-        return False
+        return self.brightness_param is not None
 
-    def get_peak_appmag_param(self):
+    def get_brightness_param(self) -> Param:
         """
-        Retrieves the first peak apparent magnitude parameter from the collection.
+        Retrieves the first brightness parameter from the collection.
         """
-        for param in self.d.values():
-            if param.is_peak_appmag_param:
-                return param
-        raise RuntimeError(
-            f"Peak apparent magnitude parameter missing from parameters: {self.d.keys()}"
-        )
+        if self.has_brightness_param():
+            return self.brightness_param
+        raise RuntimeError(f"Brightness parameter missing from parameters")
 
-    def all_names_except_peak_appmag(self):
+    def all_names_except_brightness(self) -> List[str]:
         """
-        Returns the names of all parameters except the peak apparent magnitude parameter.
+        Returns the names of all parameters except the brightness parameter.
         """
-        return [
-            param.name for param in self.d.values() if not param.is_peak_appmag_param
-        ]
+        return list(self.other.keys()) + [self.time_param.name]
 
-    def all_names_except_time(self):
+    def all_names_except_time(self) -> List[str]:
         """
         Returns the names of all parameters except the time parameter.
         """
-        return [param.name for param in self.d.values() if not param.is_time_param]
+        return list(self.other.keys()) + [self.brightness_param.name]
 
-    def all_params_except_peak_appmag(self):
+    def all_params_except_brightness(self) -> List[Param]:
         """
-        Returns all parameters except the peak apparent magnitude parameter.
+        Returns all parameters except the brightness parameter.
         """
-        return [param for param in self.d.values() if not param.is_peak_appmag_param]
+        return list(self.other.values()) + [self.time_param]
 
-    def all_params_except_time(self):
+    def all_params_except_time(self) -> List[Param]:
         """
         Returns all parameters except the time parameter.
         """
-        return [param for param in self.d.values() if not param.is_time_param]
+        return list(self.other.values()) + [self.brightness_param]
+
+    def other_params(self):
+        return self.other.values()
+
+    def other_names(self) -> List[str]:
+        return self.other.keys()
+
+    def all_params(self) -> List[Param]:
+        return list(self.other.values()) + [self.time_param, self.brightness_param]
+
+    def all_names(self) -> List[str]:
+        return list(self.other.keys()) + [
+            self.time_param.name,
+            self.brightness_param.name,
+        ]
 
     def __str__(self):
-        out = f"Params list (length {len(self.d)}): "
-        for param in self.d.values():
+        all_params = self.all_params()
+        out = f"Params list (length {len(all_params)}):"
+        for param in all_params:
             out += f"\n- {param}"
         return out
 
@@ -479,15 +513,15 @@ def parse_param(
     param_name: str,
     param_info: Dict,
     is_time_param: bool = False,
-    is_peak_appmag_param: bool = False,
+    is_brightness_param: bool = False,
 ) -> Param:
     """
     Generate a list of possible values for the parameter using settings from the config file.
 
     :param_name: Name of parameter as in config file.
     :param_info: Dictionary corresponding to the JSON data under the given parameter in the config file.
-    :is_time_param: Is this parameter defining the MJD of the simulation peak, onset, or other time-related property?
-    :is_peak_appmag_param: Is this parameter defining the peak apparent magnitude?
+    :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
+    :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
     """
     print(f"\nParsing config parameter {param_name}:")
 
@@ -496,7 +530,7 @@ def parse_param(
             param_name,
             param_info["list"],
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     elif param_info["type"] == "range":
@@ -506,7 +540,7 @@ def parse_param(
             param_info["range"]["maxval"],
             param_info["range"]["step"],
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     elif param_info["type"] == "logrange":
@@ -518,7 +552,7 @@ def parse_param(
             param_info["logrange"]["n"],
             to_int=param_info["logrange"]["to_int"],
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     elif param_info["type"] == "random":
@@ -529,7 +563,7 @@ def parse_param(
             param_info["random"]["n"],
             to_int=param_info["random"]["to_int"],
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     elif param_info["type"] == "random_inrange":
@@ -538,7 +572,7 @@ def parse_param(
             param_info["random_inrange"]["valid_ranges"],
             param_info["random_inrange"]["n"],
             is_time_param=is_time_param,
-            is_peak_appmag_param=is_peak_appmag_param,
+            is_brightness_param=is_brightness_param,
         )
 
     else:
@@ -553,7 +587,7 @@ def parse_param(
 def parse_params(
     model_settings: Dict,
     time_param_name: str = "peak_mjd",
-    peak_appmag_param_name: str = "peak_appmag",
+    brightness_param_name: str = "peak_appmag",
 ) -> Params:
     """
     Parse the parameters in the config file and generate lists of possible values for each parameter.
@@ -564,7 +598,7 @@ def parse_params(
             param_name,
             model_settings["parameters"][param_name],
             is_time_param=param_name == time_param_name,
-            is_peak_appmag_param=param_name == peak_appmag_param_name,
+            is_brightness_param=param_name == brightness_param_name,
         )
         params.add(param)
     params.validate()
@@ -573,14 +607,14 @@ def parse_params(
 
 
 class SimTable(pdastrostatsclass):
-    def __init__(self, peak_appmag: float, **kwargs):
+    def __init__(self, brightness: float, **kwargs):
         """
         Initialize a SimTable.
 
-        :peak_appmag: Peak apparent magnitude for all simulations in this table.
+        :brightness: Brightness (e.g., oeak apparent magnitude or flux) for all simulations in this table.
         """
         pdastrostatsclass.__init__(self, **kwargs)
-        self.peak_appmag = peak_appmag
+        self.brightness = brightness
 
     def add_row(self, data: Dict):
         """
@@ -591,7 +625,7 @@ class SimTable(pdastrostatsclass):
         self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
     def get_sim_filename(self, model_name, tables_dir):
-        return f"{tables_dir}/sim_{model_name}_{self.peak_appmag:0.2f}.txt"
+        return f"{tables_dir}/sim_{model_name}_{format_float(self.brightness)}.txt"
 
     def save_sim_table(self, model_name, tables_dir, verbose=False):
         filename = self.get_sim_filename(model_name, tables_dir)
@@ -618,16 +652,16 @@ class SimTables:
         :param model_name: Name of the model to be used assigned in the config file.
         """
         self.d: Dict[str, SimTable] = {}
-        self.peak_appmags = None
+        self.brightness_param: Param = None
         self.model_name = model_name
 
-    def set_peak_appmags(self, peak_appmags: Param):
-        if not peak_appmags.is_peak_appmag_param:
+    def set_brightness_param(self, brightness_param: Param):
+        if not brightness_param.is_brightness_param:
             raise ValueError(
-                f"peak_appmags.is_peak_appmag_param must be True (got {peak_appmags.is_peak_appmag_param})"
+                f"brightness.is_brightness_param must be True (got {brightness_param.is_brightness_param})"
             )
 
-        self.peak_appmags = peak_appmags
+        self.brightness_param = brightness_param
 
     def generate(
         self,
@@ -660,33 +694,31 @@ class SimTables:
         print()
         self.d = {}
         num_rows = params.get_num_combinations()
-        self.set_peak_appmags(params.get_peak_appmag_param())
-        for peak_appmag in self.peak_appmags.values:
+        self.set_brightness_param(params.get_brightness_param())
+        for brightness in self.brightness_param.values:
             print(
-                f"Generating {num_rows}-length SimTable for peak_appmag={peak_appmag}..."
+                f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}..."
             )
-            self.d[peak_appmag] = SimTable(peak_appmag)
+            self.d[brightness] = SimTable(brightness)
 
             combinations = params.get_combinations()
             combinations_dicts = [
-                dict(zip(params.all_names_except_peak_appmag(), combo))
+                dict(zip(params.all_names_except_brightness(), combo))
                 for combo in combinations
             ]
 
             for combination in combinations_dicts:
-                combination.update({"peak_appmag": peak_appmag})
+                combination.update({self.brightness_param.name: brightness})
                 combination.update(row)
-                self.d[peak_appmag].add_row(combination)
+                self.d[brightness].add_row(combination)
 
         print("Success")
 
     def save_all(self, tables_dir: str):
         print(f"\nSaving SimTables in directory: {tables_dir}")
 
-        if self.peak_appmags is None:
-            raise RuntimeError(
-                "Cannot save SimTables: missing peak apparent magnitudes"
-            )
+        if self.brightness_param is None:
+            raise RuntimeError("Cannot save SimTables: missing brightness")
 
         if not self.d:
             raise RuntimeError(
@@ -695,18 +727,18 @@ class SimTables:
 
         make_dir_if_not_exists(tables_dir)
 
-        for peak_appmag in self.peak_appmags.values:
-            self.d[peak_appmag].save_sim_table(self.model_name, tables_dir)
+        for brightness in self.brightness_param.values:
+            self.d[brightness].save_sim_table(self.model_name, tables_dir)
         print("Success")
 
-    def load_all(self, tables_dir: str, peak_appmags: Param):
+    def load_all(self, tables_dir: str, brightness_param: Param):
         print(f"\nLoading SimTables in directory: {tables_dir}")
         self.d = {}
-        self.set_peak_appmags(peak_appmags)
+        self.set_brightness_param(brightness_param)
 
-        for peak_appmag in self.peak_appmags.values:
-            self.d[peak_appmag] = SimTable(peak_appmag)
-            self.d[peak_appmag].load_sim_table(self.model_name, tables_dir)
+        for brightness in self.brightness_param.values:
+            self.d[brightness] = SimTable(brightness)
+            self.d[brightness].load_sim_table(self.model_name, tables_dir)
         print("Success")
 
 
@@ -758,7 +790,7 @@ if __name__ == "__main__":
     params = parse_params(
         model_settings,
         time_param_name=model_settings["time_parameter_name"],
-        peak_appmag_param_name=model_settings["peak_appmag_parameter_name"],
+        brightness_param_name=model_settings["brightness_parameter_name"],
     )
     filename, mjd_colname, mag_colname, flux_colname = parse_colname_info(
         model_settings, args.model_name

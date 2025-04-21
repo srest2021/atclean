@@ -1,7 +1,7 @@
 {
   "gaussian": {
     "time_parameter_name": "peak_mjd",
-    "peak_appmag_parameter_name": "peak_appmag",
+    "brightness_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
