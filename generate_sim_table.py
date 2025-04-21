@@ -611,7 +611,7 @@ class SimTable(pdastrostatsclass):
         """
         Initialize a SimTable.
 
-        :brightness: Brightness (e.g., oeak apparent magnitude or flux) for all simulations in this table.
+        :brightness: Brightness (e.g., peak apparent magnitude or flux) for all simulations in this table.
         """
         pdastrostatsclass.__init__(self, **kwargs)
         self.brightness = brightness

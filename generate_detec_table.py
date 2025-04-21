@@ -19,6 +19,10 @@ from astropy.modeling.functional_models import Gaussian1D
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
 from generate_sim_table import (
+    BRIGHTNESS_PARAM_PREFIX,
+    TIME_PARAM_PREFIX,
+    Param,
+    Params,
     SimTable,
     SimTables,
     get_sim_tables_output_dir,
@@ -29,6 +33,7 @@ from generate_sim_table import (
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
     PresetColumnNames,
+    format_float,
     get_allowed_presets,
     hexstring_to_int,
     load_config,
@@ -64,6 +69,59 @@ def flux2mag(flux: float):
 # convert magnitude to flux
 def mag2flux(mag: float):
     return 10 ** ((mag - 23.9) / -2.5)
+
+
+def validate_kwarg_range(rng) -> bool:
+    """
+    Check if input is a valid [low, high] numeric range with low < high.
+    """
+    return (
+        isinstance(rng, (list, tuple))
+        and len(rng) == 2
+        and all(isinstance(v, (int, float)) for v in rng)
+        and rng[0] < rng[1]
+    )
+
+
+def get_matching_ix(table_object: pdastrostatsclass, **kwargs):
+    """
+    Get indices matching all conditions in kwargs.
+    Supports:
+    - Single value: A=3
+    - Range: B=[1.0, 2.5] (must satisfy low < high)
+    - List of ranges: C=[[1, 2], [3, 4]] (each must satisfy a < b)
+    """
+    matching_ix = table_object.getindices()
+    for col, value in kwargs.items():
+        if not col in table_object.t.columns:
+            raise ValueError(
+                f"Column '{col}' not found in table columns {table_object.t.columns}"
+            )
+
+        if isinstance(value, list):  # value is range or list of ranges
+            # value is list of ranges
+            if all(validate_kwarg_range(v) for v in value):
+                mask = table_object.t.loc[matching_ix, col].apply(
+                    lambda x: any(a <= x <= b for a, b in value)
+                )
+                matching_ix = table_object.t.index[mask].tolist()
+
+            # value is range
+            elif validate_kwarg_range(value):
+                matching_ix = table_object.ix_inrange(
+                    colnames=col,
+                    lowlim=value[0],
+                    uplim=value[1],
+                    indices=matching_ix,
+                )
+
+            else:
+                raise ValueError(f"Invalid range for column '{col}': {value}")
+
+        else:  # single value
+            matching_ix = table_object.ix_equal(col, value, indices=matching_ix)
+
+    return matching_ix
 
 
 class AsymmetricGaussian(Simulation):
@@ -313,23 +371,33 @@ class Model(Simulation):
 
 
 class SimDetecTable(SimTable):
-    def __init__(self, sigma_kern: float, peak_appmag: float, **kwargs):
-        SimTable.__init__(self, peak_appmag, **kwargs)
+    def __init__(self, sigma_kern: float, brightness: float, **kwargs):
+        """
+        Initialize a SimDetecTable.
+
+        :sigma_kern: Sigma kernel of the algorithm.
+        :brightness: Brightness (e.g., peak apparent magnitude or flux) for all simulations in this table.
+        """
+        SimTable.__init__(self, brightness, **kwargs)
         self.sigma_kern: float = sigma_kern
 
-    def get_params_at_index(self, index: int, time_colname: str = None) -> Dict:
+    def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
         Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
-        Any known non-parameter column names will be skipped.
+        Any known non-parameter column names (including brightness and, optionally, time) will be skipped.
 
         :param index: Index of the table from which to get the parameter column-value pairs.
-        :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation. If provided, will be additionally skipped when getting the column-value pairs.
+        :param skip_time_col: Whether to exclude time columns (i.e., those starting with TIME_PARAM_PREFIX).
         """
-        skip_params = NON_PARAM_COLNAMES
-        if time_colname is not None:
-            skip_params.add(time_colname)
-
-        colnames = [col for col in self.t.columns if col not in skip_params]
+        colnames = [
+            col
+            for col in self.t.columns
+            if not (
+                (skip_time_col and col.startswith(TIME_PARAM_PREFIX))
+                or col.startswith(BRIGHTNESS_PARAM_PREFIX)
+                or col in NON_PARAM_COLNAMES
+            )
+        ]
         return dict(self.t.loc[index, colnames])
 
     def update_row_at_index(self, index: int, data: Dict):
@@ -339,7 +407,6 @@ class SimDetecTable(SimTable):
         :param index: Index of the table to update.
         :param data: Dictionary of column-value pairs.
         """
-        # self.t.loc[index, data.keys()] = np.array(list(data.values()))
         for key, value in data.items():
             self.t.at[index, key] = value
 
@@ -350,7 +417,7 @@ class SimDetecTable(SimTable):
         :param model_name: Name of the model of which the SimDetecTable contains simulations.
         :param detec_tables_dir: Directory where the SimDetecTable is located.
         """
-        return f"{detec_tables_dir}/simdetec_{model_name}_{self.sigma_kern}_{self.peak_appmag:0.2f}.txt"
+        return f"{detec_tables_dir}/simdetec_{model_name}_{format_float(self.sigma_kern)}_{format_float(self.brightness)}.txt"
 
     def load_detec_table(self, model_name: str, detec_tables_dir: str):
         """
@@ -385,63 +452,55 @@ class SimDetecTable(SimTable):
         filename = self.get_detec_filename(model_name, detec_tables_dir)
         self.write(filename=filename, overwrite=True, index=False)
 
-    def get_efficiency(self, fom_limit: float, **params):
+    def get_efficiency(self, fom_limit: float, **kwargs):
         """
         Get the efficiency where columns match all the given values and are within all the given ranges.
 
-        :param params: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
+        :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
         Example usage for columns A, B, C: self.get_efficiency(10.0, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
 
         :return: Efficiency of the rows that match the criteria.
         """
-        col_ix = self.getindices()
-        for column, value in params.items():
-            if isinstance(value, list):
-                if all(isinstance(v, list) for v in value):
-                    mask = self.t.loc[col_ix, column].apply(
-                        lambda x: any(a <= x <= b for a, b in value)
-                    )
-                    col_ix = self.t.index[mask].tolist()
-                else:
-                    col_ix = self.ix_inrange(
-                        colnames=column, lowlim=value[0], uplim=value[1], indices=col_ix
-                    )
-            else:
-                col_ix = self.ix_equal(column, value, indices=col_ix)
+        if not "max_fom" in self.t.columns:
+            raise ValueError("'max_fom' column not found in table")
 
-        detected_ix = self.ix_inrange("max_fom", lowlim=fom_limit, indices=col_ix)
-        efficiency = 100 * len(detected_ix) / len(col_ix)
+        matching_ix = get_matching_ix(self, **kwargs)
+
+        # no rows matched the params -> avoid division by 0
+        if len(matching_ix) < 1:
+            return 0.0
+
+        detected_ix = self.ix_inrange("max_fom", lowlim=fom_limit, indices=matching_ix)
+        efficiency = 100 * len(detected_ix) / len(matching_ix)
         return efficiency
 
 
 class SimDetecTables:
     def __init__(
-        self, peak_appmags: List[float], model_name: str, sigma_kerns: List[float]
+        self, brightness_param: Param, model_name: str, sigma_kerns: List[float]
     ):
-        self.peak_appmags: List[float] = [
-            round(peak_appmag, 2) for peak_appmag in peak_appmags
-        ]
         self.model_name: str = model_name
         self.sigma_kerns: List[float] = sigma_kerns
+        self.brightness_param = brightness_param
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
-    def get_table(self, sigma_kern: float, peak_appmag: float):
-        return self.d[sigma_kern][peak_appmag]
+    def get_table(self, sigma_kern: float, brightness: float):
+        return self.d[sigma_kern][brightness]
 
     def update_row_at_index(
-        self, sigma_kern: float, peak_appmag: float, index: int, data: Dict
+        self, sigma_kern: float, brightness: float, index: int, data: Dict
     ):
-        self.d[sigma_kern][peak_appmag].update_row_at_index(index, data)
+        self.d[sigma_kern][brightness].update_row_at_index(index, data)
 
     def get_efficiency(
-        self, sigma_kern: float, peak_appmag: float, fom_limit: float, **params
+        self, sigma_kern: float, brightness: float, fom_limit: float, **params
     ):
-        return self.d[sigma_kern][peak_appmag].get_efficiency(fom_limit, **params)
+        return self.d[sigma_kern][brightness].get_efficiency(fom_limit, **params)
 
     def save_detec_table(
-        self, sigma_kern: float, peak_appmag: float, detec_tables_dir: str
+        self, sigma_kern: float, brightness: float, detec_tables_dir: str
     ):
-        self.d[sigma_kern][peak_appmag].save_detec_table(
+        self.d[sigma_kern][brightness].save_detec_table(
             self.model_name, detec_tables_dir
         )
 
@@ -464,9 +523,9 @@ class SimDetecTables:
         )
         for sigma_kern in self.sigma_kerns:
             self.d[sigma_kern] = {}
-            for peak_appmag in self.peak_appmags:
-                self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
-                self.d[sigma_kern][peak_appmag].load_from_sim_table(
+            for brightness in self.brightness_param.values:
+                self.d[sigma_kern][brightness] = SimDetecTable(sigma_kern, brightness)
+                self.d[sigma_kern][brightness].load_from_sim_table(
                     self.model_name, sim_tables_dir
                 )
         print("Success")
@@ -480,9 +539,9 @@ class SimDetecTables:
         print(f"\nLoading SimDetecTables from directory: {detec_tables_dir}")
         for sigma_kern in self.sigma_kerns:
             self.d[sigma_kern] = {}
-            for peak_appmag in self.peak_appmags:
-                self.d[sigma_kern][peak_appmag] = SimDetecTable(sigma_kern, peak_appmag)
-                self.d[sigma_kern][peak_appmag].load_detec_table(
+            for brightness in self.brightness_param.values:
+                self.d[sigma_kern][brightness] = SimDetecTable(sigma_kern, brightness)
+                self.d[sigma_kern][brightness].load_detec_table(
                     self.model_name, detec_tables_dir
                 )
         print("Success")
@@ -492,44 +551,32 @@ class EfficiencyTable(pdastrostatsclass):
     def __init__(
         self,
         sigma_kerns: List[float],
-        peak_appmags: List,
-        params: Dict[str, List],
+        params: Params,
         **kwargs,
     ):
         """
         Initialize an EfficiencyTable.
 
         :param sigma_kerns: List of detection algorithm kernel sizes.
-        :param peak_appmags: List of possible simulation peak apparent magnitudes.
-        :param params: Dictionary of parameter names and lists of possible values.
+        :param brightness_param: Parameter of possible simulation brightnesses.
+        :param params: Collection of parameter names and possible values.
         """
         pdastrostatsclass.__init__(self, **kwargs)
-
         self.sigma_kerns: List[float] = sigma_kerns
-        self.peak_appmags: List[float] = peak_appmags
-        self.peak_fluxes: List[float] = list(map(mag2flux, peak_appmags))
+        self.params: Params = params
 
-        self.params: Dict[str, List] = params
-        if "peak_appmag" in self.params.keys():
-            del self.params["peak_appmag"]
-
-    def setup(self, time_colname: str):
+    def setup(self):
         """
-        Set up the table columns for sigma_kerns, peak_appmags, and other known parameter values.
-        The time column name, if known, will be skipped when constructing columns.
-
-        :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation.
+        Set up the table columns for sigma_kerns, brightnesses, and other known parameter values.
+        The time column name will be skipped when constructing columns.
         """
         all_params = dict(
             {
                 "sigma_kern": self.sigma_kerns,
-                "peak_appmag": self.peak_appmags,
+                self.params.brightness_param.name: self.params.brightness_param.values,
             },
-            **self.params,
+            {param.name: param.values for param in self.params.other_params()},
         )
-
-        if time_colname in all_params.keys():
-            del all_params[time_colname]
 
         print(f"\nSetting up efficiency table with columns: {all_params.keys()}")
 
@@ -537,140 +584,163 @@ class EfficiencyTable(pdastrostatsclass):
         combinations = list(itertools.product(*values))
         self.t = pd.DataFrame(combinations, columns=keys)
 
-        self.t["peak_flux"] = self.t["peak_appmag"].apply(lambda mag: mag2flux(mag))
-
-        col_order = ["sigma_kern", "peak_appmag", "peak_flux"]
-        other_cols = [col for col in self.t.columns if col not in col_order]
-        col_order += other_cols
+        col_order = ["sigma_kern", self.params.brightness_param.name]
+        col_order += [col for col in self.t.columns if col not in col_order]
         self.t = self.t[col_order]
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def validate_fom_limits(
-        self, fom_limits: List[List[float]] | Dict[float, List[float]]
+        self,
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
     ) -> Dict[float, List[float]]:
         """
-        Create dictionary of FOM limits, with sigma_kerns as the keys.
+        Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
+        Supports:
+        - List[float]: one FOM limit per sigma_kern
+        - List[List[float]]: multiple FOM limits per sigma_kern
+        - Dict[float, float]: one FOM limit per sigma_kern
+        - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
         """
-        if len(fom_limits) < 1:
-            raise RuntimeError("No FOM limits to validate")
+        # List[float] or List[List[float]]
+        if isinstance(fom_limits, list):
+            if not fom_limits:
+                raise RuntimeError("No FOM limits provided")
 
-        if len(fom_limits) != len(self.sigma_kerns):
-            raise RuntimeError(
-                "Each entry in sigma_kerns must have a matching list in fom_limits"
+            if len(fom_limits) != len(self.sigma_kerns):
+                raise RuntimeError(
+                    "Each entry in sigma_kerns must have a matching entry in fom_limits"
+                )
+
+            # List[float]
+            if all(isinstance(x, (int, float)) for x in fom_limits):
+                # wrap each float in a list
+                return dict(zip(self.sigma_kerns, [[x] for x in fom_limits]))
+
+            # List[List[float]]
+            elif all(isinstance(x, list) for x in fom_limits):
+                # expected_length = len(fom_limits[0])
+                # for l in fom_limits:
+                #     if len(l) != expected_length:
+                #         raise RuntimeError(
+                #             "Each sigma_kern must have the same number of FOM limits"
+                #         )
+                return dict(zip(self.sigma_kerns, fom_limits))
+
+            else:
+                raise TypeError("fom_limits list must contain sublists or numbers")
+
+        # Dict[float, float] or Dict[float, List[float]]
+        elif isinstance(fom_limits, dict):
+            if set(fom_limits.keys()) != set(self.sigma_kerns):
+                raise RuntimeError(
+                    "FOM limits dict keys must exactly match sigma_kerns"
+                )
+
+            # wrap float values in lists if needed
+            return {
+                k: [v] if isinstance(v, (int, float)) else v
+                for k, v in fom_limits.items()
+            }
+
+        else:
+            raise TypeError(
+                "fom_limits must be a list of lists/floats or a dict of lists/floats"
             )
 
-        if isinstance(fom_limits, list):
-            res = {}
-            expected_length = len(fom_limits[0])
-            for i in range(len(self.sigma_kerns)):
-                if len(fom_limits[i]) != expected_length:
-                    raise RuntimeError(
-                        "Each sigma_kern must have the same number of FOM limits"
-                    )
-                res[self.sigma_kerns[i]] = fom_limits[i]
-            return res
-
-        # already in Dict form
-        return fom_limits
-
-    def get_params_at_index(self, index: int, skip_colnames: List[str]) -> Dict:
+    def get_params_at_index(self, index: int) -> Dict:
         """
         Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
-        Any known non-parameter column names will be skipped.
+        Any known non-parameter column names (including brightness and time) will be skipped.
 
         :param index: Index of the table from which to get the parameter column-value pairs.
-        :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation. If provided, will be additionally skipped when getting the column-value pairs.
         """
 
-        colnames = [col for col in self.t.columns if col not in skip_colnames]
+        colnames = [col for col in self.t.columns if col in self.params.other_names()]
         return dict(self.t.loc[index, colnames])
 
     def get_efficiencies(
         self,
         sd: SimDetecTables,
-        fom_limits: List[List[float]] | Dict[float, List[float]],
-        time_colname: str,
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
         **kwargs,
     ):
         """
         For each row in the efficiency table, compute efficiencies for the FOM limits corresponding to the given sigma_kern.
 
         :param sd: SimDetecTables object that contains simulation information, max FOM, and other data needed to run the detection algorithm. Each SimDetecTable corresponds to one sigma_kern x peak_appmag combination.
-        :param fom_limits: Dictionary with sigma_kerns as keys and lists of FOM limits as values.
-        :param time_colname: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation.
+        :param fom_limits: List or dictionary with sublists or single values as FOM limits.
+
+        :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
+        Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
 
         fom_limits = self.validate_fom_limits(fom_limits)
-
-        skip_colnames = NON_PARAM_COLNAMES
-        skip_colnames.add(time_colname)
 
         l = len(self.t)
         print("Calculating efficiencies...")
         print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
         for i in range(l):
             sigma_kern = self.t.loc[i, "sigma_kern"]
-            peak_appmag = self.t.loc[i, "peak_appmag"]
+            brightness = self.t.loc[i, self.params.brightness_param.name]
 
             if kwargs:
                 params = kwargs
             else:
-                params = self.get_params_at_index(i, skip_colnames)
+                params = self.get_params_at_index(i)
 
             for fom_limit in fom_limits[sigma_kern]:
                 try:
                     efficiency = sd.get_efficiency(
-                        sigma_kern, peak_appmag, fom_limit, **params
+                        sigma_kern, brightness, fom_limit, **params
                     )
                 except Exception as e:
                     raise RuntimeError(
-                        f"Could not calculate efficiency for sigma_kern={sigma_kern}, peak_appmag={peak_appmag:0.2f}, fom_limit={fom_limit:0.2f}: {str(e)}"
+                        f"Could not calculate efficiency for sigma_kern={format_float(sigma_kern)}, brightness={format_float(brightness)}, fom_limit={format_float(fom_limit)}: {str(e)}"
                     )
-                self.t.loc[i, f"pct_detec_{fom_limit:0.2f}"] = efficiency
-                skip_colnames.add(f"pct_detec_{fom_limit:0.2f}")
+                self.t.loc[i, f"pct_detec_{format_float(fom_limit)}"] = efficiency
 
             print_progress_bar(
                 i + 1, l, prefix="Progress:", suffix="Complete", length=50
             )
 
-    def get_subset(self, fom_limits: List = None, **kwargs):
+    def get_subset(self, fom_limits: Optional[List[float]] = None, **kwargs):
         """
         Get a subset of the table where the columns match the given values.
 
         :param fom_limits: List of FOM limits to get columns for. Set to None for all FOM limit columns.
+
         :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
-        Example usage: self.get_efficiency(10.0, sigma_kern=2, sigma_sim=[5, 6], peak_mjd=[[58000, 58100], [58200, 58300]])
+        Example usage for columns A, B, C: self.get_subset([5.2, 7.8], sigma_kern=2, sigma_sim=[5, 6])
 
         :return: Efficiency of the rows that match the criteria.
         """
-        ix = self.getindices()
-        colnames: List = ["sigma_kern", "peak_appmag"] + self.params.keys()
+        colnames: List[str] = [
+            "sigma_kern",
+            self.params.brightness_param.name,
+        ] + self.params.other_names()
 
         if not fom_limits is None:
             for col in self.t.columns:
                 for fom_limit in fom_limits:
-                    if re.search(f"^pct_detec_{fom_limit:0.2f}", col):
+                    if re.search(f"^pct_detec_{format_float(fom_limit)}", col):
                         colnames.append(col)
         else:
             for col in self.t.columns:
                 if re.search("^pct_detec_", col):
                     colnames.append(col)
 
-        for column, value in kwargs.items():
-            if isinstance(value, list):
-                if all(isinstance(v, list) for v in value):
-                    mask = self.t.loc[ix, column].apply(
-                        lambda x: any(a <= x <= b for a, b in value)
-                    )
-                    ix = self.t.index[mask].tolist()
-                else:
-                    ix = self.ix_inrange(
-                        colnames=column, lowlim=value[0], uplim=value[1], indices=ix
-                    )
-            else:
-                ix = self.ix_equal(column, value, indices=ix)
-
-        return self.t.loc[ix, colnames]
+        matching_ix = get_matching_ix(self, **kwargs)
+        return self.t.loc[matching_ix, colnames]
 
     def reset_table(self):
         """
@@ -679,11 +749,6 @@ class EfficiencyTable(pdastrostatsclass):
         for col in self.t.columns:
             if re.search("^pct_detec_", col):
                 self.t.drop(col, axis=1, inplace=True)
-
-        for i in range(len(self.sigma_kerns)):
-            fom_limits = self.fom_limits[self.sigma_kerns[i]]
-            for fom_limit in fom_limits:
-                self.t[f"pct_detec_{fom_limit:0.2f}"] = np.full(len(self.t), np.nan)
 
     def merge_tables(self, other: Self):
         """
@@ -695,8 +760,8 @@ class EfficiencyTable(pdastrostatsclass):
             )
 
         self.sigma_kerns += other.sigma_kerns
-        if not self.fom_limits is None:
-            self.fom_limits.update(other.fom_limits)
+        # if not self.fom_limits is None:
+        #     self.fom_limits.update(other.fom_limits)
 
         self.t = pd.concat([self.t, other.t], ignore_index=True)
 
