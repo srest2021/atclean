@@ -21,17 +21,20 @@ from pdastro import pdastrostatsclass
 from generate_sim_table import (
     BRIGHTNESS_PARAM_PREFIX,
     TIME_PARAM_PREFIX,
+    ListParam,
     Param,
+    ParamType,
     Params,
     SimTable,
     SimTables,
     get_sim_tables_output_dir,
-    parse_params,
+    parse_config_params,
     GAUSSIAN_MODEL_NAME,
     ASYMMETRIC_GAUSSIAN_MODEL_NAME,
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
+    AandB,
     PresetColumnNames,
     format_float,
     get_allowed_presets,
@@ -44,8 +47,6 @@ from utils import (
 
 NON_PARAM_COLNAMES = {
     "sigma_kern",
-    # "peak_appmag",
-    # "peak_flux",
     "filename",
     "model_name",
     "mjd_colname",
@@ -129,9 +130,6 @@ class AsymmetricGaussian(Simulation):
         """
         Initialize an asymmetric Gaussian simulation object.
 
-        :param sigma_plus: Sigma or kernel size of one half of the Gaussian.
-        :param sigma_minus: Sigma or kernel size of the other half of the Gaussian.
-        :param peak_appmag: Peak apparent magnitude of the Gaussian.
         :param model_name: Name of the Gaussian model in the config file.
         """
         Simulation.__init__(self, model_name=model_name, **kwargs)
@@ -140,9 +138,14 @@ class AsymmetricGaussian(Simulation):
         self.sigma_minus: float = None
 
     def new(self, sigma_plus: float, sigma_minus: float, peak_appmag: float):
+        """
+        :param sigma_plus: Sigma or kernel size of one half of the Gaussian.
+        :param sigma_minus: Sigma or kernel size of the other half of the Gaussian.
+        :param peak_appmag: Peak apparent magnitude of the Gaussian.
+        """
         self.sigma_plus = sigma_plus
         self.sigma_minus = sigma_minus
-        self.peak_appmag = peak_appmag
+        self.brightness = peak_appmag
 
         peak_flux = mag2flux(peak_appmag)
         x = np.arange(-100, 100, 0.01)
@@ -158,21 +161,22 @@ class AsymmetricGaussian(Simulation):
     def get_sim_flux(
         self,
         mjds,
-        peak_appmag: float,
+        brightness: float,
         sigma_sim_plus: float = None,
         sigma_sim_minus: float = None,
         peak_mjd: float = None,
         **kwargs,
     ):
         """
-        Get the interpolated function of the Gaussian at a given peak MJD and match it to the given time array.
+        Get the interpolated function of the AsymmetricGaussian at a given peak MJD and match it to the given time array.
 
         :param mjds: Time array of MJDs.
-        :param peak_appmag: Desired peak apparent magnitude of the Gaussian.
-        :param sigma: Desired sigma or kernel size of the Gaussian.
-        :param peak_mjd: MJD at which the Gaussian should reach its peak apparent magnitude.
+        :param brightness: Desired peak apparent magnitude of the AsymmetricGaussian.
+        :param sigma_plus: Sigma or kernel size of one half of the AsymmetricGaussian.
+        :param sigma_minus: Sigma or kernel size of the other half of the AsymmetricGaussian.
+        :param peak_mjd: MJD at which the AsymmetricGaussian should reach its peak apparent magnitude.
 
-        :return: The simulated flux corresponding to the given time array.
+        :return: An array of simulated flux values corresponding to the input MJDs.
         """
         if sigma_sim_plus is None or sigma_sim_minus is None:
             raise RuntimeError(
@@ -183,7 +187,7 @@ class AsymmetricGaussian(Simulation):
                 "Peak MJD required to get flux of simulated asymmetric Gaussian."
             )
 
-        self.new(sigma_sim_plus, sigma_sim_minus, peak_appmag)
+        self.new(sigma_sim_plus, sigma_sim_minus, brightness)
 
         g = deepcopy(self.g)
         g[0, :] += peak_mjd
@@ -204,8 +208,6 @@ class Gaussian(AsymmetricGaussian):
         """
         Initialize a Gaussian simulation object.
 
-        :param sigma: Sigma or kernel size of the Gaussian.
-        :param peak_appmag: Peak apparent magnitude of the Gaussian.
         :param model_name: Name of the Gaussian model in the config file.
         """
         AsymmetricGaussian.__init__(self, model_name=model_name, **kwargs)
@@ -213,14 +215,20 @@ class Gaussian(AsymmetricGaussian):
     def get_sim_flux(
         self,
         mjds,
-        peak_appmag: float,
+        brightness: float,
         sigma_sim: float = None,
         peak_mjd: float = None,
         **kwargs,
     ):
+        """
+        :param mjds: Time array of MJDs.
+        :param brightness: Desired peak apparent magnitude of the Gaussian.
+        :param sigma_sim: Desired sigma or kernel size of the Gaussian.
+        :param peak_mjd: MJD at which the Gaussian should reach its peak apparent magnitude.
+        """
         return super().get_sim_flux(
             mjds,
-            peak_appmag,
+            brightness,
             sigma_sim_plus=sigma_sim,
             sigma_sim_minus=sigma_sim,
             peak_mjd=peak_mjd,
@@ -334,17 +342,17 @@ class Model(Simulation):
             print(self.t[["MJD", "m", "uJy"]].head().to_string())
             print("Success")
 
-    def get_sim_flux(self, mjds, peak_appmag: float, peak_mjd: float = None, **kwargs):
+    def get_sim_flux(self, mjds, brightness: float, peak_mjd: float = None, **kwargs):
         """
         Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
 
         :param mjds: Time array of MJDs.
-        :param peak_appmag: Desired peak apparent magnitude of the model.
+        :param brightness: Desired peak apparent magnitude of the model.
         :param peak_mjd: MJD at which the model should reach its peak apparent magnitude.
 
         :return: The simulated flux array corresponding to the given time array.
         """
-        self.peak_appmag = peak_appmag
+        self.brightness = brightness
         if peak_mjd is None:
             raise RuntimeError("Peak MJD required to construct simulated model.")
 
@@ -352,7 +360,7 @@ class Model(Simulation):
         peak_idx = self.t["m"].idxmin()
 
         # scale flux to the desired peak appmag
-        self.t["uJy"] *= mag2flux(peak_appmag) / self.t.loc[peak_idx, "uJy"]
+        self.t["uJy"] *= mag2flux(brightness) / self.t.loc[peak_idx, "uJy"]
 
         # recalulate appmag column
         self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
@@ -380,6 +388,24 @@ class SimDetecTable(SimTable):
         """
         SimTable.__init__(self, brightness, **kwargs)
         self.sigma_kern: float = sigma_kern
+
+    def validate_model_name_col(self):
+        if self.t.empty:
+            print(
+                "WARNING: Could not validate 'model_name' column because the SimDetecTable is empty"
+            )
+            return
+
+        if not "model_name" in self.t.columns:
+            print(
+                "WARNING: Could not validate 'model_name' column because the SimDetecTable column does not exist"
+            )
+            return
+
+        if self.t["model_name"].nunique() > 1:
+            raise ValueError(
+                "Multiple model types found in SimDetecTable, but expected only one"
+            )
 
     def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
@@ -558,7 +584,6 @@ class EfficiencyTable(pdastrostatsclass):
         Initialize an EfficiencyTable.
 
         :param sigma_kerns: List of detection algorithm kernel sizes.
-        :param brightness_param: Parameter of possible simulation brightnesses.
         :param params: Collection of parameter names and possible values.
         """
         pdastrostatsclass.__init__(self, **kwargs)
@@ -1020,63 +1045,61 @@ class ContaminationTable:
 class SimDetecLoop(ABC):
     def __init__(self, sigma_kerns: List[float], **kwargs):
         self.sigma_kerns: List[float] = sigma_kerns
-        self.peak_appmags: List[float] = None
-        self.peak_fluxes: List[float] = None
+        self.brightness_param: Param = None
 
         self.sn: SimDetecSupernova = None
         self.e: EfficiencyTable = None
         self.sd: SimDetecTables = None
 
     @abstractmethod
-    def set_peak_mags_and_fluxes(
+    def _get_brightness_param_from_dir(
         self,
-        model_name: str = None,
-        sim_tables_dir: str | None = None,
-        detec_tables_dir: str | None = None,
+        model_name: str,
+        directory: str,
+        pattern: re.Pattern,
         **kwargs,
     ):
-        """
-        Set the lists of peak apparent magnitudes and fluxes.
-        Default behavior searches the given directory for SimTable or SimDetecTable filenames with matching model names.
+        filenames = os.listdir(directory)
 
-        :param model_name: Name of the model for which to search for possible peak apparent magnitudes.
-        :param sim_tables_dir: Directory where the SimTables are located. If given, search for SimTables.
-        :param detec_tables_dir: Directory where the SimDetecTables are located. If given, search for SimDetecTables.
-        """
-        if model_name is None or (sim_tables_dir is None and detec_tables_dir is None):
-            raise RuntimeError(
-                "Please either provide a model name and SimTables or SimDetecTables directory, or overwrite this function with your own."
-            )
-        if not sim_tables_dir is None and not detec_tables_dir is None:
-            raise RuntimeError(
-                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
-            )
+        brightnesses = set()
 
-        peak_appmags = set()
-        if detec_tables_dir is None:
-            pattern = re.compile(
-                f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt"
-            )
-        else:
-            pattern = re.compile(
-                f"simdetec_{re.escape(model_name)}_" + r"\d+_(\d+\.\d{2})\.txt$"
-            )
-
-        filenames = (
-            os.listdir(sim_tables_dir)
-            if detec_tables_dir is None
-            else os.listdir(detec_tables_dir)
-        )
         for filename in filenames:
             match = pattern.match(filename)
             if match:
-                peak_appmag = float(match.group(1))
-                peak_appmags.add(peak_appmag)
+                brightness = float(match.group(1))
+                brightnesses.add(brightness)
 
-        self.peak_appmags = list(peak_appmags)
-        self.peak_appmags.sort()
+        self.brightness_param = ListParam(
+            "brightness", list(brightnesses), param_type=ParamType.BRIGHTNESS
+        )
 
-        self.peak_fluxes = list(map(mag2flux, self.peak_appmags))
+    @abstractmethod
+    def get_brightness_param_from_detec_tables(
+        self,
+        model_name: str,
+        detec_tables_dir: str,
+        **kwargs,
+    ):
+        pattern = re.compile(
+            f"simdetec_{re.escape(model_name)}_" + r"\d+_(\d+\.\d{2})\.txt$"
+        )
+        self._get_brightness_param_from_dir(model_name, detec_tables_dir, pattern)
+
+    @abstractmethod
+    def get_brightness_param_from_sim_tables(
+        self,
+        model_name: str,
+        sim_tables_dir: str,
+        **kwargs,
+    ):
+        pattern = re.compile(f"sim_{re.escape(model_name)}_([0-9]*\.[0-9]{{2}})\.txt")
+        self._get_brightness_param_from_dir(model_name, sim_tables_dir, pattern)
+
+    @abstractmethod
+    def set_brightness_param(self, values: List[float]):
+        self.brightness_param = ListParam(
+            "brightness", values, param_type=ParamType.BRIGHTNESS
+        )
 
     @abstractmethod
     def load_sn(
@@ -1087,6 +1110,7 @@ class SimDetecLoop(ABC):
         num_controls: int,
         mjdbinsize: float = 1.0,
         filt: str = "o",
+        flag: int = 0x800000,
     ):
         """
         Load the averaged SN and its control light curves.
@@ -1096,40 +1120,36 @@ class SimDetecLoop(ABC):
         :param num_controls: Number of averaged control light curves to load.
         :param mjdbinsize: MJD bin size of the averaged light curves to load.
         :param filt: Filter of the averaged light curves to load.
+        :param flag: Flag that denotes bad days in the binned light curves to load.
         """
-        self.sn = SimDetecSupernova(colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt)
+        self.sn = SimDetecSupernova(
+            colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt, flag=flag
+        )
         self.sn.load_all(data_dir, num_controls=num_controls)
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
 
     @abstractmethod
-    def load_sd(
-        self,
-        model_name: str,
-        sim_tables_dir: str | None = None,
-        detec_tables_dir: str | None = None,
-    ):
+    def load_sim_tables(self, model_name: str, sim_tables_dir: str):
         """
-        Either load existing SimTables and construct SimDetecTables out of them, or load existing SimDetecTables.
+        Load existing SimTables and construct SimDetecTables out of them.
 
         :param model_name: Name of the model whose tables will be loaded.
-        :param sim_tables_dir: Directory where the SimTables are located. If given, load SimTables.
-        :param detec_tables_dir: Directory where the SimDetecTables are located. If given, load SimDetecTables.
+        :param sim_tables_dir: Directory where the SimTables are located.
         """
-        self.sd = SimDetecTables(self.peak_appmags, model_name, self.sigma_kerns)
-        if sim_tables_dir is None and detec_tables_dir is None:
-            raise RuntimeError(
-                "Please either provide a SimTables or SimDetecTables directory."
-            )
-        if not sim_tables_dir is None and not detec_tables_dir is None:
-            raise RuntimeError(
-                "Please provide either a SimTables directory or a SimDetecTables directory, not both."
-            )
+        self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
+        self.sd.load_all_from_sim_tables(sim_tables_dir)
 
-        if detec_tables_dir is None:
-            self.sd.load_all_from_sim_tables(sim_tables_dir)
-        else:
-            self.sd.load_all(detec_tables_dir)
+    @abstractmethod
+    def load_detec_tables(self, model_name: str, detec_tables_dir: str):
+        """
+        Load existing SimDetecTables.
+
+        :param model_name: Name of the model whose tables will be loaded.
+        :param detec_tables_dir: Directory where the SimDetecTables are located.
+        """
+        self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
+        self.sd.load_all(detec_tables_dir)
 
     @abstractmethod
     def load_sim(
@@ -1156,10 +1176,10 @@ class SimDetecLoop(ABC):
         mag_colname = get_col_val("mag_colname", table_row)
         flux_colname = get_col_val("flux_colname", table_row)
 
-        if args.model_name == GAUSSIAN_MODEL_NAME:
+        if model_name == GAUSSIAN_MODEL_NAME:
             print("Using Gaussian simulations")
             sim = Gaussian()
-        elif args.model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
+        elif model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
             print("Using asymmetric Gaussian simulations")
             sim = AsymmetricGaussian()
         else:
@@ -1174,6 +1194,47 @@ class SimDetecLoop(ABC):
                 model_name=model_name,
             )
         return sim
+
+    @abstractmethod
+    def add_simulation_to_lc(
+        self,
+        sigma_kern: float,
+        brightness: float,
+        control_index: int,
+        sim: Simulation,
+        remove_old: bool = True,
+        verbose: bool = False,
+        **kwargs,
+    ):
+        """
+        Add any Simulation object to a copy of a light curve, specifying parameters using keyword arguments.
+
+        :param sigma_kern: The current sigma of the rolling sum.
+        :param brightness: The desired brightness of the Simulation to add.
+        :control_index: The control index of the light curve to add the Simulation to.
+        :param sim: The Simulation to add.
+        :param remove_old: Remove any old simulations before adding the new simulated flux.
+        """
+        if verbose:
+            print(f"Adding simulation: {sim}")
+            if kwargs:
+                print(f"Additional simulation parameters: {kwargs}")
+
+        lc = deepcopy(self.sn.lcs[control_index])
+        good_ix = lc.get_good_indices(flag=self.sn.flag)
+
+        sim_flux = sim.get_sim_flux(
+            lc.t.loc[good_ix, self.sn.colnames.mjd], brightness, **kwargs
+        )
+
+        lc.add_sim_flux(
+            good_ix,
+            sim_flux,
+            cur_sigma_kern=sigma_kern,
+            verbose=verbose,
+            remove_old=remove_old,
+        )
+        return lc
 
     @abstractmethod
     def get_max_fom_indices(
@@ -1192,7 +1253,7 @@ class SimDetecLoop(ABC):
     def update_sd_row(
         self,
         sigma_kern: float,
-        peak_appmag: float,
+        brightness: float,
         index: int,
         control_index: int,
         max_fom: float,
@@ -1213,30 +1274,33 @@ class SimDetecLoop(ABC):
             "max_fom": max_fom,
             "max_fom_mjd": max_fom_mjd,
         }
-        self.sd.update_row_at_index(sigma_kern, peak_appmag, index, data)
+        self.sd.update_row_at_index(sigma_kern, brightness, index, data)
 
     @abstractmethod
     def calculate_efficiencies(
         self,
-        fom_limits: List | Dict[float, List[float]],
-        params: Dict[str, List],
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
+        params: Params,
         detec_tables_dir: str,
         model_name: str,
-        time_param_name: str,
         **kwargs,
     ):
         """
         Construct and save an EfficiencyTable that contains efficiencies for every combination of a Simulation's sigma_kern, peak_appmag, and other parameters EXCEPT the time parameter.
 
-        :param fom_limits: Dictionary of sigma_kerns and their corresponding FOM limits.
-        :param params: Dictionary of parameter names and possible values.
+        :param fom_limits: Dict or List of FOM limits.
+        :param params: Collection of parameter names and possible values.
         :param detec_tables_dir: Directory where the EfficiencyTable should be saved.
         :param model_name: Name of the model for which to calculate efficiencies.
-        :param time_param_name: Any peak MJD, MJD0, or time-related parameter name that denotes where to inject the Simulation.
         """
-        self.e = EfficiencyTable(self.sigma_kerns, self.peak_appmags, params)
-        self.e.setup(time_param_name)
-        self.e.get_efficiencies(self.sd, fom_limits, time_param_name)
+        self.e = EfficiencyTable(self.sigma_kerns, params)
+        self.e.setup()
+        self.e.get_efficiencies(self.sd, fom_limits)
         self.e.save(detec_tables_dir, model_name)
 
     @abstractmethod
@@ -1263,9 +1327,21 @@ class AtlasSimDetecLoop(SimDetecLoop):
     def __init__(self, sigma_kerns: List, **kwargs):
         super().__init__(sigma_kerns, **kwargs)
 
-    def set_peak_mags_and_fluxes(self, model_name=None, sim_tables_dir=None, **kwargs):
-        return super().set_peak_mags_and_fluxes(
-            model_name=model_name, sim_tables_dir=sim_tables_dir, **kwargs
+    def set_brightness_param(self, values):
+        return super().set_brightness_param(values)
+
+    def get_brightness_param_from_detec_tables(
+        self, model_name: str, detec_tables_dir: str, **kwargs
+    ):
+        return super().get_brightness_param_from_detec_tables(
+            model_name, detec_tables_dir, **kwargs
+        )
+
+    def get_brightness_param_from_sim_tables(
+        self, model_name: str, sim_tables_dir: str, **kwargs
+    ):
+        return super().get_brightness_param_from_sim_tables(
+            model_name, sim_tables_dir, **kwargs
         )
 
     def load_sn(
@@ -1276,18 +1352,34 @@ class AtlasSimDetecLoop(SimDetecLoop):
         num_controls: int,
         mjdbinsize: float = 1.0,
         filt: str = "o",
+        flag: int = 0x800000,
     ):
         return super().load_sn(
-            data_dir, colnames, tnsname, num_controls, mjdbinsize, filt
+            data_dir, colnames, tnsname, num_controls, mjdbinsize, filt, flag
         )
 
-    def load_sd(self, model_name, sim_tables_dir=None, detec_tables_dir=None):
-        return super().load_sd(
-            model_name, sim_tables_dir=sim_tables_dir, detec_tables_dir=detec_tables_dir
-        )
+    def load_sim_tables(self, model_name: str, sim_tables_dir: str):
+        return super().load_sim_tables(model_name, sim_tables_dir)
+
+    def load_detec_tables(self, model_name: str, detec_tables_dir: str):
+        return super().load_detec_tables(model_name, detec_tables_dir)
 
     def load_sim(self, data: Dict) -> Simulation:
         return super().load_sim(data)
+
+    def add_simulation_to_lc(
+        self,
+        sigma_kern: float,
+        brightness: float,
+        control_index: int,
+        sim: Simulation,
+        remove_old: bool = True,
+        verbose: bool = False,
+        **kwargs,
+    ):
+        return super().add_simulation_to_lc(
+            sigma_kern, brightness, control_index, sim, remove_old, verbose, **kwargs
+        )
 
     def get_max_fom_indices(
         self, sim_lc: SimDetecLightCurve, peak_mjd=None, sigma_sim=None, **kwargs
@@ -1319,49 +1411,52 @@ class AtlasSimDetecLoop(SimDetecLoop):
         )
 
     def calculate_efficiencies(
-        self,
-        fom_limits: List | Dict[float, List[float]],
-        params: Dict[str, List],
-        detec_tables_dir: str,
-        model_name: str,
-        time_param_name: str,
-        **kwargs,
+        self, fom_limits, params, detec_tables_dir, model_name, **kwargs
     ):
         return super().calculate_efficiencies(
-            fom_limits, params, detec_tables_dir, model_name, time_param_name, **kwargs
+            fom_limits, params, detec_tables_dir, model_name, **kwargs
         )
 
     def loop(
         self,
-        valid_control_ix: List,
+        skip_control_ix: List,
         detec_tables_dir: str,
-        flag=0x800000,
         **kwargs,
     ):
+        if self.brightness_param is None:
+            raise RuntimeError("brightness_param cannot be None")
+        if self.sd is None:
+            raise RuntimeError("SimDetecTables cannot be None")
+
+        self.sn.remove_lc_indices(skip_control_ix)
+
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
-            print(f"\n\tUsing rolling sum kernel size sigma_kern={sigma_kern} days...")
-            self.sn.apply_rolling_sums(sigma_kern, flag=flag)
+            print(
+                f"\n\tUsing rolling sum kernel size sigma_kern={format_float(sigma_kern)} days..."
+            )
+            self.sn.apply_rolling_sums(sigma_kern, valid_ix=True)
 
             # loop through each possible peak apparent magnitude
-            for peak_appmag in self.peak_appmags:
+            for peak_appmag in self.brightness_param.values:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
+                sim_detec_table.validate_model_name_col()
                 print(
                     f"\nCommencing {len(sim_detec_table.t)} simulations for peak app mag {peak_appmag} (peak flux {mag2flux(peak_appmag):0.2f} uJy)..."
                 )
 
                 # load the Simulation object based on the data in the first row
-                # we assume here that every row adds the same type of model
+                # (we assume here that every row adds the same type of model)
                 sim = self.load_sim(dict(sim_detec_table.t.loc[0, :]))
 
                 for i in range(len(sim_detec_table.t)):
                     # pick random control light curve
-                    rand_control_index = random.choice(valid_control_ix)
+                    rand_control_index = random.choice(self.sn.control_lc_indices)
 
                     # add the simulated flux to the chosen control light curve
                     params = sim_detec_table.get_params_at_index(i)
-                    sim_lc = self.sn.lcs[rand_control_index].add_simulation(
-                        sim, peak_appmag, flag=flag, remove_old=True, **params
+                    sim_lc = self.add_simulation_to_lc(
+                        sigma_kern, peak_appmag, rand_control_index, sim, **params
                     )
 
                     # get the max simulated FOM within certain indices of the light curve
@@ -1381,6 +1476,8 @@ class AtlasSimDetecLoop(SimDetecLoop):
                 self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
                 print("Success")
 
+        self.sn.add_lc_indices(skip_control_ix)
+
         print("\nFinished generating all SimDetecTables")
 
 
@@ -1399,6 +1496,9 @@ def define_args(
         help="filter of transient to inject simulations into",
     )
     parser.add_argument(
+        "model_name", type=str, default="gaussian", help="name of model to use"
+    )
+    parser.add_argument(
         "-p",
         "--preset",
         type=str,
@@ -1406,9 +1506,9 @@ def define_args(
         help="preset name from config file (ex. atlas, rubin, tess)",
     )
 
-    parser.add_argument(
-        "-m", "--model_name", type=str, default="gaussian", help="name of model to use"
-    )
+    # parser.add_argument(
+    #     "-m", "--model_name", type=str, default="gaussian", help="name of model to use"
+    # )
     parser.add_argument(
         "--detec_config_file",
         default="detection_settings.json",
@@ -1470,11 +1570,6 @@ if __name__ == "__main__":
     model_settings = sim_config[args.model_name]
 
     sigma_kerns = [obj["sigma_kern"] for obj in detec_config["sigma_kerns"]]
-    valid_control_ix = [
-        i
-        for i in range(1, args.num_controls + 1)
-        if not i in detec_config["skip_control_ix"]
-    ]
 
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
@@ -1495,6 +1590,7 @@ if __name__ == "__main__":
         args.num_controls,
         args.mjd_bin_size,
         args.filter,
+        flag=config["averaging"]["flag"],
     )
 
     sim_tables_dir = get_sim_tables_output_dir(config["dir"]["output"], args.tnsname)
@@ -1503,24 +1599,17 @@ if __name__ == "__main__":
     )
 
     if args.skip_generate:
-        simdetec.set_peak_mags_and_fluxes(
-            model_name=args.model_name, detec_tables_dir=detec_tables_dir
+        simdetec.get_brightness_param_from_detec_tables(
+            args.model_name, detec_tables_dir
         )
-        simdetec.load_sd(args.model_name, detec_tables_dir=detec_tables_dir)
+        simdetec.load_detec_tables(args.model_name, detec_tables_dir)
     else:
-        simdetec.set_peak_mags_and_fluxes(
-            model_name=args.model_name, sim_tables_dir=sim_tables_dir
-        )
-        simdetec.load_sd(args.model_name, sim_tables_dir=sim_tables_dir)
-
-        simdetec.loop(
-            valid_control_ix,
-            detec_tables_dir,
-            flag=hexstring_to_int(config["averaging"]["flag"]),
-        )
+        simdetec.get_brightness_param_from_sim_tables(sim_tables_dir)
+        simdetec.load_sim_tables(args.model_name, sim_tables_dir)
+        simdetec.loop(detec_config["skip_control_ix"], detec_tables_dir)
 
     if args.efficiencies:
-        parsed_params = parse_params(model_settings)
+        parsed_params = parse_config_params(model_settings)
         fom_limits = {
             obj["sigma_kern"]: obj["fom_limits"] for obj in detec_config["sigma_kerns"]
         }

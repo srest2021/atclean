@@ -644,7 +644,7 @@ class AveragedSupernova(Supernova):
 
         self.lcs[control_index].set_pre_MJD0_ix(self.mjd0)
 
-    def load(self, input_dir, control_index=0):
+    def load(self, input_dir: str, control_index: int = 0):
         self.lcs[control_index] = AveragedLightCurve(
             self.colnames,
             control_index=control_index,
@@ -657,7 +657,7 @@ class AveragedSupernova(Supernova):
         if self.mjd0 is not None:
             self.set_pre_MJD0_ix(control_index=control_index)
 
-    def load_all(self, input_dir, num_controls=0):
+    def load_all(self, input_dir: str, num_controls: int = 0):
         self.lcs = {}
         self.num_controls = 0
 
@@ -692,7 +692,7 @@ class AveragedSupernova(Supernova):
             f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
         )
 
-    def save_all(self, output_dir, overwrite=False):
+    def save_all(self, output_dir: str, overwrite: bool = False):
         print(
             f"\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves..."
         )
@@ -1704,22 +1704,22 @@ class Simulation(ABC):
         Initialize the Simulation object.
         """
         self.model_name = model_name
-        self.peak_appmag = None
+        self.brightness = None
 
     @abstractmethod
-    def get_sim_flux(self, mjds, peak_appmag, **kwargs):
+    def get_sim_flux(self, mjds, brightness, **kwargs):
         """
         Compute the simulated flux for the given MJDs and peak apparent magnitude.
 
-        :param mjds: List or array of MJDs.
-        :param peak_appmag: Desired peak apparent magnitude of the simulation.
+        :param mjds: List or array of MJDs into which we inject the Simulation.
+        :param brightness: Desired brightness (e.g., peak apparent magnitude or flux) of the simulation.
 
-        :return: An array of flux values corresponding to the input MJDs.
+        :return: An array of simulated flux values corresponding to the input MJDs.
         """
         pass
 
     def __str__(self):
-        return f'Simulation with model name "{self.model_name}": peak appmag = {self.peak_appmag:0.2f}'
+        return f'Simulation with model name "{self.model_name}": brightness = {format_float(self.brightness)}'
 
 
 class SimDetecSupernova(AveragedSupernova):
@@ -2089,43 +2089,6 @@ class SimDetecLightCurve(AveragedLightCurve):
             std=new_gaussian_sigma
         )
         self.t[self.colnames.snrsimsum] = list(SNRsimsum.loc[dataindices])
-
-    # add any simulation to a copy of the light curve and return it, specifying parameters using keyword arguments
-    def add_simulation(
-        self,
-        sim: Simulation,
-        peak_appmag: float,
-        cur_sigma_kern: int = None,
-        flag: int = 0x800000,
-        verbose: bool = False,
-        remove_old: bool = True,
-        **params,
-    ) -> Self:
-        """
-        Add any Simulation object to a copy of the light curve, specifying parameters using keyword arguments.
-
-        :param sim: The Simulation to add.
-        :param peak_appmag: The desired peak apparent magnitude of the Simulation to add.
-        :param cur_sigma_kern: The current sigma of the rolling sum.
-        :param flag: The flag value by which to filter out any flagged bins.
-        :param remove_old: Remove any old simulations before adding the simulated flux.
-        """
-        if verbose:
-            print(f"Adding simulation: {sim}")
-
-        lc = deepcopy(self)
-        good_ix = AandB(lc.getindices(), lc.ix_unmasked(self.colnames.mask, flag))
-        sim_flux = sim.get_sim_flux(
-            lc.t.loc[good_ix, self.colnames.mjd], peak_appmag, **params
-        )
-        lc.add_sim_flux(
-            good_ix,
-            sim_flux,
-            cur_sigma_kern=cur_sigma_kern,
-            verbose=verbose,
-            remove_old=remove_old,
-        )
-        return lc
 
     # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices

@@ -13,6 +13,7 @@ import sys
 import pandas as pd
 import numpy as np
 from typing import Callable, Dict, List, Optional
+from enum import Enum, auto
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
@@ -47,6 +48,16 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     return parser
 
 
+class ParamType(Enum):
+    # Indicates if the parameter is related to time (e.g., peak or onset MJD).
+    TIME = auto()
+
+    # Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+    BRIGHTNESS = auto()
+
+    OTHER = auto()
+
+
 class Param(ABC):
     """
     Abstract base class for defining simulation parameters.
@@ -56,32 +67,33 @@ class Param(ABC):
         self,
         name: str,
         values: Optional[List] = None,
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
+        self.param_type: ParamType = param_type
+
         out = f"Creating parameter {name}"
-        if is_time_param:
+        if self.is_time_param:
             out += " (time param)"
-        if is_brightness_param:
+        if self.is_brightness_param:
             out += " (brightness param)"
         print(out)
 
-        if is_time_param and is_brightness_param:
-            raise ValueError(
-                "Param cannot be a time parameter and brightness magnitude parameter at the same time"
-            )
-
         self.name = name
         self.values = values
-        self.is_time_param = is_time_param
-        self.is_brightness_param = is_brightness_param
         self.validate_name()
+
+    @property
+    def is_time_param(self) -> bool:
+        return self.param_type == ParamType.TIME
+
+    @property
+    def is_brightness_param(self) -> bool:
+        return self.param_type == ParamType.BRIGHTNESS
 
     @abstractmethod
     def generate(self, **kwargs):
@@ -144,21 +156,14 @@ class ListParam(Param):
         self,
         name: str,
         values: Optional[List],
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(
-            name,
-            values=values,
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
-        )
+        super().__init__(name, values=values, param_type=param_type)
 
     def generate(self, **kwargs):
         pass
@@ -175,20 +180,16 @@ class RangeParam(Param):
         minval: float,
         maxval: float,
         step: float,
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
         :param minval (float): The minimum value of the range.
         :param maxval (float): The maximum value of the range.
         :param step (float): The step size between consecutive values in the range.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(
-            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
-        )
+        super().__init__(name, param_type=param_type)
         self.generate(minval, maxval, step)
         if self.is_time_param:
             self.validate_time_param()
@@ -219,8 +220,7 @@ class LogRangeParam(Param):
         base: int,
         n: int,
         to_int=False,
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
@@ -229,12 +229,9 @@ class LogRangeParam(Param):
         :param base (int): The logarithmic base to use.
         :param n (int): The number of values to generate in the range.
         :param to_int (bool): Whether to round the generated values to integers.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(
-            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
-        )
+        super().__init__(name, param_type=param_type)
         self.generate(minval, maxval, base, n, to_int=to_int)
         if self.is_time_param:
             self.validate_time_param()
@@ -267,8 +264,7 @@ class RandomParam(Param):
         maxval: float,
         n: int,
         to_int=False,
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
@@ -276,12 +272,9 @@ class RandomParam(Param):
         :param maxval (float): The maximum value of the range.
         :param n (int): The number of random values to generate.
         :param to_int (bool): Whether to round the generated values to integers.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(
-            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
-        )
+        super().__init__(name, param_type=param_type)
         self.generate(minval, maxval, n, to_int=to_int)
         if self.is_time_param:
             self.validate_time_param()
@@ -308,19 +301,15 @@ class RandomInRangeParam(Param):
         name,
         valid_ranges: List[List[float]],
         n: int,
-        is_time_param: bool = False,
-        is_brightness_param: bool = False,
+        param_type: ParamType = ParamType.OTHER,
     ):
         """
         :param name (str): The name of the parameter.
         :param valid_ranges (List[List[float]]): A list of valid ranges, where each range is a list of two floats [min, max].
         :param n (int): The number of random values to generate.
-        :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-        :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(
-            name, is_time_param=is_time_param, is_brightness_param=is_brightness_param
-        )
+        super().__init__(name, param_type=param_type)
         self.generate(valid_ranges, n)
         if self.is_time_param:
             self.validate_time_param()
@@ -509,70 +498,63 @@ class Params:
         return out
 
 
-def parse_param(
-    param_name: str,
-    param_info: Dict,
-    is_time_param: bool = False,
-    is_brightness_param: bool = False,
+def parse_config_param(
+    name: str,
+    info: Dict,
+    param_type: ParamType = ParamType.OTHER,
 ) -> Param:
     """
     Generate a list of possible values for the parameter using settings from the config file.
 
     :param_name: Name of parameter as in config file.
     :param_info: Dictionary corresponding to the JSON data under the given parameter in the config file.
-    :param is_time_param (bool): Indicates if the parameter is related to time (e.g., peak or onset MJD).
-    :param is_brightness_param (bool): Indicates if the parameter is related to brightness (e.g., peak magnitude or flux).
+    :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
     """
-    print(f"\nParsing config parameter {param_name}:")
+    print(f"\nParsing config parameter {name}:")
 
-    if param_info["type"] == "list":
+    if info["type"] == "list":
         res = ListParam(
-            param_name,
-            param_info["list"],
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
+            name,
+            info["list"],
+            param_type=param_type,
         )
 
-    elif param_info["type"] == "range":
+    elif info["type"] == "range":
         res = RangeParam(
-            param_name,
-            param_info["range"]["minval"],
-            param_info["range"]["maxval"],
-            param_info["range"]["step"],
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
+            name,
+            info["range"]["minval"],
+            info["range"]["maxval"],
+            info["range"]["step"],
+            param_type=param_type,
         )
 
-    elif param_info["type"] == "logrange":
+    elif info["type"] == "logrange":
         res = LogRangeParam(
-            param_name,
-            param_info["logrange"]["minval"],
-            param_info["logrange"]["maxval"],
-            param_info["logrange"]["base"],
-            param_info["logrange"]["n"],
-            to_int=param_info["logrange"]["to_int"],
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
+            name,
+            info["logrange"]["minval"],
+            info["logrange"]["maxval"],
+            info["logrange"]["base"],
+            info["logrange"]["n"],
+            to_int=info["logrange"]["to_int"],
+            param_type=param_type,
         )
 
-    elif param_info["type"] == "random":
+    elif info["type"] == "random":
         res = RandomParam(
-            param_name,
-            param_info["random"]["minval"],
-            param_info["random"]["maxval"],
-            param_info["random"]["n"],
-            to_int=param_info["random"]["to_int"],
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
+            name,
+            info["random"]["minval"],
+            info["random"]["maxval"],
+            info["random"]["n"],
+            to_int=info["random"]["to_int"],
+            param_type=param_type,
         )
 
-    elif param_info["type"] == "random_inrange":
+    elif info["type"] == "random_inrange":
         res = RandomInRangeParam(
-            param_name,
-            param_info["random_inrange"]["valid_ranges"],
-            param_info["random_inrange"]["n"],
-            is_time_param=is_time_param,
-            is_brightness_param=is_brightness_param,
+            name,
+            info["random_inrange"]["valid_ranges"],
+            info["random_inrange"]["n"],
+            param_type=param_type,
         )
 
     else:
@@ -584,7 +566,7 @@ def parse_param(
     return res
 
 
-def parse_params(
+def parse_config_params(
     model_settings: Dict,
     time_param_name: str = "peak_mjd",
     brightness_param_name: str = "peak_appmag",
@@ -594,11 +576,17 @@ def parse_params(
     """
     params: Params = Params()
     for param_name in model_settings["parameters"]:
-        param = parse_param(
+        if param_name == time_param_name:
+            param_type = ParamType.TIME
+        elif param_name == brightness_param_name:
+            param_type = ParamType.BRIGHTNESS
+        else:
+            param_type = ParamType.OTHER
+
+        param = parse_config_param(
             param_name,
             model_settings["parameters"][param_name],
-            is_time_param=param_name == time_param_name,
-            is_brightness_param=param_name == brightness_param_name,
+            param_type=param_type,
         )
         params.add(param)
     params.validate()
@@ -787,7 +775,7 @@ if __name__ == "__main__":
     model_settings = sim_config[args.model_name]
 
     print("Parsing model parameters...")
-    params = parse_params(
+    params = parse_config_params(
         model_settings,
         time_param_name=model_settings["time_parameter_name"],
         brightness_param_name=model_settings["brightness_parameter_name"],
