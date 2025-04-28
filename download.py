@@ -57,7 +57,7 @@ class ControlCoordinatesTable:
     def read(self, filename: str):
         try:
             print(f"Loading control coordinates table at {filename}...")
-            self.t = pd.read_table(filename, delim_whitespace=True)
+            self.t = pd.read_table(filename, sep="\s+")
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
                     'Control coordinates table must have "ra" and "dec" columns.'
@@ -240,7 +240,7 @@ class ControlCoordinatesTable:
         filename = self.get_filename(directory, tnsname)
         try:
             print(f"Loading control coordinates table at {filename}...")
-            self.t = pd.read_table(filename, delim_whitespace=True)
+            self.t = pd.read_table(filename, sep="\s+")
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
                     'Control coordinates table must have "ra" and "dec" columns.'

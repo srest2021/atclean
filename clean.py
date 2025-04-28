@@ -224,7 +224,7 @@ class UncertEstTable:
             print(
                 f"\nLoading true uncertainties estimation table at {self.filename}..."
             )
-            self.t = pd.read_table(self.filename, delim_whitespace=True)
+            self.t = pd.read_table(self.filename, sep="\s+")
             print("Success")
         except:
             print(
@@ -282,7 +282,7 @@ class ChiSquareCutTable:
 
         try:
             print(f"\nLoading chi-square cut table at {self.filename}...")
-            self.t = pd.read_table(self.filename, delim_whitespace=True)
+            self.t = pd.read_table(self.filename, sep="\s+")
             print("Success")
         except:
             print(f"No existing chi-square cut table; creating blank table...")

@@ -244,7 +244,7 @@ class pdastroclass:
             if verbose:
                 print("Loading %s" % filename)
             self.t = pd.read_table(
-                filename, delim_whitespace=delim_whitespace, **kwargs
+                filename, sep="\s+" if delim_whitespace else None, **kwargs
             )
             self.filename = filename
         except Exception as e:

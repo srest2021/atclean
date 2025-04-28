@@ -31,7 +31,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
     parser.add_argument("tnsname", type=str, help="transient name")
     parser.add_argument(
-        "-m", "--model_name", type=str, default="gaussian", help="name of model to use"
+        "model_name", type=str, default="gaussian", help="name of model to use"
     )
     parser.add_argument(
         "--sim_config_file",
@@ -76,7 +76,7 @@ class Param(ABC):
         """
         self.param_type: ParamType = param_type
 
-        out = f"Creating parameter {name}"
+        out = f"Creating parameter '{name}'"
         if self.is_time_param:
             out += " (time param)"
         if self.is_brightness_param:

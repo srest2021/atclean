@@ -8,6 +8,8 @@ from astropy import units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
 from collections import OrderedDict
+
+import scipy
 from pdastro import AnotB, pdastrostatsclass
 import numpy as np
 import pandas as pd
@@ -455,7 +457,9 @@ class Supernova:
         # load SN light curve
         self.load(input_dir, cleaned=cleaned)
 
-        control_indices = find_all_control_indices(input_dir, self.tnsname)
+        control_indices = find_all_control_indices(
+            input_dir, self.tnsname, filt=self.filt
+        )
         if len(control_indices) < num_controls:
             raise RuntimeError(
                 f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
@@ -668,7 +672,9 @@ class AveragedSupernova(Supernova):
         # load averaged SN light curve
         self.load(input_dir)
 
-        control_indices = find_all_control_indices(input_dir, self.tnsname)
+        control_indices = find_all_control_indices(
+            input_dir, self.tnsname, filt=self.filt
+        )
         if len(control_indices) < num_controls:
             raise RuntimeError(
                 f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
@@ -1823,11 +1829,7 @@ class SimDetecSupernova(AveragedSupernova):
         print(msg + "...")
 
         # apply rolling sum to SN lc
-        self.lcs[0].apply_rolling_sum(
-            sigma_kern,
-            flag=self.flag,
-            indices=sn_indices,
-        )
+        self.lcs[0].apply_rolling_sum(sigma_kern, flag=self.flag, indices=sn_indices)
 
         # apply rolling sum to control lcs, filtering by valid MJD ranges if needed
         for control_index in self.control_lc_indices:

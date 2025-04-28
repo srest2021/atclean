@@ -202,10 +202,18 @@ def find_all_filts(directory: str, tnsname: str):
     return extract_from_subdir(subdir, pattern, "filt")
 
 
-def find_all_control_indices(directory: str, tnsname: str):
+def find_all_control_indices(directory: str, tnsname: str, filt=None):
+    if filt is None:
+        filt_pattern = r".*"
+    else:
+        filt_pattern = re.escape(filt)
+
     pattern = re.compile(
         rf"^{re.escape(tnsname)}_i(?P<index>\d{{3}})"  # captures control index
-        r"\..*\.lc\.txt$"  # ensures it follows the general pattern
+        rf"\.{filt_pattern}"  # match specific filt if provided
+        r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+        r"(?:\.clean)?"  # optional 'clean'
+        r"\.lc\.txt$"  # ends with '.lc.txt'
     )
     subdir = os.path.join(directory, tnsname, "controls")
     return extract_from_subdir(subdir, pattern, "index", convert_function=int)
@@ -686,7 +694,7 @@ class SnInfoTable:
 
         try:
             print(f"Loading SN info table at {self.filename}...")
-            self.t = pd.read_table(self.filename, delim_whitespace=True)
+            self.t = pd.read_table(self.filename, sep="\s+")
             if not "tnsname" in self.t.columns:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
