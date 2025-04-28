@@ -1063,10 +1063,8 @@ class SimDetecLoop(ABC):
 
     def _get_brightness_param_from_dir(
         self,
-        model_name: str,
         directory: str,
         pattern: re.Pattern,
-        **kwargs,
     ):
         filenames = os.listdir(directory)
 
@@ -1087,7 +1085,6 @@ class SimDetecLoop(ABC):
         model_name: str,
         detec_tables_dir: str,
         param_name: str = "brightness",
-        **kwargs,
     ):
         pattern = re.compile(rf"^simdetec_{re.escape(model_name)}_\d+_(\d+\.\d+)\.txt$")
         values = self._get_brightness_param_from_dir(
@@ -1103,7 +1100,6 @@ class SimDetecLoop(ABC):
         model_name: str,
         sim_tables_dir: str,
         param_name: str = "brightness",
-        **kwargs,
     ):
         pattern = re.compile(rf"^sim_{re.escape(model_name)}_(\d+\.\d+)\.txt$")
         values = self._get_brightness_param_from_dir(
@@ -1114,13 +1110,11 @@ class SimDetecLoop(ABC):
         )
         print(self.brightness_param)
 
-    @abstractmethod
     def set_brightness_param(self, values: List[float]):
         self.brightness_param = ListParam(
             "brightness", values, param_type=ParamType.BRIGHTNESS
         )
 
-    @abstractmethod
     def load_sn(
         self,
         data_dir: str,
@@ -1148,7 +1142,20 @@ class SimDetecLoop(ABC):
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
 
-    @abstractmethod
+    def set_sn(self, sn: SimDetecSupernova):
+        if not isinstance(sn, SimDetecSupernova):
+            raise ValueError(
+                "The provided object is not a valid SimDetecSupernova instance"
+            )
+        if sn.num_controls < 1 or len(sn.lcs) < 2:
+            raise ValueError(
+                "The SimDetecSupernova object must have at least one control light curve"
+            )
+
+        self.sn = sn
+        self.sn.remove_rolling_sums()
+        self.sn.remove_simulations()
+
     def load_sim_tables(self, model_name: str, sim_tables_dir: str):
         """
         Load existing SimTables and construct SimDetecTables out of them.
@@ -1159,7 +1166,6 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
         self.sd.load_all_from_sim_tables(sim_tables_dir)
 
-    @abstractmethod
     def load_detec_tables(self, model_name: str, detec_tables_dir: str):
         """
         Load existing SimDetecTables.
@@ -1170,7 +1176,6 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
         self.sd.load_all(detec_tables_dir)
 
-    @abstractmethod
     def load_sim(self, table_row: Dict, verbose: bool = False) -> Simulation:
         """
         Construct and return a Simulation object given a row from a SimTable or SimDetecTable.
@@ -1218,7 +1223,6 @@ class SimDetecLoop(ABC):
             )
         return sim
 
-    @abstractmethod
     def add_simulation_to_lc(
         self,
         sigma_kern: float,
@@ -1272,7 +1276,6 @@ class SimDetecLoop(ABC):
         """
         pass
 
-    @abstractmethod
     def update_sd_row(
         self,
         sigma_kern: float,
@@ -1299,7 +1302,6 @@ class SimDetecLoop(ABC):
         }
         self.sd.update_row_at_index(sigma_kern, brightness, index, data)
 
-    @abstractmethod
     def calculate_efficiencies(
         self,
         fom_limits: (
@@ -1311,7 +1313,6 @@ class SimDetecLoop(ABC):
         params: Params,
         detec_tables_dir: str,
         model_name: str,
-        **kwargs,
     ):
         """
         Construct and save an EfficiencyTable that contains efficiencies for every combination of a Simulation's sigma_kern, peak_appmag, and other parameters EXCEPT the time parameter.
@@ -1348,9 +1349,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
     def __init__(self, sigma_kerns: List, **kwargs):
         super().__init__(sigma_kerns, **kwargs)
 
-    def set_brightness_param(self, values):
-        return super().set_brightness_param(values)
-
     def get_brightness_param_from_detec_tables(
         self, model_name: str, detec_tables_dir: str, param_name="peak_appmag", **kwargs
     ):
@@ -1363,43 +1361,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
     ):
         return super().get_brightness_param_from_sim_tables(
             model_name, sim_tables_dir, param_name=param_name, **kwargs
-        )
-
-    def load_sn(
-        self,
-        data_dir: str,
-        colnames: PresetColumnNames,
-        tnsname: str,
-        num_controls: int,
-        mjdbinsize: float = 1.0,
-        filt: str = "o",
-        flag: int = 0x800000,
-    ):
-        return super().load_sn(
-            data_dir, colnames, tnsname, num_controls, mjdbinsize, filt, flag
-        )
-
-    def load_sim_tables(self, model_name: str, sim_tables_dir: str):
-        return super().load_sim_tables(model_name, sim_tables_dir)
-
-    def load_detec_tables(self, model_name: str, detec_tables_dir: str):
-        return super().load_detec_tables(model_name, detec_tables_dir)
-
-    def load_sim(self, data: Dict, verbose: bool = False) -> Simulation:
-        return super().load_sim(data, verbose=verbose)
-
-    def add_simulation_to_lc(
-        self,
-        sigma_kern: float,
-        brightness: float,
-        control_index: int,
-        sim: Simulation,
-        remove_old: bool = True,
-        verbose: bool = False,
-        **kwargs,
-    ):
-        return super().add_simulation_to_lc(
-            sigma_kern, brightness, control_index, sim, remove_old, verbose, **kwargs
         )
 
     def get_max_fom_indices(
@@ -1423,20 +1384,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
             uplim=time_peak_mjd + sigma_sim,
         )
         return indices
-
-    def update_sd_row(
-        self, sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
-    ):
-        return super().update_sd_row(
-            sigma_kern, peak_appmag, index, control_index, max_fom, max_fom_mjd
-        )
-
-    def calculate_efficiencies(
-        self, fom_limits, params, detec_tables_dir, model_name, **kwargs
-    ):
-        return super().calculate_efficiencies(
-            fom_limits, params, detec_tables_dir, model_name, **kwargs
-        )
 
     def loop(
         self,
@@ -1463,7 +1410,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
             # loop through each possible peak apparent magnitude
             for peak_appmag in self.brightness_param.values:
-                # for peak_appmag in [20.0]:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
                 sim_detec_table.validate_model_name_col()
                 print(
@@ -1488,52 +1434,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
                     indices = self.get_max_fom_indices(sim_lc, **params)
                     max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
 
-                    # print(params)
-                    # temp = self.sn.lcs[rand_control_index]
-                    # tempi = temp.ix_inrange(
-                    #     colnames="MJDbin",
-                    #     lowlim=params["time_peak_mjd"] - params["sigma_sim"],
-                    #     uplim=params["time_peak_mjd"] + params["sigma_sim"],
-                    # )
-                    # print(
-                    #     temp.t.loc[
-                    #         tempi,
-                    #         [
-                    #             "MJDbin",
-                    #             "MJD",
-                    #             "uJy",
-                    #             "duJy",
-                    #             "SNR",
-                    #             "SNR_sum",
-                    #             "SNR_sumnorm",
-                    #         ],
-                    #     ].to_string()
-                    # )
-                    # simi = sim_lc.ix_inrange(
-                    #     colnames="MJDbin",
-                    #     lowlim=params["time_peak_mjd"] - params["sigma_sim"],
-                    #     uplim=params["time_peak_mjd"] + params["sigma_sim"],
-                    # )
-                    # print(
-                    #     sim_lc.t.loc[
-                    #         simi,
-                    #         [
-                    #             "MJDbin",
-                    #             "MJD",
-                    #             "uJy",
-                    #             "duJy",
-                    #             "SNR",
-                    #             "SNR_sum",
-                    #             "SNR_sumnorm",
-                    #             "uJy_sim",
-                    #             "SNR_sim",
-                    #             "SNR_simsum",
-                    #         ],
-                    #     ].to_string()
-                    # )
-                    # print(max_fom_mjd, max_fom)
-                    # sys.exit()
-
                     # update the corresponding row in the SimDetecTable
                     self.update_sd_row(
                         sigma_kern,
@@ -1543,11 +1443,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
                         max_fom,
                         max_fom_mjd,
                     )
-
-                    # if i == 5:
-                    #     sys.exit()
-
-                    # sys.exit()
 
                 self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
                 print("\tSuccess")
