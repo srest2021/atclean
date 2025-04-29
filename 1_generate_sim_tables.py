@@ -35,7 +35,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     )
     parser.add_argument(
         "--sim_config_file",
-        default="simulation_settings.json",
+        default="1_sim_settings.json",
         type=str,
         help="file name of JSON file with model information and SimTable generation settings",
     )

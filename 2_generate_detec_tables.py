@@ -1483,12 +1483,12 @@ def define_args(
         default="atlas",
         help="preset name from config file (ex. atlas, rubin, tess)",
     )
-    parser.add_argument(
-        "--detec_config_file",
-        default="detection_settings.json",
-        type=str,
-        help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
-    )
+    # parser.add_argument(
+    #     "--detec_config_file",
+    #     default="detection_settings.json",
+    #     type=str,
+    #     help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
+    # )
     # parser.add_argument(
     #     "--sim_config_file",
     #     default="simulation_settings.json",
