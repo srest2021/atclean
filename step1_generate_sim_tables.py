@@ -34,8 +34,8 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "model_name", type=str, default="gaussian", help="name of model to use"
     )
     parser.add_argument(
-        "--sim_config_file",
-        default="1_sim_settings.json",
+        "--step1_config_file",
+        default="step1_settings.json",
         type=str,
         help="file name of JSON file with model information and SimTable generation settings",
     )
@@ -763,17 +763,17 @@ def parse_colname_info(model_settings: Dict, model_name: str):
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
-    sim_config = load_json_config(args.sim_config_file)
+    step1_config = load_json_config(args.step1_config_file)
 
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
-    if args.model_name not in sim_config:
+    if args.model_name not in step1_config:
         raise RuntimeError(
             f"Model '{args.model_name}' not found in simulation config file\n"
-            f"Available models: {', '.join(sim_config.keys())}"
+            f"Available models: {', '.join(step1_config.keys())}"
         )
     print(f"Loading settings for model '{args.model_name}'...")
-    model_settings = sim_config[args.model_name]
+    model_settings = step1_config[args.model_name]
 
     print("Parsing model parameters...")
     params = parse_config_params(

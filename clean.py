@@ -27,6 +27,7 @@ from utils import (
     UncertaintyCut,
     UncertaintyEstimation,
     find_all_filts,
+    format_float,
     get_config_custom_cuts,
     hexstring_to_int,
     Cut,
@@ -79,7 +80,7 @@ class OutputReadMe:
         )
         if self.cut_list.has(BadDayCut.name()):
             self.f.write(
-                f"\n\t- Averaged light curves (for MJD bin size {mjdbinsize:0.2f} days): {self.tnsname}.o.{mjdbinsize:0.2f}days.lc.txt and {self.tnsname}.c.{mjdbinsize:0.2f}days.lc.txt"
+                f"\n\t- Averaged light curves (for MJD bin size {format_float(mjdbinsize)} days): {self.tnsname}.o.{format_float(mjdbinsize)}days.lc.txt and {self.tnsname}.c.{format_float(mjdbinsize)}days.lc.txt"
             )
         if self.cut_list.has(ControlLightCurveCut.name()):
             self.f.write(

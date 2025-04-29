@@ -18,7 +18,7 @@ from astropy.modeling.functional_models import Gaussian1D
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from generate_sim_table import (
+from step1_generate_sim_tables import (
     BRIGHTNESS_PARAM_PREFIX,
     TIME_PARAM_PREFIX,
     ListParam,
@@ -1483,32 +1483,6 @@ def define_args(
         default="atlas",
         help="preset name from config file (ex. atlas, rubin, tess)",
     )
-    # parser.add_argument(
-    #     "--detec_config_file",
-    #     default="detection_settings.json",
-    #     type=str,
-    #     help="file name of JSON file with SimDetecTable generation and efficiency calculation settings",
-    # )
-    # parser.add_argument(
-    #     "--sim_config_file",
-    #     default="simulation_settings.json",
-    #     type=str,
-    #     help="file name of JSON file with model information and SimTable generation settings",
-    # )
-    # parser.add_argument(
-    #     "--skip_generate",
-    #     default=False,
-    #     action="store_true",
-    #     help="skip SimDetecTable generation and directly load them instead; use -e argument to calculate efficiencies on loaded SimDetecTables",
-    # )
-    # parser.add_argument(
-    #     "-e",
-    #     "--efficiencies",
-    #     default=False,
-    #     action="store_true",
-    #     help="calculate efficiencies using best FOM limits",
-    # )
-
     parser.add_argument(
         "--num_controls",
         type=int,
@@ -1537,8 +1511,6 @@ if __name__ == "__main__":
     config = load_config("config.ini")
     args = define_args(config).parse_args()
 
-    # detec_config = load_json_config(args.detec_config_file)
-
     print(
         f"\nGenerating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float(args.mjd_bin_size)} days"
     )
@@ -1546,18 +1518,6 @@ if __name__ == "__main__":
     print(f"Weighted Gaussian rolling sum kernel sizes (days): {args.sigma_kerns}")
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
-
-    # load model settings from sim_config
-    # sim_config = load_json_config(args.sim_config_file)
-    # if args.model_name not in sim_config:
-    #     raise RuntimeError(
-    #         f"Model '{args.model_name}' not found in simulation config file\n"
-    #         f"Available models: {', '.join(sim_config.keys())}"
-    #     )
-    # print(f"Loading settings for model '{args.model_name}'...")
-    # model_settings = sim_config[args.model_name]
-
-    # get time param from model settings -> use mjd ranges
 
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
@@ -1588,39 +1548,7 @@ if __name__ == "__main__":
         config["dir"]["output"], args.tnsname
     )
 
-    # if args.skip_generate:
-    #     simdetec.get_brightness_param_from_detec_tables(
-    #         args.model_name, detec_tables_dir
-    #     )
-    #     simdetec.load_detec_tables(args.model_name, detec_tables_dir)
-    # else:
-
     print()
     simdetec.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
     simdetec.load_sim_tables(args.model_name, sim_tables_dir)
     simdetec.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)
-
-    # if args.efficiencies:
-    #     parsed_params = parse_config_params(model_settings)
-    #     fom_limits = {
-    #         obj["sigma_kern"]: obj["fom_limits"] for obj in detec_config["sigma_kerns"]
-    #     }
-
-    #     """
-    #     TODO: Dynamic FOM limit calculation of fom_limits is list of empty sublists
-
-    #     Need to access model_settings["parameters"][model_settings["time_parameter_name"]]
-    #     Then use it to get valid MJD ranges
-
-    #     Calculate the preliminary range of valid detection limits
-
-    #     Calculate the best detection limits
-    #     """
-
-    # simdetec.calculate_efficiencies(
-    #     fom_limits,
-    #     parsed_params,
-    #     detec_tables_dir,
-    #     args.model_name,
-    #     model_settings["time_parameter_name"],
-    # )
