@@ -41,6 +41,7 @@ from utils import (
     hexstring_to_int,
     load_config,
     load_json_config,
+    new_row,
     print_progress_bar,
 )
 
@@ -605,13 +606,11 @@ class EfficiencyTable(pdastrostatsclass):
         Set up the table columns for sigma_kerns, brightnesses, and other known parameter values.
         The time column name will be skipped when constructing columns.
         """
-        all_params = dict(
-            {
-                "sigma_kern": self.sigma_kerns,
-                self.params.brightness_param.name: self.params.brightness_param.values,
-            },
-            {param.name: param.values for param in self.params.other_params()},
-        )
+        all_params = {
+            "sigma_kern": self.sigma_kerns,
+            self.params.brightness_param.name: self.params.brightness_param.values,
+            **{param.name: param.values for param in self.params.other_params()},
+        }
 
         print(f"\nSetting up efficiency table with columns: {all_params.keys()}")
 
@@ -658,12 +657,6 @@ class EfficiencyTable(pdastrostatsclass):
 
             # List[List[float]]
             elif all(isinstance(x, list) for x in fom_limits):
-                # expected_length = len(fom_limits[0])
-                # for l in fom_limits:
-                #     if len(l) != expected_length:
-                #         raise RuntimeError(
-                #             "Each sigma_kern must have the same number of FOM limits"
-                #         )
                 return dict(zip(self.sigma_kerns, fom_limits))
 
             else:
@@ -707,6 +700,7 @@ class EfficiencyTable(pdastrostatsclass):
             | Dict[float, float]
             | Dict[float, List[float]]
         ),
+        progress_bar: bool = True,
         **kwargs,
     ):
         """
@@ -723,7 +717,8 @@ class EfficiencyTable(pdastrostatsclass):
 
         l = len(self.t)
         print("Calculating efficiencies...")
-        print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
+        if progress_bar:
+            print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
         for i in range(l):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             brightness = self.t.loc[i, self.params.brightness_param.name]
@@ -744,9 +739,13 @@ class EfficiencyTable(pdastrostatsclass):
                     )
                 self.t.loc[i, f"pct_detec_{format_float(fom_limit)}"] = efficiency
 
-            print_progress_bar(
-                i + 1, l, prefix="Progress:", suffix="Complete", length=50
-            )
+            if progress_bar:
+                print_progress_bar(
+                    i + 1, l, prefix="Progress:", suffix="Complete", length=50
+                )
+
+        print("Success")
+        print(self.__str__())
 
     def get_subset(self, fom_limits: Optional[List[float]] = None, **kwargs):
         """
@@ -872,7 +871,7 @@ class ContaminationTable:
             for sigma_kern in sigma_kerns:
                 for fom_limit in fom_limits[sigma_kern]:
                     row = self.calculate_row(sn, sigma_kern, fom_limit)
-                    self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+                    self.t = new_row(self.t, row)
 
             # number of false positives should always be 0 for min fom limits
             invalid_rows = self.t.iloc[1::2][self.t.iloc[1::2]["n_falsepos"] != 0]
@@ -1061,7 +1060,7 @@ class SimDetecLoop(ABC):
         self.e: EfficiencyTable = None
         self.sd: SimDetecTables = None
 
-    def _get_brightness_param_from_dir(
+    def _get_brightness_values_from_dir(
         self,
         directory: str,
         pattern: re.Pattern,
@@ -1086,10 +1085,10 @@ class SimDetecLoop(ABC):
         detec_tables_dir: str,
         param_name: str = "brightness",
     ):
-        pattern = re.compile(rf"^simdetec_{re.escape(model_name)}_\d+_(\d+\.\d+)\.txt$")
-        values = self._get_brightness_param_from_dir(
-            model_name, detec_tables_dir, pattern
+        pattern = re.compile(
+            rf"^simdetec_{re.escape(model_name)}_\d+\.\d+_(\d+\.\d+)\.txt$"
         )
+        values = self._get_brightness_values_from_dir(detec_tables_dir, pattern)
         self.brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
@@ -1102,9 +1101,7 @@ class SimDetecLoop(ABC):
         param_name: str = "brightness",
     ):
         pattern = re.compile(rf"^sim_{re.escape(model_name)}_(\d+\.\d+)\.txt$")
-        values = self._get_brightness_param_from_dir(
-            model_name, sim_tables_dir, pattern
-        )
+        values = self._get_brightness_values_from_dir(sim_tables_dir, pattern)
         self.brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
@@ -1313,6 +1310,7 @@ class SimDetecLoop(ABC):
         params: Params,
         detec_tables_dir: str,
         model_name: str,
+        progress_bar: bool = True,
     ):
         """
         Construct and save an EfficiencyTable that contains efficiencies for every combination of a Simulation's sigma_kern, peak_appmag, and other parameters EXCEPT the time parameter.
@@ -1324,7 +1322,7 @@ class SimDetecLoop(ABC):
         """
         self.e = EfficiencyTable(self.sigma_kerns, params)
         self.e.setup()
-        self.e.get_efficiencies(self.sd, fom_limits)
+        self.e.get_efficiencies(self.sd, fom_limits, progress_bar=progress_bar)
         self.e.save(detec_tables_dir, model_name)
 
     @abstractmethod
@@ -1619,10 +1617,10 @@ if __name__ == "__main__":
     #     Calculate the best detection limits
     #     """
 
-    #     simdetec.calculate_efficiencies(
-    #         fom_limits,
-    #         parsed_params,
-    #         detec_tables_dir,
-    #         args.model_name,
-    #         model_settings["time_parameter_name"],
-    #     )
+    # simdetec.calculate_efficiencies(
+    #     fom_limits,
+    #     parsed_params,
+    #     detec_tables_dir,
+    #     args.model_name,
+    #     model_settings["time_parameter_name"],
+    # )

@@ -33,6 +33,7 @@ from utils import (
     get_filename,
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
+    new_row,
     query_atlas,
     query_tns,
     PlotLimits,
@@ -1589,7 +1590,7 @@ class LimCutsTable:
                 # less than 10% of measurements kept, so no chi-square cuts beyond this point are valid
                 continue
             row = self.calculate_row(cut, kept_ix=kept_ix, cut_ix=cut_ix)
-            self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+            self.t = new_row(self.t, row)
 
 
 # will contain measurements from both filters (o-band and c-band)

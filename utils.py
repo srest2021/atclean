@@ -85,6 +85,19 @@ def load_json_config(filename: str):
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
 
 
+def new_row(t: pd.DataFrame, d: Dict = None):
+    if d is None:
+        d = {}
+
+    new_row_df = pd.DataFrame([d])
+    if t.empty:
+        t = new_row_df
+    else:
+        new_row_df = new_row_df.reindex(columns=t.columns)
+        t = pd.concat([t, new_row_df], axis=0, ignore_index=True)
+    return t
+
+
 def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
     if len(l) > max_length:
         half_abbrev_length = int(abbrev_length / 2)
@@ -789,7 +802,7 @@ class SnInfoTable:
                 dec = f"{coords.dec.angle.degree:0.14f}"
 
         row = {"tnsname": tnsname, "ra": ra, "dec": dec, "mjd0": mjd0}
-        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+        self.t = new_row(self.t, row)
 
     def update_row(
         self, tnsname, coords: Coordinates = None, mjd0: float = None, overwrite=False

@@ -610,7 +610,8 @@ class SimTable(pdastrostatsclass):
 
         :param data: Dictionary of column-value pairs.
         """
-        self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
+        self.newrow(data)
+        # self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
     def get_sim_filename(self, model_name, tables_dir):
         return f"{tables_dir}/sim_{model_name}_{format_float(self.brightness)}.txt"

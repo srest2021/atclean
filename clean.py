@@ -35,6 +35,7 @@ from utils import (
     get_allowed_presets,
     get_mjd0_from_tns,
     PresetColumnNames,
+    new_row,
     parse_config_str,
     load_config,
     make_dir_if_not_exists,
@@ -261,11 +262,9 @@ class UncertEstTable:
                 idx = matching_ix[0]
                 self.t.loc[idx, :] = row
             else:
-                # new row
-                self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+                self.t = new_row(self.t, row)
         else:
-            # new row
-            self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+            self.t = new_row(self.t, row)
 
     def save(self):
         print(f"\nSaving true uncertainties estimation table at {self.filename}...")
@@ -316,11 +315,9 @@ class ChiSquareCutTable:
                 idx = matching_ix[0]
                 self.t.loc[idx, :] = row
             else:
-                # new row
-                self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+                self.t = new_row(self.t, row)
         else:
-            # new row
-            self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+            self.t = new_row(self.t, row)
 
     def save(self):
         print(f"\nSaving chi-square cut table at {self.filename}...")

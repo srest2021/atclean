@@ -29,6 +29,7 @@ from utils import (
     is_sn_in_subdir,
     load_config,
     make_dir_if_not_exists,
+    new_row,
     parse_comma_separated_string,
 )
 
@@ -128,7 +129,7 @@ class ControlCoordinatesTable:
             for filt in filt_lens:
                 row[f"n_detec_{filt}"] = filt_lens[filt]
 
-        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+        self.t = new_row(self.t, row)
 
     def get_distance(self, coord1: Coordinates, coord2: Coordinates) -> Angle:
         c1 = SkyCoord(coord1.ra.angle, coord1.dec.angle, frame="fk5")
