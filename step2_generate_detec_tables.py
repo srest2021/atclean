@@ -12,6 +12,7 @@ import sys
 from typing import Dict, List, Optional, Self, Tuple
 import numpy as np
 import pandas as pd
+from scipy import interpolate
 from scipy.interpolate import interp1d
 from scipy.optimize import root
 from astropy.modeling.functional_models import Gaussian1D
@@ -27,6 +28,7 @@ from step1_generate_sim_tables import (
     Params,
     SimTable,
     SimTables,
+    find_prefix_in_list,
     get_sim_tables_output_dir,
     parse_config_params,
     GAUSSIAN_MODEL_NAME,
@@ -608,6 +610,9 @@ class EfficiencyTable(pdastrostatsclass):
         Set up the table columns for sigma_kerns, brightnesses, and other known parameter values.
         The time column name will be skipped when constructing columns.
         """
+        # make sure brightness sorted for MagnitudeThresholdTable calculations later on
+        self.params.brightness_param.values.sort()
+
         all_params = {
             "sigma_kern": self.sigma_kerns,
             self.params.brightness_param.name: self.params.brightness_param.values,
@@ -745,14 +750,13 @@ class EfficiencyTable(pdastrostatsclass):
         :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
         Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
-
-        # fom_limits = self.validate_fom_limits(fom_limits)
         self.set_fom_limits(fom_limits)
 
         l = len(self.t)
         print("Calculating efficiencies...")
         if progress_bar:
             print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
+
         for i in range(l):
             sigma_kern = self.t.loc[i, "sigma_kern"]
             brightness = self.t.loc[i, self.params.brightness_param.name]
@@ -781,7 +785,9 @@ class EfficiencyTable(pdastrostatsclass):
         print("Success")
         print(self.__str__())
 
-    def get_subset(self, fom_limits: Optional[List[float]] = None, **kwargs):
+    def get_subset(
+        self, fom_limits: Optional[List[float]] = None, **kwargs
+    ) -> pd.DataFrame:
         """
         Get a subset of the table where the columns match the given values.
 
@@ -808,7 +814,10 @@ class EfficiencyTable(pdastrostatsclass):
                     colnames.append(col)
 
         matching_ix = get_matching_ix(self, **kwargs)
-        return self.t.loc[matching_ix, colnames]
+        if len(matching_ix) > 0:
+            return self.t.loc[matching_ix, colnames]
+        else:
+            return pd.DataFrame()
 
     def reset_table(self):
         """
@@ -851,6 +860,149 @@ class EfficiencyTable(pdastrostatsclass):
 
     def __str__(self):
         return self.t.to_string()
+
+
+class MagnitudeThresholdTable:
+    def __init__(self):
+        """
+        Initialize a MagnitudeThresholdTable.
+        """
+        self.all = None
+        self.best = None
+
+    def get_mag_threshold(self, x: pd.Series, y: pd.Series, percent: float):
+        lx = x.to_list()
+        ly = y.to_list()
+
+        ly_reduced = np.array(ly) - percent
+        freduced = interpolate.UnivariateSpline(lx, ly_reduced, s=0)
+        roots = freduced.roots()
+        if len(roots) > 1:
+            print(f"WARNING: Found more than one root {roots}; returning NaN")
+            return np.nan
+        if len(roots) < 1:
+            return np.nan
+        return roots[0]
+
+    def _calculate_all(
+        self,
+        e: EfficiencyTable,
+        select_param_name: str,
+        percents: List[float] = [50, 80],
+    ):
+        if e.t.empty:
+            raise ValueError("EfficiencyTable cannot be empty")
+
+        print("Calculating table of all magnitude thresholds...")
+        columns = ["sigma_kern", select_param_name, "fom_limit"] + [
+            f"mag_threshold_{p}" for p in percents
+        ]
+        self.all = pd.DataFrame(columns=columns)
+
+        brightness_param_name = find_prefix_in_list(
+            e.t.columns, BRIGHTNESS_PARAM_PREFIX
+        )
+        select_param_values = e.get_possible_values(select_param_name)
+
+        i = 0
+        for sigma_kern in e.sigma_kerns:
+            for select_param_value in select_param_values:
+                for fom_limit in e.fom_limits[sigma_kern]:
+                    subset = e.get_subset(
+                        sigma_kern=sigma_kern,
+                        **{select_param_name: select_param_value},
+                        fom_limits=[fom_limit],
+                    )
+                    row = {
+                        "sigma_kern": sigma_kern,
+                        select_param_name: select_param_value,
+                        "fom_limit": fom_limit,
+                    }
+                    for p in percents:
+                        row[f"mag_threshold_{p}"] = self.get_mag_threshold(
+                            subset[brightness_param_name],
+                            subset[f"pct_detec_{format_float(fom_limit)}"],
+                            p,
+                        )
+                    self.all.loc[i] = row
+                    i += 1
+
+        print("Success")
+
+    def _calculate_best(
+        self,
+        e: EfficiencyTable,
+        select_param_name: str,
+        percents: List[float] = [50, 80],
+    ):
+        if e.t.empty:
+            raise ValueError("EfficiencyTable cannot be empty")
+        if self.all.empty:
+            raise ValueError("Table of all magnitude thresholds cannot be empty")
+
+        print("Calculating table of best magnitude thresholds...")
+        columns = [select_param_name]
+        for p in percents:
+            columns.append(f"best_sigma_kern_{p}")
+            columns.append(f"best_m_threshold_{p}")
+        self.best = pd.DataFrame(columns=columns)
+
+        select_param_values = e.get_possible_values(select_param_name)
+
+        for i in range(len(select_param_values)):
+            select_param_value = select_param_values[i]
+            select_param_value_ix = self.all[
+                self.all[select_param_name] == select_param_value
+            ].index
+
+            best_data = {
+                p: {"mag_threshold": -np.inf, "sigma_kern": np.nan} for p in percents
+            }
+
+            for sigma_kern in e.sigma_kerns:
+                sigma_kern_ix = self.all[self.all["sigma_kern"] == sigma_kern].index
+                ix = AandB(sigma_kern_ix, select_param_value_ix)
+
+                for j in ix:
+                    for p in percents:
+                        m_key = f"mag_threshold_{p}"
+                        if self.all.loc[j, m_key] > best_data[p]["mag_threshold"]:
+                            best_data[p]["mag_threshold"] = self.all.loc[j, m_key]
+                            best_data[p]["sigma_kern"] = self.all.loc[j, "sigma_kern"]
+
+            row = {select_param_name: select_param_value}
+            for p in percents:
+                row[f"best_m_threshold_{p}"] = best_data[p]["mag_threshold"]
+                row[f"best_sigma_kern_{p}"] = best_data[p]["sigma_kern"]
+            self.best.loc[i] = row
+
+        print("Success")
+
+    def calculate(
+        self, e: EfficiencyTable, select_param_name: str, percents: List[int] = [50, 80]
+    ):
+        self._calculate_all(e, select_param_name, percents)
+        print(self.all.to_string(index=False))
+
+        self._calculate_best(e, select_param_name, percents)
+        print(self.best.to_string(index=False))
+
+    def save(self, detec_tables_dir: str, model_name: str):
+        make_dir_if_not_exists(detec_tables_dir)
+
+        if self.all is not None and not self.all.empty:
+            filename_all = (
+                f"{detec_tables_dir}/all_magnitude_thresholds_{model_name}.txt"
+            )
+            print(f"Saving table of all magnitude thresholds as {filename_all}...")
+            self.all.to_string(filename_all, index=False)
+
+        if self.best is not None and not self.best.empty:
+            filename_best = (
+                f"{detec_tables_dir}/best_magnitude_thresholds_{model_name}.txt"
+            )
+            print(f"Saving table of best magnitude thresholds as {filename_best}...")
+            self.best.to_string(filename_best, index=False)
 
 
 class ContaminationTable:

@@ -19,6 +19,7 @@ from lightcurve import (
 )
 from step1_generate_sim_tables import (
     BRIGHTNESS_PARAM_PREFIX,
+    TIME_PARAM_PREFIX,
     find_prefix_in_list,
     remove_prefix,
 )
@@ -1337,9 +1338,23 @@ class Plot:
         self,
         sigma_kern: float,
         e: EfficiencyTable,
+        select_param_name: str,
         save: bool = False,
         filename: str = None,
     ):
+        if select_param_name.startswith(BRIGHTNESS_PARAM_PREFIX):
+            raise ValueError(
+                f"`select_param_name` cannot be a brightness parameter like '{select_param_name}'. This is always used on the x-axis."
+            )
+        if select_param_name.startswith(TIME_PARAM_PREFIX):
+            raise ValueError(
+                f"`select_param_name` cannot be a time parameter like '{select_param_name}'. Time-related analysis should be handled separately."
+            )
+        if select_param_name == "sigma_kern":
+            raise ValueError(
+                "`select_param_name` cannot be 'sigma_kern' — it is already fixed as an input to the plot."
+            )
+
         fig, ax1 = plt.subplots(1, constrained_layout=True)
         ax1: Axes
         fig.set_figheight(2.5)
@@ -1386,16 +1401,19 @@ class Plot:
             )
         ax1.set_ylabel(f"Efficiency (%)")
 
-        # can just get sigma_sims from e.get_possible_values("sigma_sim")
-        # but should this be hardcoded? -> allow to pass "sigma_sim"
-        sigma_sims = e.get_possible_values("sigma_sim")
-        for i in range(len(sigma_sims)):
+        select_param_values = e.get_possible_values(select_param_name)
+        for i in range(len(select_param_values)):
             color = PROP_CYCLE[i]
-            sigma_sim = sigma_sims[i]
+            select_param_value = select_param_values[i]
             subset = e.get_subset(
-                sigma_kern=sigma_kern, sigma_sim=sigma_sim, fom_limits=[fom_limit]
+                sigma_kern=sigma_kern,
+                **{select_param_name: select_param_value},
+                fom_limits=[fom_limit],
             )
-            label = r"$\sigma_{\rm sim} = $" + f"{sigma_sim}"
+            if select_param_name == "sigma_sim":
+                label = r"$\sigma_{\rm sim} = $" + f"{select_param_value}"
+            else:
+                label = f"{select_param_name} = {select_param_value}"
             ax1.scatter(
                 subset[brightness_param_name],
                 subset[f"pct_detec_{format_float(fom_limit)}"],

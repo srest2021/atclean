@@ -115,6 +115,10 @@ class Param(ABC):
         """
         pass
 
+    def round_to(self, n_digits: int):
+        if self.values:
+            self.values = [round(v, n_digits) for v in self.values]
+
     def validate_time_param(self):
         """
         Validates and adjusts time parameter values to match the MJDbin format.
@@ -232,7 +236,7 @@ class LogRangeParam(Param):
         maxval: float,
         base: int,
         n: int,
-        to_int=False,
+        n_digits: int = 5,
         param_type: ParamType = ParamType.OTHER,
     ):
         """
@@ -241,28 +245,34 @@ class LogRangeParam(Param):
         :param maxval (float): The maximum value of the range.
         :param base (int): The logarithmic base to use.
         :param n (int): The number of values to generate in the range.
-        :param to_int (bool): Whether to round the generated values to integers.
+        :param n_digits (int): The number of decimal places to round to.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type)
-        self.generate(minval, maxval, base, n, to_int=to_int)
+        self.generate(minval, maxval, base, n, n_digits=n_digits)
         if self.is_time_param:
             self.validate_time_param()
         if self.is_brightness_param:
             self.validate_brightness_param()
 
-    def generate(self, minval: float, maxval: float, base: int, n: int, to_int=False):
+    def generate(
+        self,
+        minval: float,
+        maxval: float,
+        base: int,
+        n: int,
+        n_digits: int = 5,
+    ):
         print(
-            f'Generating {n}-length {"integer" if to_int else "float"} range using log base {base}'
+            f"Generating {n}-length log range of floats rounded to {n_digits} decimal places using log base {base}"
         )
         if maxval <= minval:
             raise RuntimeError("Max value must be greater than min value.")
         minlog = np.log(minval) / np.log(base)
         maxlog = np.log(maxval) / np.log(base)
         res = list(np.logspace(minlog, maxlog, num=n, base=base))
-        if to_int:
-            res = [round(num) for num in res]
         self.values = res
+        self.round_to(n_digits)
 
 
 class RandomParam(Param):
@@ -276,7 +286,7 @@ class RandomParam(Param):
         minval: float,
         maxval: float,
         n: int,
-        to_int=False,
+        n_digits: int = 5,
         param_type: ParamType = ParamType.OTHER,
     ):
         """
@@ -284,24 +294,31 @@ class RandomParam(Param):
         :param minval (float): The minimum value of the range.
         :param maxval (float): The maximum value of the range.
         :param n (int): The number of random values to generate.
-        :param to_int (bool): Whether to round the generated values to integers.
+        :param n_digits (int): The number of decimal places to round to.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type)
-        self.generate(minval, maxval, n, to_int=to_int)
+        self.generate(minval, maxval, n, n_digits=n_digits)
         if self.is_time_param:
             self.validate_time_param()
         if self.is_brightness_param:
             self.validate_brightness_param()
 
-    def generate(self, minval: float, maxval: float, n: int, to_int=False):
-        print(f"Generating {n}-length random list")
+    def generate(
+        self,
+        minval: float,
+        maxval: float,
+        n: int,
+        n_digits: int = 5,
+    ):
+        print(
+            f"Generating {n}-length random list of floats rounded to {n_digits} decimal places"
+        )
         if maxval <= minval:
             raise RuntimeError("maxval must be greater than minval.")
         res = list(np.random.uniform(minval, maxval, n))
-        if to_int:
-            res = [round(num) for num in res]
         self.values = res
+        self.round_to(n_digits)
 
 
 class RandomInRangeParam(Param):
@@ -350,7 +367,7 @@ class RandomInRangeParam(Param):
 
     def generate(self, valid_ranges: List[List[float]], n: int):
         print(
-            f"Generating {n}-length random list within the following valid ranges: {valid_ranges}"
+            f"Generating {n}-length random list of floats within the following valid ranges: {valid_ranges}"
         )
         self.values = self._rec_get_valid_draws(valid_ranges, n)
 
@@ -548,7 +565,7 @@ def parse_config_param(
             info["logrange"]["maxval"],
             info["logrange"]["base"],
             info["logrange"]["n"],
-            to_int=info["logrange"]["to_int"],
+            n_digits=info["logrange"]["n_digits"],
             param_type=param_type,
         )
 
@@ -558,7 +575,7 @@ def parse_config_param(
             info["random"]["minval"],
             info["random"]["maxval"],
             info["random"]["n"],
-            to_int=info["random"]["to_int"],
+            n_digits=info["random"]["n_digits"],
             param_type=param_type,
         )
 
