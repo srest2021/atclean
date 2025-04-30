@@ -48,6 +48,19 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     return parser
 
 
+def find_prefix_in_list(l: List[str], prefix: str):
+    for item in l:
+        if item.startswith(prefix):
+            return item
+    return None
+
+
+def remove_prefix(string: str, prefix: str):
+    if string.startswith(prefix):
+        return string[len(prefix) :]
+    return string
+
+
 class ParamType(Enum):
     # Indicates if the parameter is related to time (e.g., peak or onset MJD).
     TIME = auto()
@@ -476,10 +489,10 @@ class Params:
         return list(self.other.values()) + [self.brightness_param]
 
     def other_params(self):
-        return self.other.values()
+        return list(self.other.values())
 
     def other_names(self) -> List[str]:
-        return self.other.keys()
+        return list(self.other.keys())
 
     def all_params(self) -> List[Param]:
         return list(self.other.values()) + [self.time_param, self.brightness_param]

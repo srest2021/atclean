@@ -589,6 +589,7 @@ class EfficiencyTable(pdastrostatsclass):
         self,
         sigma_kerns: List[float],
         params: Params,
+        fom_limits=None,
         **kwargs,
     ):
         """
@@ -599,6 +600,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         pdastrostatsclass.__init__(self, **kwargs)
         self.sigma_kerns: List[float] = sigma_kerns
+        self.fom_limits: Dict[float, List[float]] = self.set_fom_limits(fom_limits)
         self.params: Params = params
 
     def setup(self):
@@ -621,6 +623,12 @@ class EfficiencyTable(pdastrostatsclass):
         col_order = ["sigma_kern", self.params.brightness_param.name]
         col_order += [col for col in self.t.columns if col not in col_order]
         self.t = self.t[col_order]
+
+    def clear(self):
+        self.t = None
+        self.sigma_kerns = None
+        self.fom_limits = None
+        self.params = None
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def validate_fom_limits(
@@ -680,6 +688,21 @@ class EfficiencyTable(pdastrostatsclass):
                 "fom_limits must be a list of lists/floats or a dict of lists/floats"
             )
 
+    def set_fom_limits(
+        self,
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+            | None
+        ),
+    ):
+        if fom_limits is None:
+            self.fom_limits = None
+        else:
+            self.fom_limits = self.validate_fom_limits(fom_limits)
+
     def get_params_at_index(self, index: int) -> Dict:
         """
         Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
@@ -690,6 +713,16 @@ class EfficiencyTable(pdastrostatsclass):
 
         colnames = [col for col in self.t.columns if col in self.params.other_names()]
         return dict(self.t.loc[index, colnames])
+
+    def get_possible_values(self, column: str):
+        """
+        Return all unique values in the specified column.
+
+        :param column: The name of the column for which to retrieve unique values.
+        """
+        if column not in self.t.columns:
+            raise ValueError(f"Column '{column}' not found in the table.")
+        return self.t[column].unique().tolist()
 
     def get_efficiencies(
         self,
@@ -713,7 +746,8 @@ class EfficiencyTable(pdastrostatsclass):
         Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
 
-        fom_limits = self.validate_fom_limits(fom_limits)
+        # fom_limits = self.validate_fom_limits(fom_limits)
+        self.set_fom_limits(fom_limits)
 
         l = len(self.t)
         print("Calculating efficiencies...")
@@ -728,7 +762,7 @@ class EfficiencyTable(pdastrostatsclass):
             else:
                 params = self.get_params_at_index(i)
 
-            for fom_limit in fom_limits[sigma_kern]:
+            for fom_limit in self.fom_limits[sigma_kern]:
                 try:
                     efficiency = sd.get_efficiency(
                         sigma_kern, brightness, fom_limit, **params
@@ -794,8 +828,8 @@ class EfficiencyTable(pdastrostatsclass):
             )
 
         self.sigma_kerns += other.sigma_kerns
-        # if not self.fom_limits is None:
-        #     self.fom_limits.update(other.fom_limits)
+        if not self.fom_limits is None:
+            self.fom_limits.update(other.fom_limits)
 
         self.t = pd.concat([self.t, other.t], ignore_index=True)
 

@@ -17,6 +17,12 @@ from lightcurve import (
     Supernova,
     AveragedSupernova,
 )
+from step1_generate_sim_tables import (
+    BRIGHTNESS_PARAM_PREFIX,
+    find_prefix_in_list,
+    remove_prefix,
+)
+from step2_generate_detec_tables import EfficiencyTable
 from utils import (
     TEMPLATE_CHANGE_1_MJD,
     TEMPLATE_CHANGE_2_MJD,
@@ -68,20 +74,19 @@ COLOR_SCHEME = {
     "select_control_fom": "mediumblue",
 }
 
-plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(
-    color=[
-        "indianred",
-        "salmon",
-        "sandybrown",
-        "gold",
-        "yellowgreen",
-        "mediumseagreen",
-        "turquoise",
-        "lightskyblue",
-        "plum",
-        "palevioletred",
-    ]
-)
+PROP_CYCLE = [
+    "indianred",
+    "salmon",
+    "sandybrown",
+    "gold",
+    "yellowgreen",
+    "mediumseagreen",
+    "turquoise",
+    "lightskyblue",
+    "plum",
+    "palevioletred",
+]
+plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(color=PROP_CYCLE)
 
 # line styles
 SIM_BUMP_LS = "dashed"
@@ -92,7 +97,7 @@ class Plot:
     def __init__(self, output_dir: str = None, color_scheme: Dict = None):
         self.output_dir = output_dir
 
-        if color_scheme:
+        if color_scheme is not None:
             print("Using custom color scheme for plots")
             self.color_scheme = color_scheme
         else:
@@ -1324,6 +1329,102 @@ class Plot:
             )
 
         if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
+    def plot_efficiency(
+        self,
+        sigma_kern: float,
+        e: EfficiencyTable,
+        save: bool = False,
+        filename: str = None,
+    ):
+        fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
+        fig.set_figheight(2.5)
+        fig.set_figwidth(4.5)
+
+        assert len(e.fom_limits[sigma_kern]) == 1
+        fom_limit = e.fom_limits[sigma_kern][0]
+
+        self._setup_ax(ax1, None, xlabel=False, ylabel=False)
+        ax1.axhline(80, color="k", linestyle="dashed", linewidth=1.0)
+        ax1.axhline(50, color="k", linestyle="dashed", linewidth=1.0)
+        ax1.text(
+            0.03,
+            0.05,
+            r"$\sigma_{\rm kernel}$ = " + f"{format_float(sigma_kern)}",
+            ha="left",
+            va="bottom",
+            transform=ax1.transAxes,
+            fontsize=11,
+        )
+
+        # if peak_appmag, use default labels and create ax2 of abs mag
+        brightness_param_name = find_prefix_in_list(
+            e.t.columns, BRIGHTNESS_PARAM_PREFIX
+        )
+        if brightness_param_name is None:
+            raise ValueError("No brightness parameter column found in EfficiencyTable")
+        if (
+            remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
+            == "peak_appmag"
+        ):
+            ax1.set_xlabel(r"$m_{peak}$ (app mag)")
+
+            # abs mag
+            ax2 = ax1.twiny()
+            self._setup_ax(ax2, None, xlabel=False, ylabel=False)
+            ax2.set_xticks(ax1.get_xticks())
+            ax2.set_xbound(ax1.get_xbound())
+            ax2.set_xticklabels([round(x - 29.04) for x in ax1.get_xticks()])
+            ax2.set_xlabel("$m_{peak}$ (abs mag)")
+        else:
+            ax1.set_xlabel(
+                remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
+            )
+        ax1.set_ylabel(f"Efficiency (%)")
+
+        # can just get sigma_sims from e.get_possible_values("sigma_sim")
+        # but should this be hardcoded? -> allow to pass "sigma_sim"
+        sigma_sims = e.get_possible_values("sigma_sim")
+        for i in range(len(sigma_sims)):
+            color = PROP_CYCLE[i]
+            sigma_sim = sigma_sims[i]
+            subset = e.get_subset(
+                sigma_kern=sigma_kern, sigma_sim=sigma_sim, fom_limits=[fom_limit]
+            )
+            label = r"$\sigma_{\rm sim} = $" + f"{sigma_sim}"
+            ax1.scatter(
+                subset[brightness_param_name],
+                subset[f"pct_detec_{format_float(fom_limit)}"],
+                color=color,
+                edgecolors="none",
+                marker="o",
+                label=label,
+                s=15,
+                zorder=-i * 20,
+            )
+            ax1.plot(
+                subset[brightness_param_name],
+                subset[f"pct_detec_{format_float(fom_limit)}"],
+                color=color,
+                zorder=-i * 10,
+            )
+
+        ax1.legend(
+            loc="upper left",
+            facecolor="white",
+            fontsize=9,
+            framealpha=0,
+            handletextpad=0.1,
+            bbox_to_anchor=(0.98, 1.06),
+        ).set_zorder(100)
+
+        if save:
+            if filename is None:
+                filename = f"efficiency_{format_float(sigma_kern)}"
             self.save_plot(filename, bbox_inches="tight")
 
         return fig
