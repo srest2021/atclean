@@ -867,8 +867,33 @@ class MagnitudeThresholdTable:
         """
         Initialize a MagnitudeThresholdTable.
         """
-        self.all = None
-        self.best = None
+        self.all: pd.DataFrame = None
+        self.best: pd.DataFrame = None
+
+        self.sigma_kerns: List[float] = None
+        self.select_param_name: str = None
+        self.percents: List[float] = None
+
+    def get_limits(self):
+        if self.all.empty:
+            raise RuntimeError("Table of all magnitude thresholds cannot be empty")
+        if self.percents is None:
+            raise RuntimeError("Percents cannot be None")
+
+        y_cols = [f"mag_threshold_{format_float(p)}" for p in self.percents]
+        y_vals = pd.concat([self.all[col].dropna() for col in y_cols])
+
+        if not y_vals.empty:
+            y_min = y_vals.min()
+            y_max = y_vals.max()
+            margin = 0.05 * (y_max - y_min) if y_max != y_min else 0.1
+            ylim_lower = y_min - margin
+            ylim_upper = y_max + margin
+        else:
+            ylim_lower = 0
+            ylim_upper = 1
+
+        return ylim_lower, ylim_upper
 
     def get_mag_threshold(self, x: pd.Series, y: pd.Series, percent: float):
         lx = x.to_list()
@@ -895,7 +920,7 @@ class MagnitudeThresholdTable:
 
         print("Calculating table of all magnitude thresholds...")
         columns = ["sigma_kern", select_param_name, "fom_limit"] + [
-            f"mag_threshold_{p}" for p in percents
+            f"mag_threshold_{format_float(p)}" for p in percents
         ]
         self.all = pd.DataFrame(columns=columns)
 
@@ -919,10 +944,12 @@ class MagnitudeThresholdTable:
                         "fom_limit": fom_limit,
                     }
                     for p in percents:
-                        row[f"mag_threshold_{p}"] = self.get_mag_threshold(
-                            subset[brightness_param_name],
-                            subset[f"pct_detec_{format_float(fom_limit)}"],
-                            p,
+                        row[f"mag_threshold_{format_float(p)}"] = (
+                            self.get_mag_threshold(
+                                subset[brightness_param_name],
+                                subset[f"pct_detec_{format_float(fom_limit)}"],
+                                p,
+                            )
                         )
                     self.all.loc[i] = row
                     i += 1
@@ -938,13 +965,13 @@ class MagnitudeThresholdTable:
         if e.t.empty:
             raise ValueError("EfficiencyTable cannot be empty")
         if self.all.empty:
-            raise ValueError("Table of all magnitude thresholds cannot be empty")
+            raise RuntimeError("Table of all magnitude thresholds cannot be empty")
 
         print("Calculating table of best magnitude thresholds...")
         columns = [select_param_name]
         for p in percents:
-            columns.append(f"best_sigma_kern_{p}")
-            columns.append(f"best_m_threshold_{p}")
+            columns.append(f"best_sigma_kern_{format_float(p)}")
+            columns.append(f"best_mag_threshold_{format_float(p)}")
         self.best = pd.DataFrame(columns=columns)
 
         select_param_values = e.get_possible_values(select_param_name)
@@ -965,15 +992,17 @@ class MagnitudeThresholdTable:
 
                 for j in ix:
                     for p in percents:
-                        m_key = f"mag_threshold_{p}"
+                        m_key = f"mag_threshold_{format_float(p)}"
                         if self.all.loc[j, m_key] > best_data[p]["mag_threshold"]:
                             best_data[p]["mag_threshold"] = self.all.loc[j, m_key]
                             best_data[p]["sigma_kern"] = self.all.loc[j, "sigma_kern"]
 
             row = {select_param_name: select_param_value}
             for p in percents:
-                row[f"best_m_threshold_{p}"] = best_data[p]["mag_threshold"]
-                row[f"best_sigma_kern_{p}"] = best_data[p]["sigma_kern"]
+                row[f"best_mag_threshold_{format_float(p)}"] = best_data[p][
+                    "mag_threshold"
+                ]
+                row[f"best_sigma_kern_{format_float(p)}"] = best_data[p]["sigma_kern"]
             self.best.loc[i] = row
 
         print("Success")
@@ -981,6 +1010,10 @@ class MagnitudeThresholdTable:
     def calculate(
         self, e: EfficiencyTable, select_param_name: str, percents: List[int] = [50, 80]
     ):
+        self.sigma_kerns = e.sigma_kerns
+        self.select_param_name = select_param_name
+        self.percents = percents
+
         self._calculate_all(e, select_param_name, percents)
         print(self.all.to_string(index=False))
 

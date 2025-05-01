@@ -835,7 +835,7 @@ class SnInfoTable:
         return self.t.to_string()
 
 
-def format_float(value):
+def format_float(value: int | float):
     """
     Format with up to 5 decimals, strip trailing zeros, then ensure at least 1 decimal
     """

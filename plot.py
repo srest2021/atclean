@@ -23,7 +23,7 @@ from step1_generate_sim_tables import (
     find_prefix_in_list,
     remove_prefix,
 )
-from step2_generate_detec_tables import EfficiencyTable
+from step2_generate_detec_tables import EfficiencyTable, MagnitudeThresholdTable
 from utils import (
     TEMPLATE_CHANGE_1_MJD,
     TEMPLATE_CHANGE_2_MJD,
@@ -1443,6 +1443,91 @@ class Plot:
         if save:
             if filename is None:
                 filename = f"efficiency_{format_float(sigma_kern)}"
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
+    def plot_all_mag_thresholds(
+        self,
+        mt: MagnitudeThresholdTable,
+        log: bool = True,
+        base: int = 10,
+        save: bool = False,
+        filename: str = "magnitude_thresholds",
+    ):
+        n = len(mt.percents)
+        fig, axes = plt.subplots(n, 1, constrained_layout=True)
+        fig.set_figheight(n * 1.5)
+        fig.set_figwidth(2.5)
+
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        ylim_lower, ylim_upper = mt.get_limits()
+
+        for j, p in enumerate(mt.percents):
+            if n == 1:
+                ax: Axes = axes
+            else:
+                ax: Axes = axes[j]
+
+            self._setup_ax(ax, None, xlabel=False, ylabel=False)
+            ax.set_ylabel(r"$m_{threshold}$ (mag)")
+            ax.set_ylim(ylim_lower, ylim_upper)
+            ax.text(
+                0.97,
+                0.08,
+                f"for {format_float(p)}% efficiency",
+                ha="right",
+                va="bottom",
+                transform=ax.transAxes,
+                fontsize=11,
+            )
+
+            for i, sigma_kern in enumerate(mt.sigma_kerns):
+                sigma_kern_ix = mt.all[mt.all["sigma_kern"] == sigma_kern].index
+                color = colors[i % len(colors)]
+                label = (
+                    r"$\sigma_{\rm kernel}$" + f" = {sigma_kern}"
+                    if j == n - 1
+                    else None
+                )
+
+                x = mt.all.loc[sigma_kern_ix, mt.select_param_name]
+                y = mt.all.loc[sigma_kern_ix, f"mag_threshold_{format_float(p)}"]
+                ax.scatter(
+                    x,
+                    y,
+                    s=15,
+                    color=color,
+                    marker="o",
+                    label=label,
+                    zorder=-i * 10,
+                )
+                if log:
+                    ax.semilogx(x, y, color=color, zorder=-i * 10, base=base)
+                else:
+                    ax.plot(x, y, color=color, zorder=-i * 10)
+
+            if j == n - 1:
+                if mt.select_param_name == "sigma_sim":
+                    ax.set_xlabel(r"$\sigma_{\rm sim}$ (days)")
+                else:
+                    ax.set_xlabel(mt.select_param_name)
+            else:
+                if log:
+                    ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+                    ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+                else:
+                    ax.set_xticklabels([])
+
+        fig.legend(
+            facecolor="white",
+            framealpha=0,
+            bbox_to_anchor=(0.97, 0.8),
+            handletextpad=0.1,
+            loc="upper left",
+        )
+
+        if save:
             self.save_plot(filename, bbox_inches="tight")
 
         return fig

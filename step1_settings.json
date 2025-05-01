@@ -17,13 +17,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -40,13 +40,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -84,13 +84,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -107,13 +107,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -130,13 +130,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -182,13 +182,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -234,13 +234,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
