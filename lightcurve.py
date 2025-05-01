@@ -553,6 +553,13 @@ class Supernova:
         for index in indices:
             self.add_lc_index(index)
 
+    def reset_lc_indices(self):
+        for index in self.lcs.keys():
+            if index not in self.lc_indices:
+                bisect.insort(self._all_indices, index)
+            if index not in self.control_lc_indices:
+                bisect.insort(self._control_indices, index)
+
     def save_all(self, output_dir, overwrite=False, cleaned=True):
         print(
             f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...'

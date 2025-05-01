@@ -180,8 +180,8 @@ class Plot:
         self,
         ax: Axes,
         lims: PlotLimits,
-        xlabel: bool = True,
-        ylabel: bool = True,
+        xlabel: bool | str = True,
+        ylabel: bool | str = True,
         xticks: bool = True,
         yticks: bool = True,
         axhline: bool = True,
@@ -197,13 +197,19 @@ class Plot:
         if lims is not None and lims.get_ylims() is not None:
             ax.set_ylim(lims.get_ylims())
 
-        if xlabel:
+        if isinstance(xlabel, bool) and xlabel:
             ax.set_xlabel("MJD")
+        elif isinstance(xlabel, str):
+            ax.set_xlabel(xlabel)
+
         if not xticks:
             ax.set_xticklabels([])
 
-        if ylabel:
+        if isinstance(ylabel, bool) and ylabel:
             ax.set_ylabel(r"Flux ($\mu$Jy)")
+        elif isinstance(ylabel, str):
+            ax.set_ylabel(ylabel)
+
         if not yticks:
             ax.set_yticklabels([])
 
@@ -211,7 +217,7 @@ class Plot:
         self,
         ax: Axes,
         obj: SimDetecSupernova | SimDetecLightCurve,
-        control_index: int,
+        control_index: int | None,
         color: str,
         y_colname_attr: Optional[str] = "snrsumnorm",
         indices: Optional[List[int]] = None,
@@ -243,7 +249,7 @@ class Plot:
         self,
         ax: Axes,
         obj: Supernova | LightCurve,
-        control_index: int,
+        control_index: int | None,
         color: str,
         indices: Optional[List[int]] = None,
         label: Optional[str] = None,
@@ -1154,9 +1160,8 @@ class Plot:
                 all_fom_dict[sigma_kern],
                 fom_limit=fom_limits[sigma_kern] if fom_limits else None,
             )
-            self._setup_ax(ax1, lims, ylabel=False)
+            self._setup_ax(ax1, lims, ylabel=r"$\Sigma_{\rm FOM}$")
             self._setup_ax(ax2, lims, ylabel=False, yticks=False, axhline=False)
-            ax1.set_ylabel(r"$\Sigma_{\rm FOM}$")
             if i >= len(sigma_kerns) - 1:  # bottom row
                 ax1.set_xlabel("MJD")
                 ax2.set_xlabel("Freq")
@@ -1297,14 +1302,11 @@ class Plot:
             self._setup_ax(
                 ax,
                 lims,
-                xlabel=False,
+                xlabel=r"$\Sigma_{\rm FOM}$" if i >= n - 1 else False,
                 xticks=i >= n - 1,
                 ylabel=False,
                 yticks=False,
             )
-            if i >= n - 1:
-                ax.set_xlabel(r"$\Sigma_{\rm FOM}$")
-            # ax.set_ylabel("Freq")
 
             ax.text(
                 0.02,
@@ -1390,11 +1392,10 @@ class Plot:
 
             # abs mag
             ax2 = ax1.twiny()
-            self._setup_ax(ax2, None, xlabel=False, ylabel=False)
+            self._setup_ax(ax2, None, xlabel=r"$m_{peak}$ (abs mag)", ylabel=False)
             ax2.set_xticks(ax1.get_xticks())
             ax2.set_xbound(ax1.get_xbound())
             ax2.set_xticklabels([round(x - 29.04) for x in ax1.get_xticks()])
-            ax2.set_xlabel("$m_{peak}$ (abs mag)")
         else:
             ax1.set_xlabel(
                 remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
@@ -1469,8 +1470,7 @@ class Plot:
             else:
                 ax: Axes = axes[j]
 
-            self._setup_ax(ax, None, xlabel=False, ylabel=False)
-            ax.set_ylabel(r"$m_{threshold}$ (mag)")
+            self._setup_ax(ax, None, xlabel=False, ylabel=r"$m_{threshold}$ (mag)")
             ax.set_ylim(ylim_lower, ylim_upper)
             ax.text(
                 0.97,
@@ -1524,6 +1524,133 @@ class Plot:
             handletextpad=0.1,
             loc="upper left",
         )
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
+    def plot_simulated_lc(
+        self,
+        sim_lc: SimDetecLightCurve,
+        sigma_kern: float,
+        fom_limit: float,
+        brightness: float,
+        peak_mjd: float,
+        save: bool = False,
+        filename: str = "sim_lc",
+    ):
+        fig, (ax1, ax3) = plt.subplots(2, gridspec_kw={"hspace": 0.07})
+        ax1: Axes
+        ax3: Axes
+        fig.set_figwidth(5)
+        fig.set_figheight(5.5)
+        fig.tight_layout()
+
+        ax2: Axes = ax1.twinx()
+        ax4: Axes = ax3.twinx()
+
+        for ax in [ax1, ax2, ax3, ax4]:
+            ax.minorticks_on()
+            ax.tick_params(direction="in", which="both")
+            ax.set_xlim(peak_mjd - 65, peak_mjd + 65)  # TODO: fix
+            ax.set_facecolor(self.color_scheme["face"])
+
+        # flux axes
+        ax1.set_xticklabels([])
+        ax3.set_xlabel("MJD")
+        for ax in [ax1, ax3]:
+            ax.tick_params(
+                axis="y", which="both", colors=self.color_scheme["select_control_flux"]
+            )
+            ax.spines["left"].set_color(self.color_scheme["select_control_flux"])
+            ax.axhline(linewidth=1.5, color="k")
+            ax.set_ylabel(r"Flux (µJy)", color=self.color_scheme["select_control_flux"])
+            # TODO: fix
+            # ax.set_ylim(-ylim_flux * 1.1, ylim_flux * 1.1)
+            ax.text(
+                0.97,
+                0.05,
+                r"$\sigma_{\rm kernel}$ = " + f"{sigma_kern}",
+                color=self.color_scheme["select_control_fom"],
+                ha="right",
+                va="bottom",
+                transform=ax.transAxes,
+                fontsize=11,
+            )
+
+        # FOM axes
+        for ax in [ax2, ax4]:
+            ax.tick_params(
+                axis="y", which="both", colors=self.color_scheme["select_control_fom"]
+            )
+            ax.spines["right"].set_color(self.color_scheme["select_control_fom"])
+            ax.spines["left"].set_color(self.color_scheme["select_control_flux"])
+            # TODO: fix
+            # ax.set_ylim(-ylim_fom*1.1, ylim_fom*1.1)
+            ax.set_ylabel(
+                r"$\Sigma_{\rm FOM}$",
+                color=self.color_scheme["select_control_fom"],
+                rotation=270,
+                labelpad=15,
+            )
+
+            # FOM limit
+            ax.axhline(
+                fom_limit,
+                linewidth=1.5,
+                color=self.color_scheme["select_control_fom"],
+                linestyle=FOM_LIMIT_LS,
+                zorder=50,
+            )
+            ax.text(
+                0.03,
+                fom_limit,
+                r"$\Sigma_{\rm FOM, limit}$ = " + str(fom_limit),
+                color=self.color_scheme["select_control_fom"],
+                transform=ax.get_yaxis_transform(),
+                ha="left",
+                va="bottom",
+            )
+
+        # top panel flux
+        self._plot_lc(
+            ax1,
+            sim_lc,
+            None,
+            self.color_scheme["select_control_flux"],
+            indices=sim_lc.get_good_indices(),
+        )
+        ax2.scatter(
+            [0, 1],
+            [0, 0],
+            color=self.color_scheme["select_control_flux"],
+            alpha=1,
+            s=MARKER_SIZE,
+            lw=MARKER_EDGEWIDTH,
+            marker="o",
+            zorder=0,
+            label=f"Light Curve",
+        )
+
+        # top panel FOM
+        self._plot_snr(
+            ax2,
+            sim_lc,
+            None,
+            self.color_scheme["select_control_fom"],
+            label="Rolling Sum",
+        )
+        ax2.legend(loc="lower left", facecolor="white", framealpha=1.0).set_zorder(100)
+
+        # bottom panel simulated flux
+        # TODO
+
+        # bottom panel Simulation object flux
+        # TODO
+
+        # bottom panel simulated FOM
+        # TODO
 
         if save:
             self.save_plot(filename, bbox_inches="tight")

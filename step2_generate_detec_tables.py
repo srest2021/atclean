@@ -879,7 +879,7 @@ class MagnitudeThresholdTable:
         Compute the lower and upper y-axis limits for plotting, based on all available
         magnitude threshold values across all specified percentiles.
         """
-        if self.all.empty:
+        if self.all is None or self.all.empty:
             raise RuntimeError("Table of all magnitude thresholds cannot be empty")
         if self.percents is None:
             raise RuntimeError("Percents cannot be None")
@@ -906,7 +906,7 @@ class MagnitudeThresholdTable:
         Return x (select_param_name) and y (magnitude threshold) for a given sigma_kern and percent efficiency.
         Optionally drops rows with NaNs.
         """
-        if self.all is None or self.select_param_name is None:
+        if self.all is None or self.all.empty or self.select_param_name is None:
             raise ValueError("self.all and self.select_param_name must be set")
 
         mag_threshold_colname = f"mag_threshold_{format_float(percent)}"
@@ -1513,6 +1513,7 @@ class SimDetecLoop(ABC):
         :control_index: The control index of the light curve to add the Simulation to.
         :param sim: The Simulation to add.
         :param remove_old: Remove any old simulations before adding the new simulated flux.
+        :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
         """
         if verbose:
             print(f"Adding simulation: {sim}")
@@ -1669,6 +1670,7 @@ class AtlasSimDetecLoop(SimDetecLoop):
         if self.sd is None:
             raise RuntimeError("SimDetecTables cannot be None")
 
+        self.sn.reset_lc_indices()
         if skip_control_ix is not None and len(skip_control_ix) > 0:
             print(f"\nSkipping control light curve indices: {skip_control_ix}")
             self.sn.remove_lc_indices(skip_control_ix)
@@ -1719,10 +1721,6 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
                 self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
                 print("\tSuccess")
-
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            self.sn.add_lc_indices(skip_control_ix)
-
         print("\nFinished generating all SimDetecTables")
 
 
