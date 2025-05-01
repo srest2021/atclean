@@ -1483,7 +1483,6 @@ class Plot:
             )
 
             for i, sigma_kern in enumerate(mt.sigma_kerns):
-                sigma_kern_ix = mt.all[mt.all["sigma_kern"] == sigma_kern].index
                 color = colors[i % len(colors)]
                 label = (
                     r"$\sigma_{\rm kernel}$" + f" = {sigma_kern}"
@@ -1491,8 +1490,7 @@ class Plot:
                     else None
                 )
 
-                x = mt.all.loc[sigma_kern_ix, mt.select_param_name]
-                y = mt.all.loc[sigma_kern_ix, f"mag_threshold_{format_float(p)}"]
+                x, y = mt.get_subset(sigma_kern, p)
                 ax.scatter(
                     x,
                     y,

@@ -874,7 +874,11 @@ class MagnitudeThresholdTable:
         self.select_param_name: str = None
         self.percents: List[float] = None
 
-    def get_limits(self):
+    def get_limits(self) -> tuple[float, float]:
+        """
+        Compute the lower and upper y-axis limits for plotting, based on all available
+        magnitude threshold values across all specified percentiles.
+        """
         if self.all.empty:
             raise RuntimeError("Table of all magnitude thresholds cannot be empty")
         if self.percents is None:
@@ -895,7 +899,45 @@ class MagnitudeThresholdTable:
 
         return ylim_lower, ylim_upper
 
+    def get_subset(
+        self, sigma_kern: float, percent: float, drop_nans: bool = True
+    ) -> tuple[pd.Series, pd.Series]:
+        """
+        Return x (select_param_name) and y (magnitude threshold) for a given sigma_kern and percent efficiency.
+        Optionally drops rows with NaNs.
+        """
+        if self.all is None or self.select_param_name is None:
+            raise ValueError("self.all and self.select_param_name must be set")
+
+        mag_threshold_colname = f"mag_threshold_{format_float(percent)}"
+        if mag_threshold_colname not in self.all.columns:
+            raise ValueError(
+                f"Column '{mag_threshold_colname}' for {format_float(percent)}% efficiency does not exist"
+            )
+
+        subset = self.all[self.all["sigma_kern"] == sigma_kern][
+            [self.select_param_name, mag_threshold_colname]
+        ]
+        if drop_nans:
+            subset = subset.dropna()
+
+        return (
+            subset[self.select_param_name],
+            subset[mag_threshold_colname],
+        )
+
     def get_mag_threshold(self, x: pd.Series, y: pd.Series, percent: float):
+        """
+        Interpolates the detection function and solves for the x-value (brightness)
+        that corresponds to the desired detection percent.
+
+        :param x (pd.Series): Brightness parameter values.
+        :param y (pd.Series): Detection percentages.
+        :param percent (float): Target detection percent.
+
+        Returns:
+            float: Brightness value at which detection percentage reaches the target.
+        """
         lx = x.to_list()
         ly = y.to_list()
 
@@ -915,6 +957,10 @@ class MagnitudeThresholdTable:
         select_param_name: str,
         percents: List[float] = [50, 80],
     ):
+        """
+        Compute the full magnitude threshold table across all combinations of sigma_kern,
+        select_param, and FOM limit.
+        """
         if e.t.empty:
             raise ValueError("EfficiencyTable cannot be empty")
 
@@ -962,6 +1008,9 @@ class MagnitudeThresholdTable:
         select_param_name: str,
         percents: List[float] = [50, 80],
     ):
+        """
+        Extract the best (highest magnitude threshold) configuration for each select_param_value.
+        """
         if e.t.empty:
             raise ValueError("EfficiencyTable cannot be empty")
         if self.all.empty:
@@ -1010,6 +1059,13 @@ class MagnitudeThresholdTable:
     def calculate(
         self, e: EfficiencyTable, select_param_name: str, percents: List[int] = [50, 80]
     ):
+        """
+        Orchestrates full and best-case magnitude threshold table calculations.
+
+        :param e (EfficiencyTable): Source efficiency data.
+        :param select_param_name (str): Name of the parameter to vary.
+        :param percents (List[int]): Target detection percentages.
+        """
         self.sigma_kerns = e.sigma_kerns
         self.select_param_name = select_param_name
         self.percents = percents
