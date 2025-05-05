@@ -169,34 +169,34 @@ def load_config(filename):
 
 
 def extract_from_subdir(
-    subdir: str,
+    directory: str,
     pattern: re.Pattern,
-    group_name: str,
+    group_name: str | int,
     convert_function: Callable = lambda x: x,
 ):
-    if not os.path.isdir(subdir):
-        print(f"WARNING: Cannot search because the path does not exist: {subdir}")
+    if not os.path.isdir(directory):
+        print(f"WARNING: Cannot search because the path does not exist: {directory}")
         return []
 
     extracted_values = set()
 
-    for file in os.listdir(subdir):
+    for file in os.listdir(directory):
         match = pattern.match(file)
         if match:
             value = match.group(group_name)
             extracted_values.add(convert_function(value))
 
     if not extracted_values:
-        raise RuntimeError(f"Could not find {group_name} from the files in {subdir}")
+        raise RuntimeError(f"Could not find {group_name} from the files in {directory}")
 
     return extracted_values
 
 
-def has_match(subdir: str, pattern: re.Pattern):
-    if not os.path.isdir(subdir):
+def has_match(directory: str, pattern: re.Pattern):
+    if not os.path.isdir(directory):
         return False
 
-    for file in os.listdir(subdir):
+    for file in os.listdir(directory):
         if pattern.match(file):
             return True
     return False

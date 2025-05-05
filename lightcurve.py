@@ -1727,6 +1727,7 @@ class Simulation(ABC):
 
         :param mjds: List or array of MJDs into which we inject the Simulation.
         :param brightness: Desired brightness (e.g., peak apparent magnitude or flux) of the simulation.
+        :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
 
         :return: An array of simulated flux values corresponding to the input MJDs.
         """

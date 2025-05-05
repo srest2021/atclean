@@ -14,6 +14,7 @@ from lightcurve import (
     LightCurve,
     SimDetecLightCurve,
     SimDetecSupernova,
+    Simulation,
     Supernova,
     AveragedSupernova,
 )
@@ -90,7 +91,7 @@ PROP_CYCLE = [
 plt.rcParams["axes.prop_cycle"] = matplotlib.cycler(color=PROP_CYCLE)
 
 # line styles
-SIM_BUMP_LS = "dashed"
+SIM_LS = "dashed"
 FOM_LIMIT_LS = "dotted"
 
 
@@ -232,7 +233,7 @@ class Plot:
         y_colname = getattr(obj.colnames, y_colname_attr)
         if not obj.can_plot(indices, columns=[y_colname]):
             print(
-                f"WARNING: Light curve (control index #{control_index}) '{y_colname_attr}' column cannot be plotted with indices of length {len(indices)}; skipping..."
+                f"WARNING: Light curve (control index #{obj.control_index}) '{y_colname_attr}' column cannot be plotted with indices of length {len(indices)}; skipping..."
             )
             return
 
@@ -251,12 +252,17 @@ class Plot:
         obj: Supernova | LightCurve,
         control_index: int | None,
         color: str,
+        y_colname_attr: Optional[str] = "flux",
+        dy_colname_attr: Optional[str] = "dflux_new",
         indices: Optional[List[int]] = None,
         label: Optional[str] = None,
         open: bool = False,
     ):
         if isinstance(obj, Supernova):
             obj = obj.lcs[control_index]
+
+        y_colname = getattr(obj.colnames, y_colname_attr)
+        dy_colname = getattr(obj.colnames, dy_colname_attr)
 
         if indices is None:
             indices = obj.getindices()
@@ -268,8 +274,8 @@ class Plot:
 
         ax.errorbar(
             obj.t.loc[indices, obj.colnames.mjd],
-            obj.t.loc[indices, obj.colnames.flux],
-            yerr=obj.t.loc[indices, obj.colnames.dflux_new],
+            obj.t.loc[indices, y_colname],
+            yerr=obj.t.loc[indices, dy_colname],
             fmt="none",
             ecolor=color,
             elinewidth=1.5,
@@ -280,7 +286,7 @@ class Plot:
         )
         ax.scatter(
             obj.t.loc[indices, obj.colnames.mjd],
-            obj.t.loc[indices, obj.colnames.flux],
+            obj.t.loc[indices, y_colname],
             s=MARKER_SIZE,
             lw=MARKER_EDGEWIDTH,
             color=color,
@@ -291,6 +297,11 @@ class Plot:
             facecolors="none" if open else None,
             edgecolors=color if open else None,
         )
+
+    def _set_symmetric_ylim(self, axes: List[Axes], data: pd.Series, scale=1.1):
+        ylim = data.abs().max() * scale
+        for ax in axes:
+            ax.set_ylim(-ylim, ylim)
 
     def plot_SN(
         self,
@@ -1533,10 +1544,11 @@ class Plot:
     def plot_simulated_lc(
         self,
         sim_lc: SimDetecLightCurve,
+        sim_flux,
         sigma_kern: float,
         fom_limit: float,
-        brightness: float,
         peak_mjd: float,
+        flag: int = 0x800000,
         save: bool = False,
         filename: str = "sim_lc",
     ):
@@ -1644,13 +1656,64 @@ class Plot:
         ax2.legend(loc="lower left", facecolor="white", framealpha=1.0).set_zorder(100)
 
         # bottom panel simulated flux
-        # TODO
+        self._plot_lc(
+            ax3,
+            sim_lc,
+            None,
+            self.color_scheme["select_control_flux"],
+            y_colname_attr="fluxsim",
+            indices=sim_lc.get_good_indices(),
+        )
 
-        # bottom panel Simulation object flux
-        # TODO
+        # bottom panel Simulation object
+        ax3.plot(
+            sim_lc.t.loc[sim_lc.get_good_indices(flag=flag), sim_lc.colnames.mjdbin],
+            sim_flux,
+            color=self.color_scheme["select_control_flux"],
+            linewidth=1.5,
+            alpha=1,
+            zorder=0,
+            linestyle=SIM_LS,
+        )
+        ax4.plot(
+            [0, 1],
+            [0, 0],
+            color=self.color_scheme["select_control_flux"],
+            linestyle=SIM_LS,
+            linewidth=1.5,
+            alpha=1,
+            label=f"Simulated Eruption",
+        )
+
+        # bottom panel simulated flux
+        ax4.scatter(
+            [0, 1],
+            [0, 0],
+            color=self.color_scheme["select_control_flux"],
+            s=MARKER_SIZE,
+            lw=MARKER_EDGEWIDTH,
+            alpha=1,
+            marker="o",
+            label=f"Simulated Light Curve",
+        )
 
         # bottom panel simulated FOM
-        # TODO
+        self._plot_snr(
+            ax4,
+            sim_lc,
+            None,
+            self.color_scheme["select_control_fom"],
+            y_colname_attr="snrsimsum",
+            label="Simulated Rolling Sum",
+        )
+
+        self._set_symmetric_ylim(
+            [ax1, ax3],
+            sim_lc.t.loc[sim_lc.get_good_indices(), sim_lc.colnames.flux],
+        )
+        self._set_symmetric_ylim([ax2, ax4], sim_lc.t[sim_lc.colnames.snrsimsum])
+
+        ax4.legend(loc="lower left", facecolor="white", framealpha=1.0).set_zorder(100)
 
         if save:
             self.save_plot(filename, bbox_inches="tight")

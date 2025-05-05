@@ -9,7 +9,7 @@ import random
 import argparse, re
 from copy import deepcopy
 import sys
-from typing import Dict, List, Optional, Self, Tuple
+from typing import Dict, List, Optional, Self, Tuple, Union
 import numpy as np
 import pandas as pd
 from scipy import interpolate
@@ -38,6 +38,7 @@ from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
     AandB,
     PresetColumnNames,
+    extract_from_subdir,
     format_float,
     get_allowed_presets,
     hexstring_to_int,
@@ -431,13 +432,22 @@ class SimDetecTable(SimTable):
         ]
         return dict(self.t.loc[index, colnames])
 
-    def update_row_at_index(self, index: int, data: Dict):
+    def update_row(
+        self, index: int, control_index: int, max_fom: float, max_fom_mjd: float
+    ):
         """
         Update a certain row of the table.
 
-        :param index: Index of the table to update.
-        :param data: Dictionary of column-value pairs.
+        :param index: Index of the row to update.
+        :param control_index: Control index of the light curve into which the simulation was injected.
+        :param max_fom: Maximum FOM value of the simulated light curve within a certain range of the injection time.
+        :param max_fom_mjd: MJD of the max_fom value.
         """
+        data = {
+            "control_index": control_index,
+            "max_fom": max_fom,
+            "max_fom_mjd": max_fom_mjd,
+        }
         for key, value in data.items():
             self.t.at[index, key] = value
 
@@ -518,10 +528,28 @@ class SimDetecTables:
     def get_table(self, sigma_kern: float, brightness: float):
         return self.d[sigma_kern][brightness]
 
-    def update_row_at_index(
-        self, sigma_kern: float, brightness: float, index: int, data: Dict
+    def update_row(
+        self,
+        sigma_kern: float,
+        brightness: float,
+        index: int,
+        control_index: int,
+        max_fom: float,
+        max_fom_mjd: float,
     ):
-        self.d[sigma_kern][brightness].update_row_at_index(index, data)
+        """
+        Update a certain row of a SimDetecTable.
+
+        :param sigma_kern: Rolling sum kernel size corresponding to the SimDetecTable to update.
+        :param brightness: Brightness corresponding to the SimDetecTable to update.
+        :param index: Index of the row to update in the SimDetecTable.
+        :param control_index: Control index of the light curve into which the simulation was injected.
+        :param max_fom: Maximum FOM value of the simulated light curve within a certain range of the injection time.
+        :param max_fom_mjd: MJD of the max_fom value.
+        """
+        self.d[sigma_kern][brightness].update_row(
+            index, control_index, max_fom, max_fom_mjd
+        )
 
     def get_efficiency(
         self, sigma_kern: float, brightness: float, fom_limit: float, **params
@@ -1326,7 +1354,61 @@ class ContaminationTable:
         return self.t.to_string()
 
 
-class SimDetecLoop(ABC):
+class SimulationFactory:
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+
+    def _log(self, msg: str):
+        if self.verbose:
+            print(msg)
+
+    def _parse_colname_val(self, colname: str, row: dict):
+        if colname in row:
+            return None if np.isnan(row[colname]) else row[colname]
+        return False
+
+    def from_table(
+        self, table: Union[SimTable, SimDetecTable], row_index: int
+    ) -> Simulation:
+        """
+        Create a Simulation object given a row from a SimTable or SimDetecTable.
+        """
+        row = dict(table.t.loc[row_index, :])
+        model_name = row["model_name"]
+        filename = None if not isinstance(row["filename"], str) else row["filename"]
+
+        mjd_colname = self._parse_colname_val("mjd_colname", row)
+        mag_colname = self._parse_colname_val("mag_colname", row)
+        flux_colname = self._parse_colname_val("flux_colname", row)
+
+        if model_name == GAUSSIAN_MODEL_NAME:
+            self._log("\tConstructing Gaussian simulation")
+            return Gaussian()
+        elif model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
+            self._log("\tConstructing AsymmetricGaussian simulation")
+            return AsymmetricGaussian()
+        else:
+            self._log(
+                f"\tConstructing '{model_name}' simulation with MJD column {mjd_colname}, mag column {mag_colname}, flux column {flux_colname}, filename: {filename}"
+            )
+            return Model(
+                filename=filename,
+                mjd_colname=mjd_colname,
+                mag_colname=mag_colname,
+                flux_colname=flux_colname,
+                model_name=model_name,
+            )
+
+    @staticmethod
+    def new_gaussian() -> Simulation:
+        return Gaussian()
+
+    @staticmethod
+    def new_asymmetric_gaussian() -> Simulation:
+        return AsymmetricGaussian()
+
+
+class InjectionLoop(ABC):
     def __init__(self, sigma_kerns: List[float], **kwargs):
         self.sigma_kerns: List[float] = sigma_kerns
         self.brightness_param: Param = None
@@ -1340,16 +1422,9 @@ class SimDetecLoop(ABC):
         directory: str,
         pattern: re.Pattern,
     ):
-        filenames = os.listdir(directory)
-
-        brightnesses = set()
-
-        for filename in filenames:
-            match = pattern.match(filename)
-            if match:
-                brightness = float(match.group(1))
-                brightnesses.add(brightness)
-
+        brightnesses = extract_from_subdir(
+            directory, pattern, 1, convert_function=float
+        )
         res = list(brightnesses)
         res.sort()
         return res
@@ -1448,53 +1523,6 @@ class SimDetecLoop(ABC):
         self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
         self.sd.load_all(detec_tables_dir)
 
-    def load_sim(self, table_row: Dict, verbose: bool = False) -> Simulation:
-        """
-        Construct and return a Simulation object given a row from a SimTable or SimDetecTable.
-        """
-        if verbose:
-            print(
-                "\tLoading Simulation from model info in first row of loaded SimTable"
-            )
-        model_name = table_row["model_name"]
-        filename = (
-            None
-            if not isinstance(table_row["filename"], str)
-            else table_row["filename"]
-        )
-
-        def get_col_val(colname, table_row):
-            if colname in table_row:
-                return None if np.isnan(table_row[colname]) else table_row[colname]
-            else:
-                return False
-
-        mjd_colname = get_col_val("mjd_colname", table_row)
-        mag_colname = get_col_val("mag_colname", table_row)
-        flux_colname = get_col_val("flux_colname", table_row)
-
-        if model_name == GAUSSIAN_MODEL_NAME:
-            if verbose:
-                print("\tUsing Gaussian simulations")
-            sim = Gaussian()
-        elif model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
-            if verbose:
-                print("\tUsing AsymmetricGaussian simulations")
-            sim = AsymmetricGaussian()
-        else:
-            if verbose:
-                print(
-                    f"\tUsing '{model_name}' simulations with MJD column {mjd_colname}, mag column {mag_colname}, and flux column {flux_colname} at filename: {filename}"
-                )
-            sim = Model(
-                filename=filename,
-                mjd_colname=mjd_colname,
-                mag_colname=mag_colname,
-                flux_colname=flux_colname,
-                model_name=model_name,
-            )
-        return sim
-
     def add_simulation_to_lc(
         self,
         sigma_kern: float,
@@ -1519,12 +1547,25 @@ class SimDetecLoop(ABC):
             print(f"Adding simulation: {sim}")
             if kwargs:
                 print(f"Additional simulation parameters: {kwargs}")
+        if self.sn is None:
+            raise ValueError(
+                "SN must be set via self.load_sn() or self.set_sn() before injecting a simulation"
+            )
+        if control_index not in self.sn.control_lc_indices:
+            raise ValueError(
+                f"Control index {control_index} missing from control light curve indices (may have been excluded): {self.sn.control_lc_indices}"
+            )
 
         lc = deepcopy(self.sn.lcs[control_index])
+        if not lc.colnames.snrsumnorm in lc.t.columns:
+            print(
+                "WARNING: Rolling sum not applied to light curve prior to injecting simulation"
+            )
+
         good_ix = lc.get_good_indices(flag=self.sn.flag)
 
         sim_flux = sim.get_sim_flux(
-            lc.t.loc[good_ix, self.sn.colnames.mjd], brightness, **kwargs
+            lc.t.loc[good_ix, self.sn.colnames.mjdbin], brightness, **kwargs
         )
 
         lc.add_sim_flux(
@@ -1534,10 +1575,10 @@ class SimDetecLoop(ABC):
             verbose=verbose,
             remove_old=remove_old,
         )
-        return lc
+        return sim_flux, lc
 
     @abstractmethod
-    def get_max_fom_indices(
+    def get_injection_search_indices(
         self,
         sim_lc: SimDetecLightCurve,
         **kwargs,
@@ -1546,34 +1587,35 @@ class SimDetecLoop(ABC):
         From a light curve with a Simulation injected, return the indices within which to search for the max FOM.
 
         :param sim_lc: SimDetecLightCurve with a Simulation injected.
+        :param kwargs: Any additional helpful parameters (e.g., peak MJD and the sigma or size of the Simulation) that can be used to calculate indices within a certain range of the injection time.
         """
         pass
 
-    def update_sd_row(
+    def inject_and_record_sim(
         self,
+        sim_detec_table: SimDetecTable,
+        row_index: int,
+        sim: Simulation,
         sigma_kern: float,
         brightness: float,
-        index: int,
-        control_index: int,
-        max_fom: float,
-        max_fom_mjd: float,
     ):
-        """
-        Update a certain row of a SimDetecTable with info about an injected Simulation, i.e., the index of the control light curve it was added to, the max FOM, and the max FOM MJD.
+        # pick random control light curve
+        rand_control_index = random.choice(self.sn.control_lc_indices)
 
-        :param sigma_kern: Sigma of the desired SimDetecTable.
-        :param peak_appmag: Peak apparent magnitude of the desired SimDetecTable.
-        :param index: Index of the row to update.
-        :param control_index: Control light curve index to which the Simulation was added.
-        :param max_fom: Max FOM of the simulated flux.
-        :param max_fom_mjd: MJD of the max FOM of the simulated flux.
-        """
-        data = {
-            "control_index": control_index,
-            "max_fom": max_fom,
-            "max_fom_mjd": max_fom_mjd,
-        }
-        self.sd.update_row_at_index(sigma_kern, brightness, index, data)
+        # add the simulated flux to the chosen control light curve
+        params = sim_detec_table.get_params_at_index(row_index)
+        _, sim_lc = self.add_simulation_to_lc(
+            sigma_kern, brightness, rand_control_index, sim, **params
+        )
+
+        # get the max simulated FOM within certain indices of the light curve
+        indices = self.get_injection_search_indices(sim_lc, **params)
+        max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
+
+        # update the corresponding row in the SimDetecTable
+        self.sd.update_row(
+            sigma_kern, brightness, row_index, rand_control_index, max_fom, max_fom_mjd
+        )
 
     def calculate_efficiencies(
         self,
@@ -1619,7 +1661,7 @@ class SimDetecLoop(ABC):
         pass
 
 
-class AtlasSimDetecLoop(SimDetecLoop):
+class AtlasInjectionLoop(InjectionLoop):
     def __init__(self, sigma_kerns: List, **kwargs):
         super().__init__(sigma_kerns, **kwargs)
 
@@ -1637,11 +1679,11 @@ class AtlasSimDetecLoop(SimDetecLoop):
             model_name, sim_tables_dir, param_name=param_name, **kwargs
         )
 
-    def get_max_fom_indices(
+    def get_injection_search_indices(
         self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None, **kwargs
     ):
         """
-        Get indices of MJD within 1 sigma of the peak MJD.
+        Get indices of measurements within 1 sigma of the peak MJD.
         For Gaussians, use the sigma provided.
         For Charlie's model, use the manually calculated value of 2.8.
         """
@@ -1683,6 +1725,8 @@ class AtlasSimDetecLoop(SimDetecLoop):
             )
             self.sn.apply_rolling_sums(sigma_kern, valid_ix=False, pre_mjd0_ix=False)
 
+            sim_factory = SimulationFactory(verbose=True)
+
             # loop through each possible peak apparent magnitude
             for peak_appmag in self.brightness_param.values:
                 sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
@@ -1693,30 +1737,12 @@ class AtlasSimDetecLoop(SimDetecLoop):
 
                 # load the Simulation object based on the data in the first row
                 # (we assume here that every row adds the same type of model)
-                sim = self.load_sim(dict(sim_detec_table.t.loc[0, :]), verbose=True)
+                # sim = self.load_sim(dict(sim_detec_table.t.loc[0, :]), verbose=True)
+                sim = sim_factory.from_table(sim_detec_table, 0)
 
                 for i in range(len(sim_detec_table.t)):
-                    # pick random control light curve
-                    rand_control_index = random.choice(self.sn.control_lc_indices)
-
-                    # add the simulated flux to the chosen control light curve
-                    params = sim_detec_table.get_params_at_index(i)
-                    sim_lc = self.add_simulation_to_lc(
-                        sigma_kern, peak_appmag, rand_control_index, sim, **params
-                    )
-
-                    # get the max simulated FOM within certain indices of the light curve
-                    indices = self.get_max_fom_indices(sim_lc, **params)
-                    max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
-
-                    # update the corresponding row in the SimDetecTable
-                    self.update_sd_row(
-                        sigma_kern,
-                        peak_appmag,
-                        i,
-                        rand_control_index,
-                        max_fom,
-                        max_fom_mjd,
+                    self.inject_and_record_sim(
+                        sim_detec_table, i, sim, sigma_kern, peak_appmag
                     )
 
                 self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
@@ -1805,8 +1831,8 @@ if __name__ == "__main__":
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
 
-    simdetec = AtlasSimDetecLoop(args.sigma_kerns)
-    simdetec.load_sn(
+    injloop = AtlasInjectionLoop(args.sigma_kerns)
+    injloop.load_sn(
         config["dir"]["output"],
         colnames,
         args.tnsname,
@@ -1822,6 +1848,6 @@ if __name__ == "__main__":
     )
 
     print()
-    simdetec.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
-    simdetec.load_sim_tables(args.model_name, sim_tables_dir)
-    simdetec.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)
+    injloop.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
+    injloop.load_sim_tables(args.model_name, sim_tables_dir)
+    injloop.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)
