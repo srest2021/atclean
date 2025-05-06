@@ -24,7 +24,7 @@ from step1_generate_sim_tables import (
     find_prefix_in_list,
     remove_prefix,
 )
-from step2_generate_detec_tables import EfficiencyTable, MagnitudeThresholdTable
+from step3_calculate_efficiencies import EfficiencyTable, MagnitudeThresholdTable
 from utils import (
     TEMPLATE_CHANGE_1_MJD,
     TEMPLATE_CHANGE_2_MJD,

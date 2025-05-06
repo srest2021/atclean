@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+import argparse
 from collections import defaultdict
+from configparser import ConfigParser
 import itertools
 import re
 from typing import Dict, List, Optional, Self
@@ -11,13 +13,23 @@ from lightcurve import SimDetecSupernova
 from pdastro import pdastrostatsclass
 from step1_generate_sim_tables import (
     BRIGHTNESS_PARAM_PREFIX,
+    TIME_PARAM_PREFIX,
     Params,
     find_prefix_in_list,
+    parse_colname_info,
+    parse_config_params,
 )
-from step2_generate_detec_tables import SimDetecTables, get_matching_ix
+from step2_generate_detec_tables import (
+    NON_PARAM_COLNAMES,
+    SimDetecTables,
+    get_matching_ix,
+)
 from utils import (
     AandB,
     format_float,
+    get_allowed_presets,
+    load_config,
+    load_json_config,
     make_dir_if_not_exists,
     new_row,
     print_progress_bar,
@@ -378,15 +390,23 @@ class EfficiencyTable(pdastrostatsclass):
         else:
             self.fom_limits = self.validate_fom_limits(fom_limits)
 
-    def get_params_at_index(self, index: int) -> Dict:
+    def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
         Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
-        Any known non-parameter column names (including brightness and time) will be skipped.
+        Any known non-parameter column names (including brightness and, optionally, time) will be skipped.
 
         :param index: Index of the table from which to get the parameter column-value pairs.
+        :param skip_time_col: Whether to exclude time columns (i.e., those starting with TIME_PARAM_PREFIX).
         """
-
-        colnames = [col for col in self.t.columns if col in self.params.other_names()]
+        colnames = [
+            col
+            for col in self.t.columns
+            if not (
+                (skip_time_col and col.startswith(TIME_PARAM_PREFIX))
+                or col.startswith(BRIGHTNESS_PARAM_PREFIX)
+                or col in NON_PARAM_COLNAMES
+            )
+        ]
         return dict(self.t.loc[index, colnames])
 
     def get_possible_values(self, column: str):
@@ -762,3 +782,81 @@ class MagnitudeThresholdTable:
             )
             print(f"Saving table of best magnitude thresholds as {filename_best}...")
             self.best.to_string(filename_best, index=False)
+
+
+def define_args(
+    config: ConfigParser, parser=None, usage=None, conflict_handler="resolve"
+):
+    if parser is None:
+        parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
+
+    parser.add_argument("tnsname", type=str, help="transient name")
+    parser.add_argument(
+        "filter",
+        type=str,
+        default=None,
+        help="filter of transient to inject simulations into",
+    )
+    parser.add_argument(
+        "model_name", type=str, default="gaussian", help="name of model to use"
+    )
+
+    parser.add_argument(
+        "--sigma_kerns",
+        nargs="+",
+        type=float,
+        default=[5.0, 20.0, 40.0, 80.0, 100.0, 150.0, 200.0],
+        help="list of kernel sizes in days for weighted gaussian rolling sum",
+    )
+    parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
+    )
+    parser.add_argument(
+        "--num_controls",
+        type=int,
+        default=int(config["download"]["num_controls"]),
+        help="total number of averaged control light curves to load, not including skipped ones",
+    )
+    parser.add_argument(
+        "-m",
+        "--mjd_bin_size",
+        type=float,
+        default=float(config["averaging"]["mjd_bin_size"]),
+        help="MJD bin size in days of the target averaged light curves",
+    )
+
+    return parser
+
+
+if __name__ == "__main__":
+    config = load_config("config.ini")
+    args = define_args(config).parse_args()
+    # step1_config = load_json_config(args.step1_config_file)
+
+    if " " in args.model_name:
+        raise RuntimeError("Model name cannot have spaces.")
+    # if args.model_name not in step1_config:
+    #     raise RuntimeError(
+    #         f"Model '{args.model_name}' not found in simulation config file\n"
+    #         f"Available models: {', '.join(step1_config.keys())}"
+    #     )
+    # print(f"Loading settings for model '{args.model_name}'...")
+    # model_settings = step1_config[args.model_name]
+
+    # print("Parsing model parameters...")
+    # params = parse_config_params(
+    #     model_settings,
+    #     time_param_name=model_settings["time_parameter_name"],
+    #     brightness_param_name=model_settings["brightness_parameter_name"],
+    # )
+
+    """
+    construct Params solely from SimDetecTables
+    - use model name to get files and read brightness and sigma kerns
+        and/or allow arg sigma kerns? 
+    - get unique values from non-param colnames (prob only need one table for that, assume the rest are uniform?)
+    """

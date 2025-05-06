@@ -26,27 +26,19 @@ from step1_generate_sim_tables import (
     ListParam,
     Param,
     ParamType,
-    Params,
     SimTable,
-    SimTables,
-    find_prefix_in_list,
     get_sim_tables_output_dir,
-    parse_config_params,
     GAUSSIAN_MODEL_NAME,
     ASYMMETRIC_GAUSSIAN_MODEL_NAME,
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
-    AandB,
     PresetColumnNames,
     extract_from_subdir,
     format_float,
     get_allowed_presets,
     hexstring_to_int,
     load_config,
-    load_json_config,
-    new_row,
-    print_progress_bar,
 )
 
 
@@ -58,6 +50,7 @@ NON_PARAM_COLNAMES = {
     "mag_colname",
     "flux_colname",
     "control_index",
+    "filter",
     "max_fom",
     "max_fom_mjd",
 }
@@ -459,23 +452,25 @@ class SimDetecTable(SimTable):
         for key, value in data.items():
             self.t.at[index, key] = value
 
-    def get_detec_filename(self, model_name: str, detec_tables_dir: str) -> str:
+    def get_detec_filename(
+        self, model_name: str, filt: str, detec_tables_dir: str
+    ) -> str:
         """
         Get the filename of the SimDetecTable.
 
         :param model_name: Name of the model of which the SimDetecTable contains simulations.
         :param detec_tables_dir: Directory where the SimDetecTable is located.
         """
-        return f"{detec_tables_dir}/simdetec_{model_name}_{format_float(self.sigma_kern)}_{format_float(self.brightness)}.txt"
+        return f"{detec_tables_dir}/simdetec_{model_name}_{format_float(self.sigma_kern)}_{format_float(self.brightness)}.{filt}.txt"
 
-    def load_detec_table(self, model_name: str, detec_tables_dir: str):
+    def load_detec_table(self, model_name: str, filt: str, detec_tables_dir: str):
         """
         Load an existing SimDetecTable.
 
         :param model_name: Name of the model of which the SimDetecTable contains simulations.
         :param detec_tables_dir: Directory where the SimDetecTable is located.
         """
-        filename = self.get_detec_filename(model_name, detec_tables_dir)
+        filename = self.get_detec_filename(model_name, filt, detec_tables_dir)
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
@@ -491,14 +486,14 @@ class SimDetecTable(SimTable):
         super().load_sim_table(model_name, sim_tables_dir)
         self.t["sigma_kern"] = self.sigma_kern
 
-    def save_detec_table(self, model_name: str, detec_tables_dir: str):
+    def save_detec_table(self, model_name: str, filt: str, detec_tables_dir: str):
         """
         Save the current SimDetecTable.
 
         :param model_name: Name of the model of which the SimDetecTable contains simulations.
         :param detec_tables_dir: Directory where the SimDetecTable should be saved.
         """
-        filename = self.get_detec_filename(model_name, detec_tables_dir)
+        filename = self.get_detec_filename(model_name, filt, detec_tables_dir)
         self.write(filename=filename, overwrite=True, index=False)
 
     def get_efficiency(self, fom_limit: float, **kwargs):
@@ -526,8 +521,13 @@ class SimDetecTable(SimTable):
 
 class SimDetecTables:
     def __init__(
-        self, brightness_param: Param, model_name: str, sigma_kerns: List[float]
+        self,
+        filt: str,
+        brightness_param: Param,
+        model_name: str,
+        sigma_kerns: List[float],
     ):
+        self.filt: str = filt
         self.model_name: str = model_name
         self.sigma_kerns: List[float] = sigma_kerns
         self.brightness_param = brightness_param
@@ -570,7 +570,7 @@ class SimDetecTables:
         self, sigma_kern: float, brightness: float, detec_tables_dir: str
     ):
         self.d[sigma_kern][brightness].save_detec_table(
-            self.model_name, detec_tables_dir
+            self.model_name, self.filt, detec_tables_dir
         )
 
     def save_all(self, detec_tables_dir: str):
@@ -578,7 +578,7 @@ class SimDetecTables:
         make_dir_if_not_exists(detec_tables_dir)
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
-                table.save_detec_table(self.model_name, detec_tables_dir)
+                table.save_detec_table(self.model_name, self.filt, detec_tables_dir)
         print("Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir: str):
@@ -619,7 +619,7 @@ class SimDetecTables:
             for brightness in self.brightness_param.values:
                 self.d[sigma_kern][brightness] = SimDetecTable(sigma_kern, brightness)
                 self.d[sigma_kern][brightness].load_detec_table(
-                    self.model_name, detec_tables_dir
+                    self.model_name, self.filt, detec_tables_dir
                 )
         print("Success")
 
@@ -783,7 +783,9 @@ class InjectionLoop(ABC):
         :param model_name: Name of the model whose tables will be loaded.
         :param sim_tables_dir: Directory where the SimTables are located.
         """
-        self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
+        self.sd = SimDetecTables(
+            self.sn.filt, self.brightness_param, model_name, self.sigma_kerns
+        )
         self.sd.load_all_from_sim_tables(sim_tables_dir)
 
     def load_detec_tables(self, model_name: str, detec_tables_dir: str):
@@ -793,7 +795,9 @@ class InjectionLoop(ABC):
         :param model_name: Name of the model whose tables will be loaded.
         :param detec_tables_dir: Directory where the SimDetecTables are located.
         """
-        self.sd = SimDetecTables(self.brightness_param, model_name, self.sigma_kerns)
+        self.sd = SimDetecTables(
+            self.sn.filt, self.brightness_param, model_name, self.sigma_kerns
+        )
         self.sd.load_all(detec_tables_dir)
 
     def add_simulation_to_lc(
