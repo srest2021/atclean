@@ -75,6 +75,21 @@ def print_progress_bar(
         print()
 
 
+def apparent_to_absolute_mag(values, distance_modulus=29.04, precision=2):
+    """
+    Convert a list of apparent magnitude values to absolute magnitude values.
+
+    Parameters:
+    - values: list or array of apparent magnitude values
+    - distance_modulus: float, the distance modulus (default 29.04)
+    - precision: int, number of decimal places to round to
+
+    Returns:
+    - list of converted absolute magnitude values (as floats)
+    """
+    return [round(v - distance_modulus, precision) for v in values]
+
+
 # load a JSON config file
 def load_json_config(filename: str):
     try:

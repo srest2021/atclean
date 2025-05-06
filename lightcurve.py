@@ -608,6 +608,18 @@ class AveragedSupernova(Supernova):
                 f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
             )
 
+    def has_pre_mjd0_ix(self):
+        for control_index in self.control_lc_indices:
+            if not self.lcs[control_index].has_pre_mjd0_ix():
+                return False
+        return True
+
+    def has_valid_mjd_ix(self):
+        for control_index in self.control_lc_indices:
+            if not self.lcs[control_index].has_valid_mjd_ix():
+                return False
+        return True
+
     def get_good_indices(self, control_index: int = 0, flag: Optional[int] = None):
         # if flag is 0 or no mask column, return all indices
         if flag == 0 or not self.colnames.mask in self.lcs[control_index].t.columns:
@@ -1435,9 +1447,6 @@ class AveragedLightCurve(LightCurve):
             )
         return self._valid_mjd_ix
 
-    def has_pre_mjd0_ix(self):
-        return self._pre_mjd0_ix is not None and len(self._pre_mjd0_ix) > 0
-
     @property
     def pre_mjd0_ix(self):
         if self._pre_mjd0_ix is None:
@@ -1449,6 +1458,12 @@ class AveragedLightCurve(LightCurve):
                 f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
             )
         return self._pre_mjd0_ix
+
+    def has_pre_mjd0_ix(self):
+        return self._pre_mjd0_ix is not None and len(self._pre_mjd0_ix) > 0
+
+    def has_valid_mjd_ix(self):
+        return self._valid_mjd_ix is not None and len(self._valid_mjd_ix) > 0
 
     def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]) -> List[int]:
         def in_range(value, mjd_ranges):
@@ -1824,13 +1839,22 @@ class SimDetecSupernova(AveragedSupernova):
         valid_ix: bool = False,
         pre_mjd0_ix: bool = False,
     ):
+        if valid_ix and not self.has_valid_mjd_ix():
+            raise RuntimeError(
+                "Valid MJD indices missing; set valid_ix=False or call self.set_valid_mjd_ix()"
+            )
+        if pre_mjd0_ix and not self.has_pre_mjd0_ix():
+            raise RuntimeError(
+                "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_MJD0_ix()"
+            )
+
         msg = f"Applying rolling sum of sigma_kern={format_float(sigma_kern)} to all light curves"
         out = []
         sn_indices = self.lcs[0].getindices()
         if valid_ix:
             out.append("using only MJDs in included MJD ranges for all light curves")
-            sn_indices = AandB(sn_indices, valid_ix)
-        if pre_mjd0_ix and self.lcs[0].has_pre_mjd0_ix():
+            sn_indices = AandB(sn_indices, self.lcs[0].valid_mjd_ix)
+        if pre_mjd0_ix:
             out.append("using only pre-MJD0 MJDs for SN light curve")
             sn_indices = AandB(sn_indices, self.lcs[0].pre_mjd0_ix)
         if out:

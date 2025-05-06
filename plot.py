@@ -30,6 +30,7 @@ from utils import (
     TEMPLATE_CHANGE_2_MJD,
     ChiSquareCut,
     PlotLimits,
+    apparent_to_absolute_mag,
     format_float,
 )
 
@@ -1368,6 +1369,13 @@ class Plot:
                 "`select_param_name` cannot be 'sigma_kern' — it is already fixed as an input to the plot."
             )
 
+        # if peak_appmag, use default labels and create ax2 of abs mag
+        brightness_param_name = find_prefix_in_list(
+            e.t.columns, BRIGHTNESS_PARAM_PREFIX
+        )
+        if brightness_param_name is None:
+            raise ValueError("No brightness parameter column found in EfficiencyTable")
+
         fig, ax1 = plt.subplots(1, constrained_layout=True)
         ax1: Axes
         fig.set_figheight(2.5)
@@ -1388,30 +1396,6 @@ class Plot:
             transform=ax1.transAxes,
             fontsize=11,
         )
-
-        # if peak_appmag, use default labels and create ax2 of abs mag
-        brightness_param_name = find_prefix_in_list(
-            e.t.columns, BRIGHTNESS_PARAM_PREFIX
-        )
-        if brightness_param_name is None:
-            raise ValueError("No brightness parameter column found in EfficiencyTable")
-        if (
-            remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
-            == "peak_appmag"
-        ):
-            ax1.set_xlabel(r"$m_{peak}$ (app mag)")
-
-            # abs mag
-            ax2 = ax1.twiny()
-            self._setup_ax(ax2, None, xlabel=r"$m_{peak}$ (abs mag)", ylabel=False)
-            ax2.set_xticks(ax1.get_xticks())
-            ax2.set_xbound(ax1.get_xbound())
-            ax2.set_xticklabels([round(x - 29.04) for x in ax1.get_xticks()])
-        else:
-            ax1.set_xlabel(
-                remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
-            )
-        ax1.set_ylabel(f"Efficiency (%)")
 
         select_param_values = e.get_possible_values(select_param_name)
         for i in range(len(select_param_values)):
@@ -1442,6 +1426,24 @@ class Plot:
                 color=color,
                 zorder=-i * 10,
             )
+
+        if (
+            remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
+            == "peak_appmag"
+        ):
+            ax1.set_xlabel(r"$m_{peak}$ (app mag)")
+
+            # abs mag
+            ax2 = ax1.twiny()
+            self._setup_ax(ax2, None, xlabel=r"$m_{peak}$ (abs mag)", ylabel=False)
+            ax2.set_xticks(ax1.get_xticks())
+            ax2.set_xbound(ax1.get_xbound())
+            ax2.set_xticklabels(apparent_to_absolute_mag(ax1.get_xticks(), precision=0))
+        else:
+            ax1.set_xlabel(
+                remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)
+            )
+        ax1.set_ylabel(f"Efficiency (%)")
 
         ax1.legend(
             loc="upper left",
