@@ -784,6 +784,11 @@ class MagnitudeThresholdTable:
             self.best.to_string(filename_best, index=False)
 
 
+class AnalysisLoop:
+    def __init__(self):
+        pass
+
+
 def define_args(
     config: ConfigParser, parser=None, usage=None, conflict_handler="resolve"
 ):
@@ -809,24 +814,16 @@ def define_args(
         help="list of kernel sizes in days for weighted gaussian rolling sum",
     )
     parser.add_argument(
-        "-p",
-        "--preset",
-        type=str,
-        default="atlas",
-        help="preset name from config file (ex. atlas, rubin, tess)",
-    )
-    parser.add_argument(
-        "--num_controls",
+        "--n_steps",
         type=int,
-        default=int(config["download"]["num_controls"]),
-        help="total number of averaged control light curves to load, not including skipped ones",
+        default=15,
+        help="maximum number of iterations for calculating best FOM limits via the bisection method",
     )
     parser.add_argument(
-        "-m",
-        "--mjd_bin_size",
-        type=float,
-        default=float(config["averaging"]["mjd_bin_size"]),
-        help="MJD bin size in days of the target averaged light curves",
+        "--n_pos_controls",
+        type=int,
+        default=2,
+        help="target number of positive control light curves for a given FOM limit",
     )
 
     return parser
@@ -859,4 +856,5 @@ if __name__ == "__main__":
     - use model name to get files and read brightness and sigma kerns
         and/or allow arg sigma kerns? 
     - get unique values from non-param colnames (prob only need one table for that, assume the rest are uniform?)
+    lets just check param unique values each table, raise error if not the same
     """

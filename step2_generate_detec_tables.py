@@ -26,6 +26,7 @@ from step1_generate_sim_tables import (
     ListParam,
     Param,
     ParamType,
+    Params,
     SimTable,
     get_sim_tables_output_dir,
     GAUSSIAN_MODEL_NAME,
@@ -407,7 +408,22 @@ class SimDetecTable(SimTable):
                 "Multiple model types found in SimDetecTable, but expected only one"
             )
 
-    def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
+    def get_param_colnames(
+        self, skip_time_col: bool = False, skip_brightness_col: bool = False
+    ) -> List[str]:
+        return [
+            col
+            for col in self.t.columns
+            if not (
+                (skip_time_col and col.startswith(TIME_PARAM_PREFIX))
+                or (skip_brightness_col and col.startswith(BRIGHTNESS_PARAM_PREFIX))
+                or col in NON_PARAM_COLNAMES
+            )
+        ]
+
+    def get_params_at_index(
+        self, index: int, skip_time_col: bool = False, skip_brightness_col: bool = True
+    ) -> Dict:
         """
         Get a dictionary of the parameter column-value pairs of the Simulation object at a certain row.
         Any known non-parameter column names (including brightness and, optionally, time) will be skipped.
@@ -415,16 +431,25 @@ class SimDetecTable(SimTable):
         :param index: Index of the table from which to get the parameter column-value pairs.
         :param skip_time_col: Whether to exclude time columns (i.e., those starting with TIME_PARAM_PREFIX).
         """
-        colnames = [
-            col
-            for col in self.t.columns
-            if not (
-                (skip_time_col and col.startswith(TIME_PARAM_PREFIX))
-                or col.startswith(BRIGHTNESS_PARAM_PREFIX)
-                or col in NON_PARAM_COLNAMES
-            )
-        ]
+        colnames = self.get_param_colnames(
+            skip_time_col=skip_time_col, skip_brightness_col=skip_brightness_col
+        )
         return dict(self.t.loc[index, colnames])
+
+    def get_params(
+        self, skip_time_col: bool = True, skip_brightness_col: bool = True
+    ) -> Params:
+        params = Params()
+
+        colnames = self.get_param_colnames(
+            skip_time_col=skip_time_col, skip_brightness_col=skip_brightness_col
+        )
+        for col in colnames:
+            values = self.t[col].unique()
+            param = ListParam(col, values)
+            params.add(param)
+
+        return params
 
     def update_row(
         self,
@@ -1142,8 +1167,8 @@ if __name__ == "__main__":
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
 
-    injloop = AtlasInjectionLoop(args.sigma_kerns)
-    injloop.load_sn(
+    injection_loop = AtlasInjectionLoop(args.sigma_kerns)
+    injection_loop.load_sn(
         config["dir"]["output"],
         colnames,
         args.tnsname,
@@ -1162,6 +1187,6 @@ if __name__ == "__main__":
     )
 
     print()
-    injloop.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
-    injloop.load_sim_tables(args.model_name, sim_tables_dir)
-    injloop.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)
+    injection_loop.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
+    injection_loop.load_sim_tables(args.model_name, sim_tables_dir)
+    injection_loop.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)

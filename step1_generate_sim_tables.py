@@ -163,6 +163,15 @@ class Param(ABC):
             out += "no values yet (call generate() to generate list of values)"
         return out
 
+    def __eq__(self, other):
+        if not isinstance(other, Param):
+            return False
+        return (
+            self.name == other.name
+            and self.param_type == other.param_type
+            and self.values == other.values
+        )
+
 
 class ListParam(Param):
     """
@@ -526,6 +535,36 @@ class Params:
         for param in all_params:
             out += f"\n- {param}"
         return out
+
+    def __eq__(self, other):
+        if not isinstance(other, Params):
+            print("Comparison failed: other is not a Params instance.")
+            return False
+
+        mismatched = []
+
+        def check(p1, p2, name):
+            if p1 != p2:
+                mismatched.append(name)
+                return False
+            return True
+
+        equal = True
+
+        equal &= check(self.time_param, other.time_param, "time_param")
+        equal &= check(
+            self.brightness_param, other.brightness_param, "brightness_param"
+        )
+
+        all_keys = set(self.other.keys()).union(other.other.keys())
+        for key in all_keys:
+            p1 = self.other.get(key)
+            p2 = other.other.get(key)
+            equal &= check(p1, p2, key)
+
+        if mismatched:
+            print("Params mismatch in:", ", ".join(mismatched))
+        return equal
 
 
 def parse_config_param(

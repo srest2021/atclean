@@ -1,6 +1,0 @@
-{
-  "fom_limit_calculation": {
-    "target_n_pos_controls": 2,
-    "n_steps": 15
-  }
-}
