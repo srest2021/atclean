@@ -83,6 +83,13 @@ def validate_kwarg_range(rng) -> bool:
     )
 
 
+def get_brightness_values_from_dir(directory: str, pattern: re.Pattern):
+    brightnesses = extract_from_subdir(directory, pattern, 1, convert_function=float)
+    res = list(brightnesses)
+    res.sort()
+    return res
+
+
 def get_matching_ix(table_object: pdastrostatsclass, **kwargs):
     """
     Get indices matching all conditions in kwargs.
@@ -704,57 +711,37 @@ class SimulationFactory:
 
 
 class InjectionLoop(ABC):
-    def __init__(self, sigma_kerns: List[float], **kwargs):
-        self.sigma_kerns: List[float] = sigma_kerns
-        self.brightness_param: Param = None
-
-        self.sn: SimDetecSupernova = None
-        # self.e: EfficiencyTable = None
-        self.sd: SimDetecTables = None
-
-    def _get_brightness_values_from_dir(
+    def __init__(
         self,
-        directory: str,
-        pattern: re.Pattern,
-    ):
-        brightnesses = extract_from_subdir(
-            directory, pattern, 1, convert_function=float
-        )
-        res = list(brightnesses)
-        res.sort()
-        return res
-
-    def get_brightness_param_from_detec_tables(
-        self,
+        sigma_kerns: List[float],
         model_name: str,
+        sim_tables_dir: str,
         detec_tables_dir: str,
-        param_name: str = "brightness",
+        **kwargs,
     ):
-        pattern = re.compile(
-            rf"^simdetec_{re.escape(model_name)}_\d+\.\d+_(\d+\.\d+)\.txt$"
-        )
-        values = self._get_brightness_values_from_dir(detec_tables_dir, pattern)
-        self.brightness_param = ListParam(
-            param_name, values, param_type=ParamType.BRIGHTNESS
-        )
-        print(self.brightness_param)
+        self.sigma_kerns: List[float] = sigma_kerns
+        self.model_name = model_name
+        self.sim_tables_dir = sim_tables_dir
+        self.detec_tables_dir = detec_tables_dir
+
+        self.brightness_param: Param = None
+        self.sn: SimDetecSupernova = None
+        self.tables: SimDetecTables = None
 
     def get_brightness_param_from_sim_tables(
         self,
-        model_name: str,
-        sim_tables_dir: str,
         param_name: str = "brightness",
     ):
-        pattern = re.compile(rf"^sim_{re.escape(model_name)}_(\d+\.\d+)\.txt$")
-        values = self._get_brightness_values_from_dir(sim_tables_dir, pattern)
+        pattern = re.compile(rf"^sim_{re.escape(self.model_name)}_(\d+\.\d+)\.txt$")
+        values = get_brightness_values_from_dir(self.sim_tables_dir, pattern)
         self.brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
         print(self.brightness_param)
 
-    def set_brightness_param(self, values: List[float]):
+    def set_brightness_param(self, values: List[float], param_name="brightness"):
         self.brightness_param = ListParam(
-            "brightness", values, param_type=ParamType.BRIGHTNESS
+            param_name, values, param_type=ParamType.BRIGHTNESS
         )
 
     def load_sn(
@@ -765,7 +752,8 @@ class InjectionLoop(ABC):
         num_controls: int,
         mjdbinsize: float = 1.0,
         filt: str = "o",
-        mjd_ranges: List[List[float]] = None,
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
         flag: int = 0x800000,
     ):
         """
@@ -776,6 +764,8 @@ class InjectionLoop(ABC):
         :param num_controls: Number of averaged control light curves to load.
         :param mjdbinsize: MJD bin size of the averaged light curves to load.
         :param filt: Filter of the averaged light curves to load.
+        :param mjd_ranges: Valid MJD ranges into which we inject Simulations.
+        :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
         :param flag: Flag that denotes bad days in the binned light curves to load.
         """
         self.sn = SimDetecSupernova(
@@ -786,8 +776,22 @@ class InjectionLoop(ABC):
         self.sn.remove_simulations()
         if mjd_ranges is not None:
             self.sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix is not None and len(skip_control_ix) > 0:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self.sn.remove_lc_indices(skip_control_ix)
 
-    def set_sn(self, sn: SimDetecSupernova):
+    def set_sn(
+        self,
+        sn: SimDetecSupernova,
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
+    ):
+        """
+        Set a preloaded averaged SN and its control light curves.
+
+        :param mjd_ranges: Valid MJD ranges into which we inject Simulations.
+        :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
+        """
         if not isinstance(sn, SimDetecSupernova):
             raise ValueError(
                 "The provided object is not a valid SimDetecSupernova instance"
@@ -796,34 +800,37 @@ class InjectionLoop(ABC):
             raise ValueError(
                 "The SimDetecSupernova object must have at least one control light curve"
             )
+        if not isinstance(sn.flag, int):
+            raise ValueError(
+                f"The flag attribute of the SimDetecSupernova object must be set to an integer (got {sn.flag})"
+            )
 
         self.sn = sn
         self.sn.remove_rolling_sums()
         self.sn.remove_simulations()
+        if mjd_ranges is not None:
+            self.sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix is not None and len(skip_control_ix) > 0:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self.sn.remove_lc_indices(skip_control_ix)
 
-    def load_sim_tables(self, model_name: str, sim_tables_dir: str):
+    def load_sim_tables(self):
         """
         Load existing SimTables and construct SimDetecTables out of them.
-
-        :param model_name: Name of the model whose tables will be loaded.
-        :param sim_tables_dir: Directory where the SimTables are located.
         """
-        self.sd = SimDetecTables(
-            self.sn.filt, self.brightness_param, model_name, self.sigma_kerns
+        self.tables = SimDetecTables(
+            self.sn.filt, self.brightness_param, self.model_name, self.sigma_kerns
         )
-        self.sd.load_all_from_sim_tables(sim_tables_dir)
+        self.tables.load_all_from_sim_tables(self.sim_tables_dir)
 
-    def load_detec_tables(self, model_name: str, detec_tables_dir: str):
+    def load_detec_tables(self):
         """
         Load existing SimDetecTables.
-
-        :param model_name: Name of the model whose tables will be loaded.
-        :param detec_tables_dir: Directory where the SimDetecTables are located.
         """
-        self.sd = SimDetecTables(
-            self.sn.filt, self.brightness_param, model_name, self.sigma_kerns
+        self.tables = SimDetecTables(
+            self.sn.filt, self.brightness_param, self.model_name, self.sigma_kerns
         )
-        self.sd.load_all(detec_tables_dir)
+        self.tables.load_all(self.detec_tables_dir)
 
     def add_simulation_to_lc(
         self,
@@ -840,7 +847,7 @@ class InjectionLoop(ABC):
 
         :param sigma_kern: The current sigma of the rolling sum.
         :param brightness: The desired brightness of the Simulation to add.
-        :control_index: The control index of the light curve to add the Simulation to.
+        :param control_index: The control index of the light curve to add the Simulation to.
         :param sim: The Simulation to add.
         :param remove_old: Remove any old simulations before adding the new simulated flux.
         :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
@@ -915,7 +922,7 @@ class InjectionLoop(ABC):
         max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
 
         # update the corresponding row in the SimDetecTable
-        self.sd.update_row(
+        self.tables.update_row(
             sigma_kern,
             brightness,
             row_index,
@@ -954,17 +961,12 @@ class InjectionLoop(ABC):
     @abstractmethod
     def loop(
         self,
-        detec_tables_dir: str,
-        skip_control_ix: Optional[List] = None,
         **kwargs,
     ):
         """
         Loop over each possible sigma_kern, then each possible peak_appmag, then each row in that corresponding SimDetecTable.
         For each row, inject a Simulation with the specified parameters into a random control light curve.
         Update the row with information about where it was injected, what/where its max FOM is, etc.
-
-        :param detec_tables_dir: Directory where the SimDetecTables should be saved.
-        :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
         """
         pass
 
@@ -973,22 +975,11 @@ class AtlasInjectionLoop(InjectionLoop):
     def __init__(self, sigma_kerns: List, **kwargs):
         super().__init__(sigma_kerns, **kwargs)
 
-    def get_brightness_param_from_detec_tables(
-        self, model_name: str, detec_tables_dir: str, param_name="peak_appmag", **kwargs
-    ):
-        return super().get_brightness_param_from_detec_tables(
-            model_name, detec_tables_dir, param_name=param_name, **kwargs
-        )
-
-    def get_brightness_param_from_sim_tables(
-        self, model_name: str, sim_tables_dir: str, param_name="peak_appmag", **kwargs
-    ):
-        return super().get_brightness_param_from_sim_tables(
-            model_name, sim_tables_dir, param_name=param_name, **kwargs
-        )
+    def get_brightness_param_from_sim_tables(self):
+        return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
 
     def get_injection_search_indices(
-        self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None, **kwargs
+        self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None
     ):
         """
         Get indices of measurements within 1 sigma of the peak MJD.
@@ -1009,21 +1000,19 @@ class AtlasInjectionLoop(InjectionLoop):
         )
         return indices
 
-    def loop(
-        self,
-        detec_tables_dir: str,
-        skip_control_ix: Optional[List] = None,
-        **kwargs,
-    ):
+    def loop(self):
         if self.brightness_param is None:
-            raise RuntimeError("brightness_param cannot be None")
-        if self.sd is None:
-            raise RuntimeError("SimDetecTables cannot be None")
-
-        self.sn.reset_lc_indices()
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"\nSkipping control light curve indices: {skip_control_ix}")
-            self.sn.remove_lc_indices(skip_control_ix)
+            raise RuntimeError(
+                "self.brightness_param must be set before calling self.loop()"
+            )
+        if self.tables is None:
+            raise RuntimeError(
+                "SimDetecTables (self.tables) must be set before calling self.loop()"
+            )
+        if self.sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self.loop()"
+            )
 
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
@@ -1037,7 +1026,7 @@ class AtlasInjectionLoop(InjectionLoop):
 
             # loop through each possible peak apparent magnitude
             for peak_appmag in self.brightness_param.values:
-                sim_detec_table = self.sd.get_table(sigma_kern, peak_appmag)
+                sim_detec_table = self.tables.get_table(sigma_kern, peak_appmag)
                 sim_detec_table.validate_model_name_col()
                 print(
                     f"- Commencing {len(sim_detec_table.t)} simulations for peak brightness of {format_float(peak_appmag)} app mag (= {format_float(mag2flux(peak_appmag))} uJy)..."
@@ -1052,7 +1041,9 @@ class AtlasInjectionLoop(InjectionLoop):
                         sim_detec_table, i, sim, sigma_kern, peak_appmag
                     )
 
-                self.sd.save_detec_table(sigma_kern, peak_appmag, detec_tables_dir)
+                self.tables.save_detec_table(
+                    sigma_kern, peak_appmag, self.detec_tables_dir
+                )
                 print("\tSuccess")
         print("\nFinished generating all SimDetecTables")
 
@@ -1167,7 +1158,14 @@ if __name__ == "__main__":
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
 
-    injection_loop = AtlasInjectionLoop(args.sigma_kerns)
+    sim_tables_dir = get_sim_tables_output_dir(config["dir"]["output"], args.tnsname)
+    detec_tables_dir = get_detec_tables_output_dir(
+        config["dir"]["output"], args.tnsname
+    )
+    injection_loop = AtlasInjectionLoop(
+        args.sigma_kerns, args.model_name, sim_tables_dir, detec_tables_dir
+    )
+
     injection_loop.load_sn(
         config["dir"]["output"],
         colnames,
@@ -1176,17 +1174,13 @@ if __name__ == "__main__":
         mjdbinsize=float(args.mjd_bin_size),
         filt=args.filter,
         mjd_ranges=args.mjd_ranges,
+        skip_control_ix=args.skip_control_ix,
         flag=hexstring_to_int(config["averaging"]["flag"]),
     )
     if args.mjd_ranges is not None:
         print(f"\nValid MJD ranges: {args.mjd_ranges}")
 
-    sim_tables_dir = get_sim_tables_output_dir(config["dir"]["output"], args.tnsname)
-    detec_tables_dir = get_detec_tables_output_dir(
-        config["dir"]["output"], args.tnsname
-    )
-
     print()
-    injection_loop.get_brightness_param_from_sim_tables(args.model_name, sim_tables_dir)
-    injection_loop.load_sim_tables(args.model_name, sim_tables_dir)
-    injection_loop.loop(detec_tables_dir, skip_control_ix=args.skip_control_ix)
+    injection_loop.get_brightness_param_from_sim_tables()
+    injection_loop.load_sim_tables()
+    injection_loop.loop()

@@ -1800,14 +1800,16 @@ class SimDetecSupernova(AveragedSupernova):
     def get_prelim_fom_limit_ranges(
         self,
         sigma_kerns: List[float],
-        mjd_ranges: List[List[float]],
     ):
         print(
             f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}..."
         )
         res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
 
-        self.set_mjd_ranges(mjd_ranges)
+        if self._mjd_ranges is None:
+            raise RuntimeError(
+                "Set self._mjd_ranges before calling self.get_prelim_fom_limit_ranges()"
+            )
 
         all_fom_dict = self.get_all_fom_dict(sigma_kerns)
 

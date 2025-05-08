@@ -14,6 +14,8 @@ from pdastro import pdastrostatsclass
 from step1_generate_sim_tables import (
     BRIGHTNESS_PARAM_PREFIX,
     TIME_PARAM_PREFIX,
+    ListParam,
+    ParamType,
     Params,
     find_prefix_in_list,
     parse_colname_info,
@@ -22,12 +24,17 @@ from step1_generate_sim_tables import (
 from step2_generate_detec_tables import (
     NON_PARAM_COLNAMES,
     SimDetecTables,
+    get_brightness_values_from_dir,
+    get_detec_tables_output_dir,
     get_matching_ix,
+    mjd_range_type,
 )
 from utils import (
     AandB,
+    PresetColumnNames,
     format_float,
     get_allowed_presets,
+    hexstring_to_int,
     load_config,
     load_json_config,
     make_dir_if_not_exists,
@@ -72,7 +79,7 @@ class ContaminationTable:
     def construct_prelim_t(
         self,
         sn: SimDetecSupernova,
-        mjd_ranges: List[List[float]],
+        # mjd_ranges: List[List[float]],
         sigma_kerns: List[float],
         fom_limits: Dict[int, List[float]],
     ):
@@ -81,9 +88,12 @@ class ContaminationTable:
         )
         print(f"Using preliminary FOM limit ranges: {fom_limits}")
 
-        try:
-            sn.set_mjd_ranges(mjd_ranges)
+        if sn._mjd_ranges is None:
+            raise RuntimeError(
+                "Call sn.set_mjd_ranges() before calling self.construct_prelim_t()"
+            )
 
+        try:
             self.t = pd.DataFrame()
             for sigma_kern in sigma_kerns:
                 for fom_limit in fom_limits[sigma_kern]:
@@ -124,19 +134,17 @@ class ContaminationTable:
         self,
         sn: SimDetecSupernova,
         prelim_fom_limit_ranges: Dict[int, List[float]],
-        mjd_ranges: List[List[float]],
         sigma_kerns: List[float],
         target_value: int = 2,
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
-    ):
+    ) -> Dict[float:float]:
         """
         Calculate contamination metrics and refine FOM limits to achieve the target contamination level.
 
         :param sn: SimDetecSupernova object containing light curve data.
         :param prelim_fom_limit_ranges: Preliminary FOM limit ranges for each sigma_kern.
-        :param mjd_ranges: Valid MJD ranges for contamination calculation.
         :param sigma_kerns: List of rolling sum kernel sizes.
         :param tgt_value: Target number of positive control light curves.
         :param n_steps: Maximum number of iterations for refining FOM limits.
@@ -145,10 +153,13 @@ class ContaminationTable:
         :return: Dictionary of refined FOM limits for each sigma_kern.
         """
 
-        if self.t is None or not self.is_prelim:
-            self.construct_prelim_t(
-                sn, mjd_ranges, sigma_kerns, prelim_fom_limit_ranges
+        if sn._mjd_ranges is None:
+            raise RuntimeError(
+                "Call sn.set_mjd_ranges() before calling self.calculate()"
             )
+
+        if self.t is None or not self.is_prelim:
+            self.construct_prelim_t(sn, sigma_kerns, prelim_fom_limit_ranges)
         if verbose:
             print("Preliminary contamination table: ")
             print(self.t.to_string())
@@ -785,8 +796,107 @@ class MagnitudeThresholdTable:
 
 
 class AnalysisLoop:
-    def __init__(self):
-        pass
+    def __init__(
+        self, sigma_kerns: List[float], model_name: str, detec_tables_dir: str
+    ):
+        self.sigma_kerns = sigma_kerns
+        self.model_name = model_name
+        self.detec_tables_dir = detec_tables_dir
+
+        self.sn: SimDetecSupernova = None
+        self.tables: SimDetecTables = None
+        self.params = Params()
+
+        self.fom_limits: Dict = None
+        self.efficiencies: EfficiencyTable = None
+        self.contamination: ContaminationTable = None
+
+    def load_sn(
+        self,
+        data_dir: str,
+        colnames: PresetColumnNames,
+        tnsname: str,
+        num_controls: int,
+        mjdbinsize: float = 1.0,
+        filt: str = "o",
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
+        flag: int = 0x800000,
+    ):
+        """
+        Load the averaged SN and its control light curves.
+
+        :param data_dir: Directory where the SN folder is located.
+        :param tnsname: TNS name of the SN to load.
+        :param num_controls: Number of averaged control light curves to load.
+        :param mjdbinsize: MJD bin size of the averaged light curves to load.
+        :param filt: Filter of the averaged light curves to load.
+        :param mjd_ranges: Valid MJD ranges into which we inject Simulations.
+        :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
+        :param flag: Flag that denotes bad days in the binned light curves to load.
+        """
+        self.sn = SimDetecSupernova(
+            colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt, flag=flag
+        )
+        self.sn.load_all(data_dir, num_controls=num_controls)
+        self.sn.remove_rolling_sums()
+        self.sn.remove_simulations()
+        if mjd_ranges is not None:
+            self.sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix is not None and len(skip_control_ix) > 0:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self.sn.remove_lc_indices(skip_control_ix)
+
+    def calculate_best_fom_limits(self, target_value: int = 2, n_steps: int = 15):
+        _, prelim_fom_limit_ranges = self.sn.get_prelim_fom_limit_ranges(
+            self.sigma_kerns
+        )
+
+        self.contamination = ContaminationTable()
+
+        self.contamination.construct_prelim_t(
+            self.sn, self.sigma_kerns, prelim_fom_limit_ranges
+        )
+        print(self.contamination)
+
+        self.fom_limits = self.contamination.calculate(
+            self.sn,
+            prelim_fom_limit_ranges,
+            self.sigma_kerns,
+            target_value=target_value,
+            n_steps=n_steps,
+        )
+
+        self.contamination.save(self.detec_tables_dir)
+
+    def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
+        if self.sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self.get_brightness_param_from_detec_tables()"
+            )
+
+        pattern = re.compile(
+            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+)_({self.sn.filt})\.txt$"
+        )
+        values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
+        brightness_param = ListParam(
+            param_name, values, param_type=ParamType.BRIGHTNESS
+        )
+        self.params.add(brightness_param)
+        print(self.params.brightness_param)
+
+    def load_detec_tables(self):
+        if self.sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self.load_detec_tables()"
+            )
+        self.tables = SimDetecTables(
+            self.sn.filt,
+            self.params.brightness_param,
+            self.model_name,
+            self.sigma_kerns,
+        )
+        self.tables.load_all(self.detec_tables_dir)
 
 
 def define_args(
@@ -826,13 +936,46 @@ def define_args(
         help="target number of positive control light curves for a given FOM limit",
     )
 
+    parser.add_argument(
+        "-p",
+        "--preset",
+        type=str,
+        default="atlas",
+        help="preset name from config file (ex. atlas, rubin, tess)",
+    )
+    parser.add_argument(
+        "--num_controls",
+        type=int,
+        default=int(config["download"]["num_controls"]),
+        help="total number of averaged control light curves to load, not including skipped ones",
+    )
+    parser.add_argument(
+        "--skip_control_ix",
+        nargs="+",
+        type=int,
+        default=[],
+        help="list of control indices to skip when loading control light curves",
+    )
+    parser.add_argument(
+        "-m",
+        "--mjd_bin_size",
+        type=float,
+        default=float(config["averaging"]["mjd_bin_size"]),
+        help="MJD bin size in days of the target averaged light curves",
+    )
+    parser.add_argument(
+        "--mjd_ranges",
+        type=mjd_range_type,
+        default=None,
+        help="List of MJD ranges as JSON string, e.g. '[[57233.5, 57328.5], [57466.5, 57535.5]]'",
+    )
+
     return parser
 
 
 if __name__ == "__main__":
     config = load_config("config.ini")
     args = define_args(config).parse_args()
-    # step1_config = load_json_config(args.step1_config_file)
 
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
@@ -850,6 +993,44 @@ if __name__ == "__main__":
     #     time_param_name=model_settings["time_parameter_name"],
     #     brightness_param_name=model_settings["brightness_parameter_name"],
     # )
+
+    allowed_presets = get_allowed_presets(config)
+    if args.preset is None or args.preset not in allowed_presets:
+        raise RuntimeError(
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+    if args.filter in allowed_presets and args.filter != args.preset:
+        print(
+            f"WARNING: filter {args.filter} identified as preset in config.ini, but does not match arg preset {args.preset}"
+        )
+    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
+    colnames = PresetColumnNames(config, args.preset)
+    print(colnames.__str__())
+
+    detec_tables_dir = get_detec_tables_output_dir(
+        config["dir"]["output"], args.tnsname
+    )
+    analysis_loop = AnalysisLoop(args.sigma_kerns, args.model_name, detec_tables_dir)
+
+    analysis_loop.load_sn(
+        config["dir"]["output"],
+        colnames,
+        args.tnsname,
+        args.num_controls + len(args.skip_control_ix),
+        mjdbinsize=float(args.mjd_bin_size),
+        filt=args.filter,
+        mjd_ranges=args.mjd_ranges,
+        flag=hexstring_to_int(config["averaging"]["flag"]),
+    )
+    if args.mjd_ranges is not None:
+        print(f"\nValid MJD ranges: {args.mjd_ranges}")
+
+    analysis_loop.calculate_best_fom_limits(
+        target_value=args.n_pos_controls, n_steps=args.n_steps
+    )
+
+    analysis_loop.get_brightness_param_from_detec_tables()
+    analysis_loop.load_detec_tables()
 
     """
     construct Params solely from SimDetecTables
