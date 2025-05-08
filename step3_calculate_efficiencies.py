@@ -806,10 +806,7 @@ class AnalysisLoop:
         self.sn: SimDetecSupernova = None
         self.tables: SimDetecTables = None
         self.params = Params()
-
-        self.fom_limits: Dict = None
         self.efficiencies: EfficiencyTable = None
-        self.contamination: ContaminationTable = None
 
     def load_sn(
         self,
@@ -847,27 +844,32 @@ class AnalysisLoop:
             print(f"Skipping control light curve indices: {skip_control_ix}")
             self.sn.remove_lc_indices(skip_control_ix)
 
-    def calculate_best_fom_limits(self, target_value: int = 2, n_steps: int = 15):
+    def calculate_best_fom_limits(
+        self, target_value: int = 2, n_steps: int = 15
+    ) -> Dict[float:float]:
+        if self.sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self.calculate_best_fom_limits()"
+            )
+
         _, prelim_fom_limit_ranges = self.sn.get_prelim_fom_limit_ranges(
             self.sigma_kerns
         )
 
-        self.contamination = ContaminationTable()
+        contam = ContaminationTable()
+        contam.construct_prelim_t(self.sn, self.sigma_kerns, prelim_fom_limit_ranges)
+        print(contam)
 
-        self.contamination.construct_prelim_t(
-            self.sn, self.sigma_kerns, prelim_fom_limit_ranges
-        )
-        print(self.contamination)
-
-        self.fom_limits = self.contamination.calculate(
+        fom_limits = contam.calculate(
             self.sn,
             prelim_fom_limit_ranges,
             self.sigma_kerns,
             target_value=target_value,
             n_steps=n_steps,
         )
+        contam.save(self.detec_tables_dir)
 
-        self.contamination.save(self.detec_tables_dir)
+        return fom_limits
 
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
         if self.sn is None:
@@ -897,6 +899,7 @@ class AnalysisLoop:
             self.sigma_kerns,
         )
         self.tables.load_all(self.detec_tables_dir)
+        self.params = self.tables.validate_params()
 
 
 def define_args(
@@ -1033,9 +1036,6 @@ if __name__ == "__main__":
     analysis_loop.load_detec_tables()
 
     """
-    construct Params solely from SimDetecTables
-    - use model name to get files and read brightness and sigma kerns
-        and/or allow arg sigma kerns? 
-    - get unique values from non-param colnames (prob only need one table for that, assume the rest are uniform?)
-    lets just check param unique values each table, raise error if not the same
+    use model name to get files and read brightness and sigma kerns
+    and/or allow arg sigma kerns? 
     """

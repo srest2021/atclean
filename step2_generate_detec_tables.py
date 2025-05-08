@@ -565,7 +565,21 @@ class SimDetecTables:
         self.brightness_param = brightness_param
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
+    def _check_tables_exist(self, sigma_kern: float = None, brightness: float = None):
+        if self.d is None:
+            raise RuntimeError("SimDetecTables not initialized. `self.d` is None.")
+        if len(self.d) < 1:
+            raise RuntimeError("SimDetecTables is empty.")
+        if sigma_kern is not None:
+            if sigma_kern not in self.d:
+                raise KeyError(f"sigma_kern={sigma_kern} not found in SimDetecTables.")
+            if brightness is not None and brightness not in self.d[sigma_kern]:
+                raise KeyError(
+                    f"brightness={brightness} not found for sigma_kern={sigma_kern} in SimDetecTables."
+                )
+
     def get_table(self, sigma_kern: float, brightness: float):
+        self._check_tables_exist(sigma_kern=sigma_kern, brightness=brightness)
         return self.d[sigma_kern][brightness]
 
     def update_row(
@@ -589,6 +603,7 @@ class SimDetecTables:
         :param max_fom: Maximum FOM value of the simulated light curve within a certain range of the injection time.
         :param max_fom_mjd: MJD of the max_fom value.
         """
+        self._check_tables_exist(sigma_kern=sigma_kern, brightness=brightness)
         self.d[sigma_kern][brightness].update_row(
             index, filt, control_index, max_fom, max_fom_mjd
         )
@@ -596,17 +611,20 @@ class SimDetecTables:
     def get_efficiency(
         self, sigma_kern: float, brightness: float, fom_limit: float, **params
     ):
+        self._check_tables_exist(sigma_kern=sigma_kern, brightness=brightness)
         return self.d[sigma_kern][brightness].get_efficiency(fom_limit, **params)
 
     def save_detec_table(
         self, sigma_kern: float, brightness: float, detec_tables_dir: str
     ):
+        self._check_tables_exist(sigma_kern=sigma_kern, brightness=brightness)
         self.d[sigma_kern][brightness].save_detec_table(
             self.model_name, self.filt, detec_tables_dir
         )
 
     def save_all(self, detec_tables_dir: str):
         print(f"\nSaving SimDetecTables in directory: {detec_tables_dir}")
+        self._check_tables_exist()
         make_dir_if_not_exists(detec_tables_dir)
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
@@ -654,6 +672,31 @@ class SimDetecTables:
                     self.model_name, self.filt, detec_tables_dir
                 )
         print("Success")
+
+    def iterator(self):
+        """
+        Yield all (sigma_kern, brightness, SimDetecTable) tuples in the table collection.
+        """
+        self._check_tables_exist()
+        for sigma_kern, brightness_dict in self.d.items():
+            for brightness, table in brightness_dict.items():
+                yield sigma_kern, brightness, table
+
+    def validate_params(self) -> Params:
+        """
+        Check that all parameters have the same possible values in all tables.
+        """
+        self._check_tables_exist()
+        first_params = None
+        for sigma_kern, brightness, table in self.iterator():
+            params = table.get_params()
+            if first_params is None:
+                first_params = params
+            elif params != first_params:
+                raise ValueError(
+                    f"Inconsistent params found for SimDetecTable with sigma_kern={format_float(sigma_kern)}, brightness={format_float(brightness)}"
+                )
+        return first_params
 
 
 class SimulationFactory:
