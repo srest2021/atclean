@@ -5,6 +5,7 @@ from collections import defaultdict
 from configparser import ConfigParser
 import itertools
 import re
+import sys
 from typing import Dict, List, Optional, Self
 import numpy as np
 import pandas as pd
@@ -32,6 +33,7 @@ from step2_generate_detec_tables import (
 from utils import (
     AandB,
     PresetColumnNames,
+    SnInfoTable,
     format_float,
     get_allowed_presets,
     hexstring_to_int,
@@ -139,7 +141,7 @@ class ContaminationTable:
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
-    ) -> Dict[float:float]:
+    ) -> Dict[float, float]:
         """
         Calculate contamination metrics and refine FOM limits to achieve the target contamination level.
 
@@ -284,7 +286,6 @@ class EfficiencyTable(pdastrostatsclass):
         self,
         sigma_kerns: List[float],
         params: Params,
-        fom_limits=None,
         **kwargs,
     ):
         """
@@ -295,8 +296,9 @@ class EfficiencyTable(pdastrostatsclass):
         """
         pdastrostatsclass.__init__(self, **kwargs)
         self.sigma_kerns: List[float] = sigma_kerns
-        self.fom_limits: Dict[float, List[float]] = self.set_fom_limits(fom_limits)
+        # self._fom_limits: Dict[float, List[float]] = None
         self.params: Params = params
+        self.setup()
 
     def setup(self):
         """
@@ -321,12 +323,6 @@ class EfficiencyTable(pdastrostatsclass):
         col_order = ["sigma_kern", self.params.brightness_param.name]
         col_order += [col for col in self.t.columns if col not in col_order]
         self.t = self.t[col_order]
-
-    def clear(self):
-        self.t = None
-        self.sigma_kerns = None
-        self.fom_limits = None
-        self.params = None
 
     # create dictionary of FOM limits, with sigma_kerns as the keys
     def validate_fom_limits(
@@ -386,20 +382,20 @@ class EfficiencyTable(pdastrostatsclass):
                 "fom_limits must be a list of lists/floats or a dict of lists/floats"
             )
 
-    def set_fom_limits(
-        self,
-        fom_limits: (
-            List[float]
-            | List[List[float]]
-            | Dict[float, float]
-            | Dict[float, List[float]]
-            | None
-        ),
-    ):
-        if fom_limits is None:
-            self.fom_limits = None
-        else:
-            self.fom_limits = self.validate_fom_limits(fom_limits)
+    # def set_fom_limits(
+    #     self,
+    #     fom_limits: (
+    #         List[float]
+    #         | List[List[float]]
+    #         | Dict[float, float]
+    #         | Dict[float, List[float]]
+    #         | None
+    #     ),
+    # ):
+    #     if fom_limits is None:
+    #         self._fom_limits = None
+    #     else:
+    #         self._fom_limits = self._validate_fom_limits(fom_limits)
 
     def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
@@ -430,7 +426,7 @@ class EfficiencyTable(pdastrostatsclass):
             raise ValueError(f"Column '{column}' not found in the table.")
         return self.t[column].unique().tolist()
 
-    def get_efficiencies(
+    def calculate_efficiencies(
         self,
         sd: SimDetecTables,
         fom_limits: (
@@ -451,7 +447,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
         Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
-        self.set_fom_limits(fom_limits)
+        fom_limits = self.validate_fom_limits(fom_limits)
 
         l = len(self.t)
         print("Calculating efficiencies...")
@@ -467,7 +463,7 @@ class EfficiencyTable(pdastrostatsclass):
             else:
                 params = self.get_params_at_index(i)
 
-            for fom_limit in self.fom_limits[sigma_kern]:
+            for fom_limit in fom_limits[sigma_kern]:
                 try:
                     efficiency = sd.get_efficiency(
                         sigma_kern, brightness, fom_limit, **params
@@ -538,9 +534,6 @@ class EfficiencyTable(pdastrostatsclass):
             )
 
         self.sigma_kerns += other.sigma_kerns
-        if not self.fom_limits is None:
-            self.fom_limits.update(other.fom_limits)
-
         self.t = pd.concat([self.t, other.t], ignore_index=True)
 
     def load(self, detec_tables_dir: str, model_name: str):
@@ -679,7 +672,7 @@ class MagnitudeThresholdTable:
         i = 0
         for sigma_kern in e.sigma_kerns:
             for select_param_value in select_param_values:
-                for fom_limit in e.fom_limits[sigma_kern]:
+                for fom_limit in e._fom_limits[sigma_kern]:
                     subset = e.get_subset(
                         sigma_kern=sigma_kern,
                         **{select_param_name: select_param_value},
@@ -814,6 +807,7 @@ class AnalysisLoop:
         colnames: PresetColumnNames,
         tnsname: str,
         num_controls: int,
+        mjd0: Optional[float] = None,
         mjdbinsize: float = 1.0,
         filt: str = "o",
         mjd_ranges: Optional[List[List[float]]] = None,
@@ -826,6 +820,7 @@ class AnalysisLoop:
         :param data_dir: Directory where the SN folder is located.
         :param tnsname: TNS name of the SN to load.
         :param num_controls: Number of averaged control light curves to load.
+        :param mjd0: Discovery date or MJD of SN onset.
         :param mjdbinsize: MJD bin size of the averaged light curves to load.
         :param filt: Filter of the averaged light curves to load.
         :param mjd_ranges: Valid MJD ranges into which we inject Simulations.
@@ -833,7 +828,7 @@ class AnalysisLoop:
         :param flag: Flag that denotes bad days in the binned light curves to load.
         """
         self.sn = SimDetecSupernova(
-            colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt, flag=flag
+            colnames, tnsname, mjd0=mjd0, mjdbinsize=mjdbinsize, filt=filt, flag=flag
         )
         self.sn.load_all(data_dir, num_controls=num_controls)
         self.sn.remove_rolling_sums()
@@ -846,29 +841,33 @@ class AnalysisLoop:
 
     def calculate_best_fom_limits(
         self, target_value: int = 2, n_steps: int = 15
-    ) -> Dict[float:float]:
+    ) -> Dict[float, float]:
         if self.sn is None:
             raise RuntimeError(
                 "Supernova (self.sn) must be set before calling self.calculate_best_fom_limits()"
             )
 
+        print()
         _, prelim_fom_limit_ranges = self.sn.get_prelim_fom_limit_ranges(
             self.sigma_kerns
         )
 
+        print()
         contam = ContaminationTable()
         contam.construct_prelim_t(self.sn, self.sigma_kerns, prelim_fom_limit_ranges)
-        print(contam)
 
+        print()
         fom_limits = contam.calculate(
             self.sn,
             prelim_fom_limit_ranges,
             self.sigma_kerns,
             target_value=target_value,
             n_steps=n_steps,
+            verbose=True,
         )
         contam.save(self.detec_tables_dir)
 
+        print(f"Best FOM limits for each sigma_kern: {fom_limits}")
         return fom_limits
 
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
@@ -887,6 +886,11 @@ class AnalysisLoop:
         self.params.add(brightness_param)
         print(self.params.brightness_param)
 
+    def set_brightness_param(self, values: List[float], param_name="brightness"):
+        self.brightness_param = ListParam(
+            param_name, values, param_type=ParamType.BRIGHTNESS
+        )
+
     def load_detec_tables(self):
         if self.sn is None:
             raise RuntimeError(
@@ -900,6 +904,15 @@ class AnalysisLoop:
         )
         self.tables.load_all(self.detec_tables_dir)
         self.params = self.tables.validate_params()
+
+    def calculate_efficiencies(self, target_value: int = 2, n_steps: int = 15):
+        fom_limits = self.calculate_best_fom_limits(
+            target_value=target_value, n_steps=n_steps
+        )
+
+        self.efficiencies = EfficiencyTable(self.sigma_kerns, self.params)
+        self.efficiencies.calculate_efficiencies(self.tables, fom_limits)
+        self.efficiencies.save(self.detec_tables_dir)
 
 
 def define_args(
@@ -982,20 +995,6 @@ if __name__ == "__main__":
 
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
-    # if args.model_name not in step1_config:
-    #     raise RuntimeError(
-    #         f"Model '{args.model_name}' not found in simulation config file\n"
-    #         f"Available models: {', '.join(step1_config.keys())}"
-    #     )
-    # print(f"Loading settings for model '{args.model_name}'...")
-    # model_settings = step1_config[args.model_name]
-
-    # print("Parsing model parameters...")
-    # params = parse_config_params(
-    #     model_settings,
-    #     time_param_name=model_settings["time_parameter_name"],
-    #     brightness_param_name=model_settings["brightness_parameter_name"],
-    # )
 
     allowed_presets = get_allowed_presets(config)
     if args.preset is None or args.preset not in allowed_presets:
@@ -1010,6 +1009,13 @@ if __name__ == "__main__":
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
 
+    # get MJD0 from SnInfoTable
+    sninfo = SnInfoTable(
+        config["dir"]["output"], filename=config["dir"]["sninfo_filename"]
+    )
+    _, _, mjd0 = sninfo.get_info(args.tnsname)
+    print(mjd0)
+
     detec_tables_dir = get_detec_tables_output_dir(
         config["dir"]["output"], args.tnsname
     )
@@ -1020,6 +1026,7 @@ if __name__ == "__main__":
         colnames,
         args.tnsname,
         args.num_controls + len(args.skip_control_ix),
+        mjd0=mjd0,
         mjdbinsize=float(args.mjd_bin_size),
         filt=args.filter,
         mjd_ranges=args.mjd_ranges,
@@ -1031,6 +1038,8 @@ if __name__ == "__main__":
     analysis_loop.calculate_best_fom_limits(
         target_value=args.n_pos_controls, n_steps=args.n_steps
     )
+
+    sys.exit()
 
     analysis_loop.get_brightness_param_from_detec_tables()
     analysis_loop.load_detec_tables()

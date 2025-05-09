@@ -771,12 +771,24 @@ class InjectionLoop(ABC):
         self.sn: SimDetecSupernova = None
         self.tables: SimDetecTables = None
 
-    def get_brightness_param_from_sim_tables(
-        self,
-        param_name: str = "brightness",
-    ):
+    def get_brightness_param_from_sim_tables(self, param_name: str = "brightness"):
         pattern = re.compile(rf"^sim_{re.escape(self.model_name)}_(\d+\.\d+)\.txt$")
         values = get_brightness_values_from_dir(self.sim_tables_dir, pattern)
+        self.brightness_param = ListParam(
+            param_name, values, param_type=ParamType.BRIGHTNESS
+        )
+        print(self.brightness_param)
+
+    def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
+        if self.sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self.get_brightness_param_from_detec_tables()"
+            )
+
+        pattern = re.compile(
+            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+)_({self.sn.filt})\.txt$"
+        )
+        values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
         self.brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
@@ -975,32 +987,6 @@ class InjectionLoop(ABC):
             max_fom_mjd,
         )
 
-    # def calculate_efficiencies(
-    #     self,
-    #     fom_limits: (
-    #         List[float]
-    #         | List[List[float]]
-    #         | Dict[float, float]
-    #         | Dict[float, List[float]]
-    #     ),
-    #     params: Params,
-    #     detec_tables_dir: str,
-    #     model_name: str,
-    #     progress_bar: bool = True,
-    # ):
-    #     """
-    #     Construct and save an EfficiencyTable that contains efficiencies for every combination of a Simulation's sigma_kern, peak_appmag, and other parameters EXCEPT the time parameter.
-
-    #     :param fom_limits: Dict or List of FOM limits.
-    #     :param params: Collection of parameter names and possible values.
-    #     :param detec_tables_dir: Directory where the EfficiencyTable should be saved.
-    #     :param model_name: Name of the model for which to calculate efficiencies.
-    #     """
-    #     self.e = EfficiencyTable(self.sigma_kerns, params)
-    #     self.e.setup()
-    #     self.e.get_efficiencies(self.sd, fom_limits, progress_bar=progress_bar)
-    #     self.e.save(detec_tables_dir, model_name)
-
     @abstractmethod
     def loop(
         self,
@@ -1015,8 +1001,12 @@ class InjectionLoop(ABC):
 
 
 class AtlasInjectionLoop(InjectionLoop):
-    def __init__(self, sigma_kerns: List, **kwargs):
-        super().__init__(sigma_kerns, **kwargs)
+    def __init__(
+        self, sigma_kerns, model_name, sim_tables_dir, detec_tables_dir, **kwargs
+    ):
+        super().__init__(
+            sigma_kerns, model_name, sim_tables_dir, detec_tables_dir, **kwargs
+        )
 
     def get_brightness_param_from_sim_tables(self):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")

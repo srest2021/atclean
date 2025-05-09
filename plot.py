@@ -1381,8 +1381,8 @@ class Plot:
         fig.set_figheight(2.5)
         fig.set_figwidth(4.5)
 
-        assert len(e.fom_limits[sigma_kern]) == 1
-        fom_limit = e.fom_limits[sigma_kern][0]
+        assert len(e._fom_limits[sigma_kern]) == 1
+        fom_limit = e._fom_limits[sigma_kern][0]
 
         self._setup_ax(ax1, None, xlabel=False, ylabel=False)
         ax1.axhline(80, color="k", linestyle="dashed", linewidth=1.0)
