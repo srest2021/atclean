@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from abc import ABC
 import argparse
 from collections import defaultdict
 from configparser import ConfigParser
@@ -296,7 +297,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         pdastrostatsclass.__init__(self, **kwargs)
         self.sigma_kerns: List[float] = sigma_kerns
-        # self._fom_limits: Dict[float, List[float]] = None
+        self._fom_limits: Optional[Dict[float, List[float]]] = None
         self.params: Params = params
         self.setup()
 
@@ -382,20 +383,16 @@ class EfficiencyTable(pdastrostatsclass):
                 "fom_limits must be a list of lists/floats or a dict of lists/floats"
             )
 
-    # def set_fom_limits(
-    #     self,
-    #     fom_limits: (
-    #         List[float]
-    #         | List[List[float]]
-    #         | Dict[float, float]
-    #         | Dict[float, List[float]]
-    #         | None
-    #     ),
-    # ):
-    #     if fom_limits is None:
-    #         self._fom_limits = None
-    #     else:
-    #         self._fom_limits = self._validate_fom_limits(fom_limits)
+    def set_fom_limits(
+        self,
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
+    ):
+        self._fom_limits = self.validate_fom_limits(fom_limits)
 
     def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
@@ -448,7 +445,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param kwargs: Arbitrary number of pairs of column = value, column = range, or column = list of ranges.
         Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
-        fom_limits = self.validate_fom_limits(fom_limits)
+        self.set_fom_limits(fom_limits)
 
         l = len(self.t)
         print("Calculating efficiencies...")
@@ -464,7 +461,7 @@ class EfficiencyTable(pdastrostatsclass):
             else:
                 params = self.get_params_at_index(i)
 
-            for fom_limit in fom_limits[sigma_kern]:
+            for fom_limit in self._fom_limits[sigma_kern]:
                 try:
                     efficiency = sd.get_efficiency(
                         sigma_kern, brightness, fom_limit, **params
@@ -789,7 +786,7 @@ class MagnitudeThresholdTable:
             self.best.to_string(filename_best, index=False)
 
 
-class AnalysisLoop:
+class AnalysisLoop(ABC):
     def __init__(
         self, sigma_kerns: List[float], model_name: str, detec_tables_dir: str
     ):
@@ -800,7 +797,9 @@ class AnalysisLoop:
         self.sn: SimDetecSupernova = None
         self.tables: SimDetecTables = None
         self.params = Params()
+
         self.efficiencies: EfficiencyTable = None
+        self.mag_thresholds: MagnitudeThresholdTable = None
 
     def load_sn(
         self,
@@ -907,14 +906,55 @@ class AnalysisLoop:
         self.tables.load_all(self.detec_tables_dir)
         self.params.merge(self.tables.validate_params())
 
-    def calculate_efficiencies(self, target_value: int = 2, n_steps: int = 15):
+    def calculate_efficiencies(
+        self, target_value: int = 2, n_steps: int = 15
+    ) -> EfficiencyTable:
         fom_limits = self.calculate_best_fom_limits(
             target_value=target_value, n_steps=n_steps
         )
-
         self.efficiencies = EfficiencyTable(self.sigma_kerns, self.params)
         self.efficiencies.calculate_efficiencies(self.tables, fom_limits)
         self.efficiencies.save(self.detec_tables_dir, self.model_name)
+
+    def calculate_mag_thresholds(
+        self, select_param_name: str, percents: List[int] = [50, 80]
+    ) -> MagnitudeThresholdTable:
+        if self.efficiencies is None:
+            raise RuntimeError(
+                "Efficiencies (self.efficiencies) must be calulated before calling self.calculate_mag_thresholds()"
+            )
+
+        if not self.params.has(select_param_name):
+            raise ValueError(
+                f"Parameter with name {select_param_name} is not known (known parameters: {self.params.all_names()})"
+            )
+        if (
+            self.params.has_brightness_param()
+            and self.params.brightness_param.name == select_param_name
+        ):
+            raise ValueError("Selected parameter name cannot be brightness")
+        if (
+            self.params.has_time_param()
+            and self.params.time_param.name == select_param_name
+        ):
+            raise ValueError("Selected parameter name cannot be time")
+
+        mt = MagnitudeThresholdTable()
+        mt.calculate(self.efficiencies, select_param_name, percents=percents)
+        mt.save(self.detec_tables_dir, self.model_name)
+
+
+class AtlasAnalysisLoop(AnalysisLoop):
+    def __init__(self, sigma_kerns, model_name, detec_tables_dir):
+        super().__init__(sigma_kerns, model_name, detec_tables_dir)
+
+    def get_brightness_param_from_detec_tables(self):
+        return super().get_brightness_param_from_detec_tables(param_name="peak_appmag")
+
+    def calculate_mag_thresholds(
+        self, select_param_name: Optional[str] = "sigma_sim", percents=[50, 80]
+    ):
+        return super().calculate_mag_thresholds(select_param_name, percents)
 
 
 def define_args(
@@ -1026,7 +1066,9 @@ if __name__ == "__main__":
     detec_tables_dir = get_detec_tables_output_dir(
         config["dir"]["output"], args.tnsname
     )
-    analysis_loop = AnalysisLoop(args.sigma_kerns, args.model_name, detec_tables_dir)
+    analysis_loop = AtlasAnalysisLoop(
+        args.sigma_kerns, args.model_name, detec_tables_dir
+    )
 
     analysis_loop.load_sn(
         config["dir"]["output"],
@@ -1048,8 +1090,4 @@ if __name__ == "__main__":
     analysis_loop.calculate_efficiencies(
         target_value=args.n_pos_controls, n_steps=args.n_steps
     )
-
-    """
-    use model name to get files and read brightness and sigma kerns
-    and/or allow arg sigma kerns? 
-    """
+    analysis_loop.calculate_mag_thresholds()

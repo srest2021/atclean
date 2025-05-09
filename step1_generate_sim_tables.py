@@ -165,7 +165,7 @@ class Param(ABC):
             return
 
     def __str__(self):
-        out = f"Parameter '{remove_any_prefix(self.name)}'"
+        out = f"Parameter '{self.name}'"
         if self.is_time_param:
             out += " (time param)"
         if self.is_brightness_param:
