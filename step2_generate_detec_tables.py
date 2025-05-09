@@ -453,7 +453,7 @@ class SimDetecTable(SimTable):
         )
         for col in colnames:
             values = self.t[col].unique()
-            param = ListParam(col, values)
+            param = ListParam(col, values, verbose=False)
             params.add(param)
 
         return params
@@ -786,7 +786,7 @@ class InjectionLoop(ABC):
             )
 
         pattern = re.compile(
-            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+)_({self.sn.filt})\.txt$"
+            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+).({self.sn.filt})\.txt$"
         )
         values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
         self.brightness_param = ListParam(

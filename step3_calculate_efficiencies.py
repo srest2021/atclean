@@ -877,7 +877,7 @@ class AnalysisLoop:
             )
 
         pattern = re.compile(
-            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+)_({self.sn.filt})\.txt$"
+            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+).({self.sn.filt})\.txt$"
         )
         values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
         brightness_param = ListParam(
@@ -980,6 +980,9 @@ def define_args(
         help="MJD bin size in days of the target averaged light curves",
     )
     parser.add_argument(
+        "--mjd0", type=float, default=None, help="transient start date in MJD"
+    )
+    parser.add_argument(
         "--mjd_ranges",
         type=mjd_range_type,
         default=None,
@@ -1009,12 +1012,14 @@ if __name__ == "__main__":
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
 
-    # get MJD0 from SnInfoTable
-    sninfo = SnInfoTable(
-        config["dir"]["output"], filename=config["dir"]["sninfo_filename"]
-    )
-    _, _, mjd0 = sninfo.get_info(args.tnsname)
-    print(mjd0)
+    mjd0 = args.mjd0
+    if mjd0 is None:
+        # get MJD0 from SnInfoTable
+        sninfo = SnInfoTable(
+            config["dir"]["output"], filename=config["dir"]["sninfo_filename"]
+        )
+        _, _, mjd0 = sninfo.get_info(args.tnsname)
+    print(f"MJD0: {mjd0}")
 
     detec_tables_dir = get_detec_tables_output_dir(
         config["dir"]["output"], args.tnsname
@@ -1039,8 +1044,7 @@ if __name__ == "__main__":
         target_value=args.n_pos_controls, n_steps=args.n_steps
     )
 
-    sys.exit()
-
+    print()
     analysis_loop.get_brightness_param_from_detec_tables()
     analysis_loop.load_detec_tables()
 

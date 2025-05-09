@@ -81,6 +81,7 @@ class Param(ABC):
         name: str,
         values: Optional[List] = None,
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
@@ -88,17 +89,22 @@ class Param(ABC):
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         self.param_type: ParamType = param_type
+        self.verbose = verbose
 
         out = f"Creating parameter '{name}'"
         if self.is_time_param:
             out += " (time param)"
         if self.is_brightness_param:
             out += " (brightness param)"
-        print(out)
+        self._log(out)
 
         self.name = name
         self.values = values
         self.validate_name()
+
+    def _log(self, message: str):
+        if self.verbose:
+            print(message)
 
     @property
     def is_time_param(self) -> bool:
@@ -123,7 +129,7 @@ class Param(ABC):
         """
         Validates and adjusts time parameter values to match the MJDbin format.
         """
-        print(
+        self._log(
             f"Making sure the time parameter '{self.name}' values match the MJDbin column format..."
         )
         if self.values:
@@ -133,7 +139,7 @@ class Param(ABC):
         """
         Validates and adjusts brightness values to two decimal places.
         """
-        print(
+        self._log(
             f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places..."
         )
         if self.values:
@@ -166,10 +172,18 @@ class Param(ABC):
     def __eq__(self, other):
         if not isinstance(other, Param):
             return False
+
+        if self.values is None and other.values is None:
+            values_equal = True
+        elif self.values is None or other.values is None:
+            return False
+        else:
+            values_equal = np.array_equal(self.values, other.values)
+
         return (
             self.name == other.name
             and self.param_type == other.param_type
-            and self.values == other.values
+            and values_equal
         )
 
 
@@ -183,13 +197,14 @@ class ListParam(Param):
         name: str,
         values: Optional[List],
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(name, values=values, param_type=param_type)
+        super().__init__(name, values=values, param_type=param_type, verbose=verbose)
 
     def generate(self, **kwargs):
         pass
@@ -207,6 +222,7 @@ class RangeParam(Param):
         maxval: float,
         step: float,
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
@@ -215,7 +231,7 @@ class RangeParam(Param):
         :param step (float): The step size between consecutive values in the range.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(name, param_type=param_type)
+        super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, step)
         if self.is_time_param:
             self.validate_time_param()
@@ -223,7 +239,7 @@ class RangeParam(Param):
             self.validate_brightness_param()
 
     def generate(self, minval: float, maxval: float, step: float):
-        print(f"Setting to range from {minval} to {maxval} with step size {step}")
+        self._log(f"Setting to range from {minval} to {maxval} with step size {step}")
         if maxval <= minval:
             raise RuntimeError("Max value must be greater than min value.")
         if step > abs(maxval - minval):
@@ -247,6 +263,7 @@ class LogRangeParam(Param):
         n: int,
         n_digits: int = 5,
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
@@ -257,7 +274,7 @@ class LogRangeParam(Param):
         :param n_digits (int): The number of decimal places to round to.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(name, param_type=param_type)
+        super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, base, n, n_digits=n_digits)
         if self.is_time_param:
             self.validate_time_param()
@@ -272,7 +289,7 @@ class LogRangeParam(Param):
         n: int,
         n_digits: int = 5,
     ):
-        print(
+        self._log(
             f"Generating {n}-length log range of floats rounded to {n_digits} decimal places using log base {base}"
         )
         if maxval <= minval:
@@ -297,6 +314,7 @@ class RandomParam(Param):
         n: int,
         n_digits: int = 5,
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
@@ -306,7 +324,7 @@ class RandomParam(Param):
         :param n_digits (int): The number of decimal places to round to.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(name, param_type=param_type)
+        super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, n, n_digits=n_digits)
         if self.is_time_param:
             self.validate_time_param()
@@ -320,7 +338,7 @@ class RandomParam(Param):
         n: int,
         n_digits: int = 5,
     ):
-        print(
+        self._log(
             f"Generating {n}-length random list of floats rounded to {n_digits} decimal places"
         )
         if maxval <= minval:
@@ -341,6 +359,7 @@ class RandomInRangeParam(Param):
         valid_ranges: List[List[float]],
         n: int,
         param_type: ParamType = ParamType.OTHER,
+        verbose: bool = True,
     ):
         """
         :param name (str): The name of the parameter.
@@ -348,7 +367,7 @@ class RandomInRangeParam(Param):
         :param n (int): The number of random values to generate.
         :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
         """
-        super().__init__(name, param_type=param_type)
+        super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(valid_ranges, n)
         if self.is_time_param:
             self.validate_time_param()
@@ -375,7 +394,7 @@ class RandomInRangeParam(Param):
         return valid_draws + self._rec_get_valid_draws(valid_ranges, n - m_prime)
 
     def generate(self, valid_ranges: List[List[float]], n: int):
-        print(
+        self._log(
             f"Generating {n}-length random list of floats within the following valid ranges: {valid_ranges}"
         )
         self.values = self._rec_get_valid_draws(valid_ranges, n)
@@ -543,7 +562,7 @@ class Params:
 
         mismatched = []
 
-        def check(p1, p2, name):
+        def check(p1: Param, p2: Param, name):
             if p1 != p2:
                 mismatched.append(name)
                 return False
