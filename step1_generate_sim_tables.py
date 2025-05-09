@@ -61,6 +61,14 @@ def remove_prefix(string: str, prefix: str):
     return string
 
 
+def remove_any_prefix(string: str):
+    if string.startswith(BRIGHTNESS_PARAM_PREFIX):
+        return remove_prefix(string, BRIGHTNESS_PARAM_PREFIX)
+    if string.startswith(TIME_PARAM_PREFIX):
+        return remove_prefix(string, TIME_PARAM_PREFIX)
+    return string
+
+
 class ParamType(Enum):
     # Indicates if the parameter is related to time (e.g., peak or onset MJD).
     TIME = auto()
@@ -99,7 +107,7 @@ class Param(ABC):
         self._log(out)
 
         self.name = name
-        self.values = values
+        self.values = list(values)
         self.validate_name()
 
     def _log(self, message: str):
@@ -157,13 +165,13 @@ class Param(ABC):
             return
 
     def __str__(self):
-        out = f"Parameter '{self.name}'"
+        out = f"Parameter '{remove_any_prefix(self.name)}'"
         if self.is_time_param:
             out += " (time param)"
         if self.is_brightness_param:
             out += " (brightness param)"
         out += ": "
-        if self.values:
+        if self.values is not None:
             out += abbreviate_list(self.values)
         else:
             out += "no values yet (call generate() to generate list of values)"
@@ -513,25 +521,37 @@ class Params:
         """
         Returns the names of all parameters except the brightness parameter.
         """
-        return list(self.other.keys()) + [self.time_param.name]
+        res = list(self.other.keys())
+        if self.has_time_param():
+            res.append(self.time_param.name)
+        return res
 
     def all_names_except_time(self) -> List[str]:
         """
         Returns the names of all parameters except the time parameter.
         """
-        return list(self.other.keys()) + [self.brightness_param.name]
+        res = list(self.other.keys())
+        if self.has_brightness_param():
+            res.append(self.brightness_param.name)
+        return res
 
     def all_params_except_brightness(self) -> List[Param]:
         """
         Returns all parameters except the brightness parameter.
         """
-        return list(self.other.values()) + [self.time_param]
+        res = list(self.other.values())
+        if self.has_time_param():
+            res.append(self.time_param)
+        return res
 
     def all_params_except_time(self) -> List[Param]:
         """
         Returns all parameters except the time parameter.
         """
-        return list(self.other.values()) + [self.brightness_param]
+        res = list(self.other.values())
+        if self.has_brightness_param():
+            res.append(self.brightness_param)
+        return res
 
     def other_params(self):
         return list(self.other.values())
@@ -540,13 +560,47 @@ class Params:
         return list(self.other.keys())
 
     def all_params(self) -> List[Param]:
-        return list(self.other.values()) + [self.time_param, self.brightness_param]
+        res = list(self.other.values())
+        if self.has_time_param():
+            res.append(self.time_param)
+        if self.has_brightness_param():
+            res.append(self.brightness_param)
+        return res
 
     def all_names(self) -> List[str]:
-        return list(self.other.keys()) + [
-            self.time_param.name,
-            self.brightness_param.name,
-        ]
+        res = list(self.other.keys())
+        if self.has_time_param():
+            res.append(self.time_param.name)
+        if self.has_brightness_param():
+            res.append(self.brightness_param.name)
+        return res
+
+    def merge(self, other: "Params"):
+        """
+        Merges another Params object into this one.
+        Raises an error if both contain a time or brightness parameter.
+        """
+        # Check for time param conflict
+        if self.time_param and other.time_param:
+            raise RuntimeError(
+                f"Cannot merge: both Params instances define a time parameter "
+                f"('{self.time_param.name}' and '{other.time_param.name}')"
+            )
+        if other.time_param:
+            self.time_param = other.time_param
+
+        # Check for brightness param conflict
+        if self.brightness_param and other.brightness_param:
+            raise RuntimeError(
+                f"Cannot merge: both Params instances define a brightness parameter "
+                f"('{self.brightness_param.name}' and '{other.brightness_param.name}')"
+            )
+        if other.brightness_param:
+            self.brightness_param = other.brightness_param
+
+        # Merge "other" parameters
+        for param in other.other.values():
+            self.add(param)
 
     def __str__(self):
         all_params = self.all_params()

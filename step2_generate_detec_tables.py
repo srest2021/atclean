@@ -540,6 +540,7 @@ class SimDetecTable(SimTable):
         if not "max_fom" in self.t.columns:
             raise ValueError("'max_fom' column not found in table")
 
+        print(kwargs)
         matching_ix = get_matching_ix(self, **kwargs)
 
         # no rows matched the params -> avoid division by 0

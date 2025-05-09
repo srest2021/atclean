@@ -412,6 +412,7 @@ class EfficiencyTable(pdastrostatsclass):
                 (skip_time_col and col.startswith(TIME_PARAM_PREFIX))
                 or col.startswith(BRIGHTNESS_PARAM_PREFIX)
                 or col in NON_PARAM_COLNAMES
+                or re.search("^pct_detec_", col)
             )
         ]
         return dict(self.t.loc[index, colnames])
@@ -887,9 +888,10 @@ class AnalysisLoop:
         print(self.params.brightness_param)
 
     def set_brightness_param(self, values: List[float], param_name="brightness"):
-        self.brightness_param = ListParam(
+        brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
+        self.params.add(brightness_param)
 
     def load_detec_tables(self):
         if self.sn is None:
@@ -903,7 +905,7 @@ class AnalysisLoop:
             self.sigma_kerns,
         )
         self.tables.load_all(self.detec_tables_dir)
-        self.params = self.tables.validate_params()
+        self.params.merge(self.tables.validate_params())
 
     def calculate_efficiencies(self, target_value: int = 2, n_steps: int = 15):
         fom_limits = self.calculate_best_fom_limits(
@@ -912,7 +914,7 @@ class AnalysisLoop:
 
         self.efficiencies = EfficiencyTable(self.sigma_kerns, self.params)
         self.efficiencies.calculate_efficiencies(self.tables, fom_limits)
-        self.efficiencies.save(self.detec_tables_dir)
+        self.efficiencies.save(self.detec_tables_dir, self.model_name)
 
 
 def define_args(
@@ -1040,13 +1042,12 @@ if __name__ == "__main__":
     if args.mjd_ranges is not None:
         print(f"\nValid MJD ranges: {args.mjd_ranges}")
 
-    analysis_loop.calculate_best_fom_limits(
-        target_value=args.n_pos_controls, n_steps=args.n_steps
-    )
-
     print()
     analysis_loop.get_brightness_param_from_detec_tables()
     analysis_loop.load_detec_tables()
+    analysis_loop.calculate_efficiencies(
+        target_value=args.n_pos_controls, n_steps=args.n_steps
+    )
 
     """
     use model name to get files and read brightness and sigma kerns
