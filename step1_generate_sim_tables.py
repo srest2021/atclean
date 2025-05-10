@@ -451,14 +451,14 @@ class Params:
             or param_name in self.other.keys()
         )
 
-    def validate(self):
+    def validate(self, check_brightness: bool = True, check_time: bool = True):
         """
         Validates the collection, ensuring required parameters (time and brightness) are present.
         """
-        if not self.has_brightness_param():
+        if check_brightness and not self.has_brightness_param():
             raise RuntimeError("Brightness parameter missing from parameters")
 
-        if not self.has_time_param():
+        if check_time and not self.has_time_param():
             raise RuntimeError(f"Time parameter missing from parameters")
 
     def get_num_combinations(self, except_brightness: bool = True) -> int:

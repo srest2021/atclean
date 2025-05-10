@@ -786,7 +786,7 @@ class MagnitudeThresholdTable:
             self.best.to_string(filename_best, index=False)
 
 
-class AnalysisLoop(ABC):
+class AnalysisLoop:
     def __init__(
         self, sigma_kerns: List[float], model_name: str, detec_tables_dir: str
     ):
@@ -794,9 +794,9 @@ class AnalysisLoop(ABC):
         self.model_name = model_name
         self.detec_tables_dir = detec_tables_dir
 
-        self.sn: SimDetecSupernova = None
-        self.tables: SimDetecTables = None
-        self.params = Params()
+        self._sn: SimDetecSupernova = None
+        self._tables: SimDetecTables = None
+        self._params = Params()
 
         self.efficiencies: EfficiencyTable = None
         self.mag_thresholds: MagnitudeThresholdTable = None
@@ -827,38 +827,72 @@ class AnalysisLoop(ABC):
         :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
         :param flag: Flag that denotes bad days in the binned light curves to load.
         """
-        self.sn = SimDetecSupernova(
+        self._sn = SimDetecSupernova(
             colnames, tnsname, mjd0=mjd0, mjdbinsize=mjdbinsize, filt=filt, flag=flag
         )
-        self.sn.load_all(data_dir, num_controls=num_controls)
-        self.sn.remove_rolling_sums()
-        self.sn.remove_simulations()
+        self._sn.load_all(data_dir, num_controls=num_controls)
+        self._sn.remove_rolling_sums()
+        self._sn.remove_simulations()
         if mjd_ranges is not None:
-            self.sn.set_mjd_ranges(mjd_ranges)
+            self._sn.set_mjd_ranges(mjd_ranges)
         if skip_control_ix is not None and len(skip_control_ix) > 0:
             print(f"Skipping control light curve indices: {skip_control_ix}")
-            self.sn.remove_lc_indices(skip_control_ix)
+            self._sn.remove_lc_indices(skip_control_ix)
+
+    def set_sn(
+        self,
+        sn: SimDetecSupernova,
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
+    ):
+        """
+        Set a preloaded averaged SN and its control light curves.
+
+        :param mjd_ranges: Valid MJD ranges into which we inject Simulations.
+        :param skip_control_ix: List of indices of control light curves which may NOT be randomly selected to have a Simulation injected.
+        """
+        if not isinstance(sn, SimDetecSupernova):
+            raise ValueError(
+                "The provided object is not a valid SimDetecSupernova instance"
+            )
+        if sn.num_controls < 1 or len(sn.lcs) < 2:
+            raise ValueError(
+                "The SimDetecSupernova object must have at least one control light curve"
+            )
+        if not isinstance(sn.flag, int):
+            raise ValueError(
+                f"The flag attribute of the SimDetecSupernova object must be set to an integer (got {sn.flag})"
+            )
+
+        self._sn = sn
+        self._sn.remove_rolling_sums()
+        self._sn.remove_simulations()
+        if mjd_ranges is not None:
+            self._sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix is not None and len(skip_control_ix) > 0:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self._sn.remove_lc_indices(skip_control_ix)
 
     def calculate_best_fom_limits(
         self, target_value: int = 2, n_steps: int = 15
     ) -> Dict[float, float]:
-        if self.sn is None:
+        if self._sn is None:
             raise RuntimeError(
                 "Supernova (self.sn) must be set before calling self.calculate_best_fom_limits()"
             )
 
         print()
-        _, prelim_fom_limit_ranges = self.sn.get_prelim_fom_limit_ranges(
+        _, prelim_fom_limit_ranges = self._sn.get_prelim_fom_limit_ranges(
             self.sigma_kerns
         )
 
         print()
         contam = ContaminationTable()
-        contam.construct_prelim_t(self.sn, self.sigma_kerns, prelim_fom_limit_ranges)
+        contam.construct_prelim_t(self._sn, self.sigma_kerns, prelim_fom_limit_ranges)
 
         print()
         fom_limits = contam.calculate(
-            self.sn,
+            self._sn,
             prelim_fom_limit_ranges,
             self.sigma_kerns,
             target_value=target_value,
@@ -871,49 +905,65 @@ class AnalysisLoop(ABC):
         return fom_limits
 
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
-        if self.sn is None:
+        if self._sn is None:
             raise RuntimeError(
-                "Supernova (self.sn) must be set before calling self.get_brightness_param_from_detec_tables()"
+                "Supernova (self._sn) must be set via self.load_sn() or self.set_sn() before calling self.get_brightness_param_from_detec_tables()"
             )
 
         pattern = re.compile(
-            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+).({self.sn.filt})\.txt$"
+            rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+).({self._sn.filt})\.txt$"
         )
         values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
         brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
-        self.params.add(brightness_param)
-        print(self.params.brightness_param)
+        self._params.add(brightness_param)
+        print(self._params.brightness_param)
 
     def set_brightness_param(self, values: List[float], param_name="brightness"):
         brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
-        self.params.add(brightness_param)
+        self._params.add(brightness_param)
 
-    def load_detec_tables(self):
-        if self.sn is None:
+    def load_detec_tables_and_params(self):
+        if self._sn is None:
             raise RuntimeError(
                 "Supernova (self.sn) must be set before calling self.load_detec_tables()"
             )
-        self.tables = SimDetecTables(
-            self.sn.filt,
-            self.params.brightness_param,
+        self._tables = SimDetecTables(
+            self._sn.filt,
+            self._params.brightness_param,
             self.model_name,
             self.sigma_kerns,
         )
-        self.tables.load_all(self.detec_tables_dir)
-        self.params.merge(self.tables.validate_params())
+        self._tables.load_all(self.detec_tables_dir)
+        self._params.merge(self._tables.get_params())
+
+    def set_detec_tables(self, tables: SimDetecTables):
+        self._tables = tables
+
+    def set_params(self, params: Params):
+        self._params = params
+        self._params.validate(check_time=False)
 
     def calculate_efficiencies(
         self, target_value: int = 2, n_steps: int = 15
     ) -> EfficiencyTable:
+        if self._params is None:
+            raise RuntimeError(
+                "Parameters (self._params) must be set before calling self.calculate_efficiencies()"
+            )
+        if self._tables is None:
+            raise RuntimeError(
+                "SimDetecTables (self._tables) must be set before calling self.calculate_efficiencies()"
+            )
+
         fom_limits = self.calculate_best_fom_limits(
             target_value=target_value, n_steps=n_steps
         )
-        self.efficiencies = EfficiencyTable(self.sigma_kerns, self.params)
-        self.efficiencies.calculate_efficiencies(self.tables, fom_limits)
+        self.efficiencies = EfficiencyTable(self.sigma_kerns, self._params)
+        self.efficiencies.calculate_efficiencies(self._tables, fom_limits)
         self.efficiencies.save(self.detec_tables_dir, self.model_name)
 
     def calculate_mag_thresholds(
@@ -924,18 +974,18 @@ class AnalysisLoop(ABC):
                 "Efficiencies (self.efficiencies) must be calulated before calling self.calculate_mag_thresholds()"
             )
 
-        if not self.params.has(select_param_name):
+        if not self._params.has(select_param_name):
             raise ValueError(
-                f"Parameter with name {select_param_name} is not known (known parameters: {self.params.all_names()})"
+                f"Parameter with name {select_param_name} is not known (known parameters: {self._params.all_names()})"
             )
         if (
-            self.params.has_brightness_param()
-            and self.params.brightness_param.name == select_param_name
+            self._params.has_brightness_param()
+            and self._params.brightness_param.name == select_param_name
         ):
             raise ValueError("Selected parameter name cannot be brightness")
         if (
-            self.params.has_time_param()
-            and self.params.time_param.name == select_param_name
+            self._params.has_time_param()
+            and self._params.time_param.name == select_param_name
         ):
             raise ValueError("Selected parameter name cannot be time")
 
@@ -1063,11 +1113,10 @@ if __name__ == "__main__":
         _, _, mjd0 = sninfo.get_info(args.tnsname)
     print(f"MJD0: {mjd0}")
 
-    detec_tables_dir = get_detec_tables_output_dir(
-        config["dir"]["output"], args.tnsname
-    )
     analysis_loop = AtlasAnalysisLoop(
-        args.sigma_kerns, args.model_name, detec_tables_dir
+        args.sigma_kerns,
+        args.model_name,
+        get_detec_tables_output_dir(config["dir"]["output"], args.tnsname),
     )
 
     analysis_loop.load_sn(
@@ -1086,7 +1135,7 @@ if __name__ == "__main__":
 
     print()
     analysis_loop.get_brightness_param_from_detec_tables()
-    analysis_loop.load_detec_tables()
+    analysis_loop.load_detec_tables_and_params()
     analysis_loop.calculate_efficiencies(
         target_value=args.n_pos_controls, n_steps=args.n_steps
     )
