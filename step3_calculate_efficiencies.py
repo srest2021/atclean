@@ -7,7 +7,7 @@ from configparser import ConfigParser
 import itertools
 import re
 import sys
-from typing import Dict, List, Optional, Self
+from typing import Any, Dict, List, Optional, Self
 import numpy as np
 import pandas as pd
 from scipy import interpolate
@@ -554,6 +554,12 @@ class EfficiencyTable(pdastrostatsclass):
         return self.t.to_string()
 
 
+class MultipleRootsFound(Exception):
+    def __init__(self, roots):
+        self.roots = roots
+        super().__init__(f"Multiple roots found: {roots}")
+
+
 class MagnitudeThresholdTable:
     def __init__(self):
         """
@@ -637,11 +643,62 @@ class MagnitudeThresholdTable:
         freduced = interpolate.UnivariateSpline(lx, ly_reduced, s=0)
         roots = freduced.roots()
         if len(roots) > 1:
-            print(f"WARNING: Found more than one root {roots}; returning NaN")
-            return np.nan
+            raise MultipleRootsFound(roots)
+            # return np.nan
         if len(roots) < 1:
             return np.nan
         return roots[0]
+
+    def _generate_combinations(self, e: EfficiencyTable, select_param_name: str):
+        for sigma_kern in e.sigma_kerns:
+            for select_param_value in e.get_possible_values(select_param_name):
+                for fom_limit in e._fom_limits[sigma_kern]:
+                    yield sigma_kern, select_param_value, fom_limit
+
+    def _calculate_row(
+        self,
+        e: EfficiencyTable,
+        sigma_kern: float,
+        select_param_name: str,
+        select_param_value: Any,
+        fom_limit: float,
+        brightness_param_name: str,
+        percents: List[float],
+    ) -> Dict:
+        subset = e.get_subset(
+            sigma_kern=sigma_kern,
+            **{select_param_name: select_param_value},
+            fom_limits=[fom_limit],
+        )
+        row = {
+            "sigma_kern": sigma_kern,
+            select_param_name: select_param_value,
+            "fom_limit": fom_limit,
+        }
+        for p in percents:
+            colname = f"mag_threshold_{format_float(p)}"
+            try:
+                row[colname] = self.get_mag_threshold(
+                    subset[brightness_param_name],
+                    subset[f"pct_detec_{format_float(fom_limit)}"],
+                    p,
+                )
+            except MultipleRootsFound as ex:
+                print(
+                    f"WARNING: Multiple roots found for sigma_kern={sigma_kern}, "
+                    f"{select_param_name}={select_param_value}, fom_limit={fom_limit}, "
+                    f"percent={p}. Roots: {ex.roots}"
+                )
+                # TODO: SHOULD THIS BE np.nan OR ex.roots[0]?
+                row[colname] = ex.roots[0]
+            except Exception as ex:
+                print(
+                    f"ERROR: Exception during mag threshold calc for sigma_kern={sigma_kern}, "
+                    f"{select_param_name}={select_param_value}, fom_limit={fom_limit}, "
+                    f"percent={p}. Exception: {ex}"
+                )
+                row[colname] = np.nan
+        return row
 
     def _calculate_all(
         self,
@@ -665,33 +722,20 @@ class MagnitudeThresholdTable:
         brightness_param_name = find_prefix_in_list(
             e.t.columns, BRIGHTNESS_PARAM_PREFIX
         )
-        select_param_values = e.get_possible_values(select_param_name)
 
-        i = 0
-        for sigma_kern in e.sigma_kerns:
-            for select_param_value in select_param_values:
-                for fom_limit in e._fom_limits[sigma_kern]:
-                    subset = e.get_subset(
-                        sigma_kern=sigma_kern,
-                        **{select_param_name: select_param_value},
-                        fom_limits=[fom_limit],
-                    )
-                    row = {
-                        "sigma_kern": sigma_kern,
-                        select_param_name: select_param_value,
-                        "fom_limit": fom_limit,
-                    }
-                    for p in percents:
-                        row[f"mag_threshold_{format_float(p)}"] = (
-                            self.get_mag_threshold(
-                                subset[brightness_param_name],
-                                subset[f"pct_detec_{format_float(fom_limit)}"],
-                                p,
-                            )
-                        )
-                    self.all.loc[i] = row
-                    i += 1
-
+        for i, (sigma_kern, select_param_value, fom_limit) in enumerate(
+            self._generate_combinations(e, select_param_name)
+        ):
+            row = self._calculate_row(
+                e,
+                sigma_kern,
+                select_param_name,
+                select_param_value,
+                fom_limit,
+                brightness_param_name,
+                percents,
+            )
+            self.all.loc[i] = row
         print("Success")
 
     def _calculate_best(
@@ -989,9 +1033,11 @@ class AnalysisLoop:
         ):
             raise ValueError("Selected parameter name cannot be time")
 
-        mt = MagnitudeThresholdTable()
-        mt.calculate(self.efficiencies, select_param_name, percents=percents)
-        mt.save(self.detec_tables_dir, self.model_name)
+        self.mag_thresholds = MagnitudeThresholdTable()
+        self.mag_thresholds.calculate(
+            self.efficiencies, select_param_name, percents=percents
+        )
+        self.mag_thresholds.save(self.detec_tables_dir, self.model_name)
 
 
 class AtlasAnalysisLoop(AnalysisLoop):

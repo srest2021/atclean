@@ -107,7 +107,7 @@ class Param(ABC):
         self._log(out)
 
         self.name = name
-        self.values = list(values)
+        self.values = list(values) if values is not None else values
         self.validate_name()
 
     def _log(self, message: str):

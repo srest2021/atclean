@@ -517,6 +517,10 @@ class SimDetecTable(SimTable):
         """
         super().load_sim_table(model_name, sim_tables_dir)
         self.t["sigma_kern"] = self.sigma_kern
+        self.t["control_index"] = pd.Series(dtype=int)
+        self.t["filter"] = pd.Series(dtype=str)
+        self.t["max_fom"] = pd.Series(dtype=float)
+        self.t["max_fom_mjd"] = pd.Series(dtype=float)
 
     def save_detec_table(self, model_name: str, filt: str, detec_tables_dir: str):
         """
@@ -540,7 +544,6 @@ class SimDetecTable(SimTable):
         if not "max_fom" in self.t.columns:
             raise ValueError("'max_fom' column not found in table")
 
-        print(kwargs)
         matching_ix = get_matching_ix(self, **kwargs)
 
         # no rows matched the params -> avoid division by 0
