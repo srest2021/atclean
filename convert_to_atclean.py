@@ -310,7 +310,11 @@ class ConvertLoop:
         if not ctrl_coords is None:
             # save ControlCoordinatesTable
             print()
-            ctrl_coords.save(self.input_dir, tnsname=obj_name)
+            ctrl_coords.save(
+                self.input_dir,
+                filename=f"{obj_name}_converted_control_coords.txt",
+                overwrite=overwrite,
+            )
 
         # save SnInfoTable
         self.sninfo.save()

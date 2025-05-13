@@ -257,6 +257,7 @@ class ControlCoordinatesTable:
         directory: str,
         filename: Optional[str] = None,
         tnsname: Optional[str] = None,
+        overwrite: bool = False,
     ):
         if filename is None:
             if tnsname is None:
@@ -268,7 +269,8 @@ class ControlCoordinatesTable:
             filename = f"{directory}/{tnsname}/{filename}"
 
         print(f"Saving control coordinates table at {filename}...")
-        self.t.to_string(filename, index=False)
+        if overwrite or not os.path.exists(filename):
+            self.t.to_string(filename, index=False)
 
 
 """

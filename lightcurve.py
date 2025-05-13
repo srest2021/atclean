@@ -1776,9 +1776,14 @@ class SimDetecSupernova(AveragedSupernova):
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
     def get_all_fom(self, sigma_kern: float):
+        self.apply_rolling_sums(
+            sigma_kern,
+            valid_ix=self.has_valid_mjd_ix(),
+            pre_mjd0_ix=self.has_pre_mjd0_ix(),
+        )
+
         fom_list = []
         for control_index in self.control_lc_indices:
-            self.lcs[control_index].apply_rolling_sum(sigma_kern, flag=self.flag)
             fom = self.lcs[control_index].t.loc[
                 self.lcs[control_index].valid_mjd_ix, self.colnames.snrsumnorm
             ]
@@ -1935,22 +1940,18 @@ class SimDetecLightCurve(AveragedLightCurve):
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 
-        if self.control_index == 0 and self.has_pre_mjd0_ix():
-            self.apply_rolling_sum(sigma_kern, indices=self.pre_mjd0_ix, flag=flag)
-        else:
-            self.apply_rolling_sum(sigma_kern, flag=flag)
-
         # for control light curves, loop through all valid indices
         # for the SN light curve, only loop through valid indices before MJD0
-        ix = self.valid_mjd_ix
+        indices = self.valid_mjd_ix if self.has_valid_mjd_ix() else self.getindices()
         if self.control_index == 0 and self.has_pre_mjd0_ix():
-            ix = AandB(ix, self.pre_mjd0_ix)
+            indices = AandB(indices, self.pre_mjd0_ix)
+        self.apply_rolling_sum(sigma_kern, flag=flag, indices=indices)
 
         # find any triggers above the FOM limit
         count = 0
         mjds = []
         above_lim = False
-        for k in ix:
+        for k in indices:
             if self.t.at[k, self.colnames.snrsumnorm] > fom_limit:
                 if not above_lim:
                     mjds.append(self.t.at[k, self.colnames.mjdbin])

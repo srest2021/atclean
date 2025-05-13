@@ -105,7 +105,7 @@ def new_row(t: pd.DataFrame, d: Dict = None):
         d = {}
 
     new_row_df = pd.DataFrame([d])
-    if t.empty:
+    if t is None or t.empty:
         t = new_row_df
     else:
         new_row_df = new_row_df.reindex(columns=t.columns)

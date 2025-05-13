@@ -1156,7 +1156,11 @@ class Plot:
 
         for i, row in enumerate(axes):
             sigma_kern = sigma_kerns[i]
-            sn.apply_rolling_sums(sigma_kern, pre_mjd0_ix=True)
+            sn.apply_rolling_sums(
+                sigma_kern,
+                valid_ix=sn.has_valid_mjd_ix(),
+                pre_mjd0_ix=sn.has_pre_mjd0_ix(),
+            )
 
             if len(sigma_kerns) == 1:
                 sigma_kern = sigma_kerns[0]

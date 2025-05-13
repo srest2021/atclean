@@ -565,7 +565,9 @@ class CleanLoop:
     def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
         if cut is None:
             return
-        print(f"\nApplying bad day cut (averaging) ({cut}):")
+        print(
+            f"\nApplying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
+        )
         self.avg_sn, percent_cut = self.sn.apply_badday_cut(
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
