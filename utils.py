@@ -259,6 +259,66 @@ def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
     return has_match(subdir, pattern)
 
 
+def validate_fom_limits(
+    fom_limits: (
+        List[float] | List[List[float]] | Dict[float, float] | Dict[float, List[float]]
+    ),
+    sigma_kerns: List[float],
+) -> Dict[float, List[float]]:
+    """
+    Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
+
+    WARNING: If passing fom_limits as a list, both fom_limits and sigma_kerns must be sorted.
+
+    :param fom_limits: FOM limits as a list or dictionary.
+
+        Supports:
+
+        - List[float]: one FOM limit per sigma_kern
+        - List[List[float]]: multiple FOM limits per sigma_kern
+        - Dict[float, float]: one FOM limit per sigma_kern
+        - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
+
+    :param sigma_kerns: Kernel sizes corresponding to the FOM limits.
+    """
+    # List[float] or List[List[float]]
+    if isinstance(fom_limits, list):
+        if not fom_limits:
+            raise RuntimeError("No FOM limits provided")
+
+        if sigma_kerns and len(fom_limits) != len(sigma_kerns):
+            raise RuntimeError(
+                "Each entry in sigma_kerns must have a matching entry in fom_limits"
+            )
+
+        # List[float]
+        if all(isinstance(x, (int, float)) for x in fom_limits):
+            # wrap each float in a list
+            return dict(zip(sigma_kerns, [[x] for x in fom_limits]))
+
+        # List[List[float]]
+        elif all(isinstance(x, list) for x in fom_limits):
+            return dict(zip(sigma_kerns, fom_limits))
+
+        else:
+            raise TypeError("fom_limits list must contain sublists or numbers")
+
+    # Dict[float, float] or Dict[float, List[float]]
+    elif isinstance(fom_limits, dict):
+        if set(fom_limits.keys()) != set(sigma_kerns):
+            raise RuntimeError("FOM limits dict keys must exactly match sigma_kerns")
+
+        # wrap float values in lists if needed
+        return {
+            k: [v] if isinstance(v, (int, float)) else v for k, v in fom_limits.items()
+        }
+
+    else:
+        raise TypeError(
+            "fom_limits must be a list of lists/floats or a dict of lists/floats"
+        )
+
+
 def validate_mjd_ranges(ranges: List[List[int]], var_name: str = "MJD_RANGES") -> None:
     """
     Validates that a list of MJD ranges is properly formatted.

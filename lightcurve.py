@@ -37,6 +37,7 @@ from utils import (
     query_atlas,
     query_tns,
     PlotLimits,
+    validate_mjd_ranges,
 )
 
 
@@ -649,6 +650,8 @@ class AveragedSupernova(Supernova):
         return self.lcs[control_index].ix_masked(self.colnames.mask, maskval=flag)
 
     def set_mjd_ranges(self, mjd_ranges: List[List[float]]):
+        validate_mjd_ranges(mjd_ranges, var_name="mjd_ranges")
+
         if self._mjd_ranges is not None and set(map(tuple, mjd_ranges)) == set(
             map(tuple, self._mjd_ranges)
         ):

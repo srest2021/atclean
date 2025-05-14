@@ -44,6 +44,7 @@ from utils import (
     make_dir_if_not_exists,
     new_row,
     print_progress_bar,
+    validate_fom_limits,
 )
 
 
@@ -326,64 +327,6 @@ class EfficiencyTable(pdastrostatsclass):
         col_order += [col for col in self.t.columns if col not in col_order]
         self.t = self.t[col_order]
 
-    # create dictionary of FOM limits, with sigma_kerns as the keys
-    def validate_fom_limits(
-        self,
-        fom_limits: (
-            List[float]
-            | List[List[float]]
-            | Dict[float, float]
-            | Dict[float, List[float]]
-        ),
-    ) -> Dict[float, List[float]]:
-        """
-        Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
-        Supports:
-        - List[float]: one FOM limit per sigma_kern
-        - List[List[float]]: multiple FOM limits per sigma_kern
-        - Dict[float, float]: one FOM limit per sigma_kern
-        - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
-        """
-        # List[float] or List[List[float]]
-        if isinstance(fom_limits, list):
-            if not fom_limits:
-                raise RuntimeError("No FOM limits provided")
-
-            if len(fom_limits) != len(self.sigma_kerns):
-                raise RuntimeError(
-                    "Each entry in sigma_kerns must have a matching entry in fom_limits"
-                )
-
-            # List[float]
-            if all(isinstance(x, (int, float)) for x in fom_limits):
-                # wrap each float in a list
-                return dict(zip(self.sigma_kerns, [[x] for x in fom_limits]))
-
-            # List[List[float]]
-            elif all(isinstance(x, list) for x in fom_limits):
-                return dict(zip(self.sigma_kerns, fom_limits))
-
-            else:
-                raise TypeError("fom_limits list must contain sublists or numbers")
-
-        # Dict[float, float] or Dict[float, List[float]]
-        elif isinstance(fom_limits, dict):
-            if set(fom_limits.keys()) != set(self.sigma_kerns):
-                raise RuntimeError(
-                    "FOM limits dict keys must exactly match sigma_kerns"
-                )
-
-            # wrap float values in lists if needed
-            return {
-                k: [v] if isinstance(v, (int, float)) else v
-                for k, v in fom_limits.items()
-            }
-
-        else:
-            raise TypeError(
-                "fom_limits must be a list of lists/floats or a dict of lists/floats"
-            )
-
     def set_fom_limits(
         self,
         fom_limits: (
@@ -393,7 +336,7 @@ class EfficiencyTable(pdastrostatsclass):
             | Dict[float, List[float]]
         ),
     ):
-        self._fom_limits = self.validate_fom_limits(fom_limits)
+        self._fom_limits = validate_fom_limits(fom_limits, self.sigma_kerns)
 
     def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
@@ -555,7 +498,9 @@ class EfficiencyTable(pdastrostatsclass):
         self.sigma_kerns = list(sorted(set(self.sigma_kerns + other.sigma_kerns)))
 
         if other._fom_limits:
-            self._merge_fom_limits(self.validate_fom_limits(other._fom_limits))
+            self._merge_fom_limits(
+                validate_fom_limits(other._fom_limits, other.sigma_kerns)
+            )
 
         if other.t is not None and not other.t.empty:
             if self.t is not None and not self.t.empty:
@@ -874,6 +819,20 @@ class AnalysisLoop:
         self.efficiencies: EfficiencyTable = None
         self.mag_thresholds: MagnitudeThresholdTable = None
 
+    def _prepare_sn(self, mjd_ranges=None, skip_control_ix=None):
+        if self._sn is None:
+            raise RuntimeError(
+                "Supernova (self.sn) must be set before calling self._prepare_sn()"
+            )
+
+        self._sn.remove_rolling_sums()
+        self._sn.remove_simulations()
+        if mjd_ranges is not None:
+            self._sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self._sn.remove_lc_indices(skip_control_ix)
+
     def load_sn(
         self,
         data_dir: str,
@@ -904,13 +863,7 @@ class AnalysisLoop:
             colnames, tnsname, mjd0=mjd0, mjdbinsize=mjdbinsize, filt=filt, flag=flag
         )
         self._sn.load_all(data_dir, num_controls=num_controls)
-        self._sn.remove_rolling_sums()
-        self._sn.remove_simulations()
-        if mjd_ranges is not None:
-            self._sn.set_mjd_ranges(mjd_ranges)
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
-            self._sn.remove_lc_indices(skip_control_ix)
+        self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
 
     def set_sn(
         self,
@@ -938,13 +891,7 @@ class AnalysisLoop:
             )
 
         self._sn = sn
-        self._sn.remove_rolling_sums()
-        self._sn.remove_simulations()
-        if mjd_ranges is not None:
-            self._sn.set_mjd_ranges(mjd_ranges)
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
-            self._sn.remove_lc_indices(skip_control_ix)
+        self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
 
     def calculate_best_fom_limits(
         self, target_value: int = 2, n_steps: int = 15
@@ -953,6 +900,10 @@ class AnalysisLoop:
             raise RuntimeError(
                 "Supernova (self.sn) must be set before calling self.calculate_best_fom_limits()"
             )
+        if target_value < 1:
+            raise ValueError("target_value must be >= 1")
+        if n_steps < 2:
+            raise ValueError("n_steps must be >= 2")
 
         print()
         _, prelim_fom_limit_ranges = self._sn.get_prelim_fom_limit_ranges(
@@ -987,6 +938,11 @@ class AnalysisLoop:
             rf"^simdetec_{re.escape(self.model_name)}_\d+\.\d+_(\d+\.\d+).({self._sn.filt})\.txt$"
         )
         values = get_brightness_values_from_dir(self.detec_tables_dir, pattern)
+        if not values:
+            raise FileNotFoundError(
+                f"No matching detection tables found for brightness parameter (used model '{self.model_name}' and filter '{self._sn.filt}')."
+            )
+
         brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
@@ -994,6 +950,9 @@ class AnalysisLoop:
         print(self._params.brightness_param)
 
     def set_brightness_param(self, values: List[float], param_name="brightness"):
+        if not values:
+            raise ValueError("Brightness parameter values cannot be empty")
+
         brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
@@ -1004,6 +963,11 @@ class AnalysisLoop:
             raise RuntimeError(
                 "Supernova (self.sn) must be set before calling self.load_detec_tables()"
             )
+        if not self._params.has_brightness_param():
+            raise RuntimeError(
+                "Brightness parameter must be set before calling self.load_detec_tables()"
+            )
+
         self._tables = SimDetecTables(
             self._sn.filt,
             self._params.brightness_param,
@@ -1038,15 +1002,20 @@ class AnalysisLoop:
         self.efficiencies = EfficiencyTable(self.sigma_kerns, self._params)
         self.efficiencies.calculate_efficiencies(self._tables, fom_limits)
         self.efficiencies.save(self.detec_tables_dir, self.model_name)
+        return self.efficiencies
 
     def calculate_mag_thresholds(
         self, select_param_name: str, percents: List[int] = [50, 80]
     ) -> MagnitudeThresholdTable:
-        if self.efficiencies is None:
+        if self.efficiencies is None or self.efficiencies.t.empty:
             raise RuntimeError(
                 "Efficiencies (self.efficiencies) must be calulated before calling self.calculate_mag_thresholds()"
             )
 
+        if self._params is None:
+            raise RuntimeError(
+                "Parameters (self._params) must be set before calling self.calculate_mag_thresholds()"
+            )
         if not self._params.has(select_param_name):
             raise ValueError(
                 f"Parameter with name {select_param_name} is not known (known parameters: {self._params.all_names()})"
@@ -1067,6 +1036,7 @@ class AnalysisLoop:
             self.efficiencies, select_param_name, percents=percents
         )
         self.mag_thresholds.save(self.detec_tables_dir, self.model_name)
+        return self.mag_thresholds
 
 
 class AtlasAnalysisLoop(AnalysisLoop):
