@@ -4,6 +4,7 @@ from abc import ABC
 import argparse
 from collections import defaultdict
 from configparser import ConfigParser
+from copy import deepcopy
 import itertools
 import re
 import sys
@@ -522,17 +523,45 @@ class EfficiencyTable(pdastrostatsclass):
             if re.search("^pct_detec_", col):
                 self.t.drop(col, axis=1, inplace=True)
 
+    def _merge_fom_limits(
+        self,
+        other_fom_limits: Dict[float, List[float]],
+    ):
+        if self._fom_limits is None:
+            self._fom_limits = deepcopy(other_fom_limits)
+            return
+
+        for other_key, other_values in other_fom_limits.items():
+            if other_key in self._fom_limits:
+                self._fom_limits[other_key].extend(other_values)
+            else:
+                self._fom_limits[other_key] = list(other_values)
+
+        for key in self._fom_limits:
+            self._fom_limits[key] = sorted(set(self._fom_limits[key]))
+
     def merge_tables(self, other: Self):
         """
         Add table content, sigma_kerns, and fom_limits from another EfficiencyTable.
+        - Merges sigma_kerns with deduplication.
+        - Validates and merges _fom_limits (deduplicated, sorted).
+        - Concatenates DataFrame `t` if both are non-empty.
         """
         if not isinstance(other, EfficiencyTable):
             raise RuntimeError(
                 f"Cannot merge EfficiencyTable with object type: {type(other)}"
             )
 
-        self.sigma_kerns += other.sigma_kerns
-        self.t = pd.concat([self.t, other.t], ignore_index=True)
+        self.sigma_kerns = list(sorted(set(self.sigma_kerns + other.sigma_kerns)))
+
+        if other._fom_limits:
+            self._merge_fom_limits(self.validate_fom_limits(other._fom_limits))
+
+        if other.t is not None and not other.t.empty:
+            if self.t is not None and not self.t.empty:
+                self.t = pd.concat([self.t, other.t], ignore_index=True)
+            else:
+                self.t = deepcopy(other.t)
 
     def load(self, detec_tables_dir: str, model_name: str):
         filename = f"{detec_tables_dir}/efficiencies_{model_name}.txt"
