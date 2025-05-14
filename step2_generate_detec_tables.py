@@ -787,7 +787,7 @@ class InjectionLoop(ABC):
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self._sn) must be set via self.load_sn() or self.set_sn() before calling self.get_brightness_param_from_detec_tables()"
+                "Supernova (self._sn) must be set before getting brightness parameter from SimDetecTables"
             )
 
         pattern = re.compile(
@@ -803,6 +803,24 @@ class InjectionLoop(ABC):
         self._brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
+
+    def _prepare_sn(
+        self,
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
+    ):
+        if self._sn is None:
+            raise RuntimeError(
+                "Supernova (self._sn) must be set before calling self._prepare_sn()"
+            )
+
+        self._sn.remove_rolling_sums()
+        self._sn.remove_simulations()
+        if mjd_ranges is not None:
+            self._sn.set_mjd_ranges(mjd_ranges)
+        if skip_control_ix is not None and len(skip_control_ix) > 0:
+            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self._sn.remove_lc_indices(skip_control_ix)
 
     def load_sn(
         self,
@@ -832,13 +850,7 @@ class InjectionLoop(ABC):
             colnames, tnsname, mjdbinsize=mjdbinsize, filt=filt, flag=flag
         )
         self._sn.load_all(data_dir, num_controls=num_controls)
-        self._sn.remove_rolling_sums()
-        self._sn.remove_simulations()
-        if mjd_ranges is not None:
-            self._sn.set_mjd_ranges(mjd_ranges)
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
-            self._sn.remove_lc_indices(skip_control_ix)
+        self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
 
     def set_sn(
         self,
@@ -865,31 +877,35 @@ class InjectionLoop(ABC):
                 f"The flag attribute of the SimDetecSupernova object must be set to an integer (got {sn.flag})"
             )
 
-        self._sn = sn
-        self._sn.remove_rolling_sums()
-        self._sn.remove_simulations()
-        if mjd_ranges is not None:
-            self._sn.set_mjd_ranges(mjd_ranges)
-        if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
-            self._sn.remove_lc_indices(skip_control_ix)
+        self._sn = deepcopy(sn)
+        self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
+
+    def _init_tables(self):
+        if self._sn is None:
+            raise RuntimeError(
+                "Supernova (self._sn) must be set before initializing tables"
+            )
+        if not self._brightness_param:
+            raise RuntimeError(
+                "Brightness parameter must be set before initializing tables"
+            )
+
+        self.tables = SimDetecTables(
+            self._sn.filt, self._brightness_param, self.model_name, self.sigma_kerns
+        )
 
     def load_sim_tables(self):
         """
         Load existing SimTables and construct SimDetecTables out of them.
         """
-        self.tables = SimDetecTables(
-            self._sn.filt, self._brightness_param, self.model_name, self.sigma_kerns
-        )
+        self._init_tables()
         self.tables.load_all_from_sim_tables(self.sim_tables_dir)
 
     def load_detec_tables(self):
         """
         Load existing SimDetecTables.
         """
-        self.tables = SimDetecTables(
-            self._sn.filt, self._brightness_param, self.model_name, self.sigma_kerns
-        )
+        self._init_tables()
         self.tables.load_all(self.detec_tables_dir)
 
     def add_simulation_to_lc(
@@ -918,7 +934,7 @@ class InjectionLoop(ABC):
                 print(f"Additional simulation parameters: {kwargs}")
         if self._sn is None:
             raise ValueError(
-                "SN must be set via self.load_sn() or self.set_sn() before injecting a simulation"
+                "Supernova (self._sn) must be set before injecting a simulation"
             )
         if control_index not in self._sn.control_lc_indices:
             raise ValueError(
@@ -1041,15 +1057,15 @@ class AtlasInjectionLoop(InjectionLoop):
     def loop(self):
         if self._brightness_param is None:
             raise RuntimeError(
-                "self.brightness_param must be set before calling self.loop()"
+                "self.brightness_param must be set before initializing injection loop"
             )
         if self.tables is None:
             raise RuntimeError(
-                "SimDetecTables (self.tables) must be set before calling self.loop()"
+                "SimDetecTables (self._tables) must be set before initializing injection loop"
             )
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self.sn) must be set before calling self.loop()"
+                "Supernova (self._sn) must be set before initializing injection loop"
             )
 
         # loop through each rolling sum kernel size

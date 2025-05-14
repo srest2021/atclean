@@ -819,10 +819,14 @@ class AnalysisLoop:
         self.efficiencies: EfficiencyTable = None
         self.mag_thresholds: MagnitudeThresholdTable = None
 
-    def _prepare_sn(self, mjd_ranges=None, skip_control_ix=None):
+    def _prepare_sn(
+        self,
+        mjd_ranges: Optional[List[List[float]]] = None,
+        skip_control_ix: Optional[List] = None,
+    ):
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self.sn) must be set before calling self._prepare_sn()"
+                "Supernova (self._sn) must be set before calling self._prepare_sn()"
             )
 
         self._sn.remove_rolling_sums()
@@ -890,7 +894,7 @@ class AnalysisLoop:
                 f"The flag attribute of the SimDetecSupernova object must be set to an integer (got {sn.flag})"
             )
 
-        self._sn = sn
+        self._sn = deepcopy(sn)
         self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
 
     def calculate_best_fom_limits(
@@ -898,7 +902,7 @@ class AnalysisLoop:
     ) -> Dict[float, float]:
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self.sn) must be set before calling self.calculate_best_fom_limits()"
+                "Supernova (self._sn) must be set before calculating the best FOM limits"
             )
         if target_value < 1:
             raise ValueError("target_value must be >= 1")
@@ -931,7 +935,7 @@ class AnalysisLoop:
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self._sn) must be set via self.load_sn() or self.set_sn() before calling self.get_brightness_param_from_detec_tables()"
+                "Supernova (self._sn) must be set before getting brightness parameter from SimDetecTables"
             )
 
         pattern = re.compile(
@@ -961,11 +965,11 @@ class AnalysisLoop:
     def load_detec_tables_and_params(self):
         if self._sn is None:
             raise RuntimeError(
-                "Supernova (self.sn) must be set before calling self.load_detec_tables()"
+                "Supernova (self._sn) must be set before loading SimDetecTables"
             )
         if not self._params.has_brightness_param():
             raise RuntimeError(
-                "Brightness parameter must be set before calling self.load_detec_tables()"
+                "Brightness parameter must be set before loading SimDetecTables"
             )
 
         self._tables = SimDetecTables(
@@ -989,11 +993,11 @@ class AnalysisLoop:
     ) -> EfficiencyTable:
         if self._params is None:
             raise RuntimeError(
-                "Parameters (self._params) must be set before calling self.calculate_efficiencies()"
+                "Parameters (self._params) must be set before calculating efficiencies"
             )
         if self._tables is None:
             raise RuntimeError(
-                "SimDetecTables (self._tables) must be set before calling self.calculate_efficiencies()"
+                "SimDetecTables (self._tables) must be set before calculating efficiencies"
             )
 
         fom_limits = self.calculate_best_fom_limits(
@@ -1009,12 +1013,12 @@ class AnalysisLoop:
     ) -> MagnitudeThresholdTable:
         if self.efficiencies is None or self.efficiencies.t.empty:
             raise RuntimeError(
-                "Efficiencies (self.efficiencies) must be calulated before calling self.calculate_mag_thresholds()"
+                "Efficiencies (self.efficiencies) must be calulated before calculating magnitude thresholds"
             )
 
         if self._params is None:
             raise RuntimeError(
-                "Parameters (self._params) must be set before calling self.calculate_mag_thresholds()"
+                "Parameters (self._params) must be set before calculating magnitude thresholds"
             )
         if not self._params.has(select_param_name):
             raise ValueError(
