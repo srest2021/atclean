@@ -75,6 +75,7 @@ COLOR_SCHEME = {
     "sn_fom": "deeppink",
     "control_fom": "cornflowerblue",
     "select_control_fom": "mediumblue",
+    "sim_object_flux": "darkgreen",
 }
 
 PROP_CYCLE = [
@@ -299,8 +300,17 @@ class Plot:
             edgecolors=color if open else None,
         )
 
-    def _set_symmetric_ylim(self, axes: List[Axes], data: pd.Series, scale=1.1):
-        ylim = data.abs().max() * scale
+    def _set_symmetric_ylim(
+        self,
+        axes: List[Axes],
+        data: pd.Series,
+        scale=1.1,
+        custom_window: Optional[float] = None,
+    ):
+        if custom_window is None:
+            ylim = data.abs().max() * scale
+        else:
+            ylim = custom_window
         for ax in axes:
             ax.set_ylim(-ylim, ylim)
 
@@ -1553,8 +1563,11 @@ class Plot:
         sim_flux,
         sigma_kern: float,
         fom_limit: float,
-        peak_mjd: float,
+        time: float,
         flag: int = 0x800000,
+        time_window: float = 65,
+        fom_window: Optional[float] = None,
+        flux_window: Optional[float] = None,
         save: bool = False,
         filename: str = "sim_lc",
     ):
@@ -1571,8 +1584,8 @@ class Plot:
         for ax in [ax1, ax2, ax3, ax4]:
             ax.minorticks_on()
             ax.tick_params(direction="in", which="both")
-            ax.set_xlim(peak_mjd - 65, peak_mjd + 65)  # TODO: fix
             ax.set_facecolor(self.color_scheme["face"])
+            ax.set_xlim(time - time_window, time + time_window)
 
         # flux axes
         ax1.set_xticklabels([])
@@ -1584,8 +1597,6 @@ class Plot:
             ax.spines["left"].set_color(self.color_scheme["select_control_flux"])
             ax.axhline(linewidth=1.5, color="k")
             ax.set_ylabel(r"Flux (µJy)", color=self.color_scheme["select_control_flux"])
-            # TODO: fix
-            # ax.set_ylim(-ylim_flux * 1.1, ylim_flux * 1.1)
             ax.text(
                 0.97,
                 0.05,
@@ -1604,8 +1615,6 @@ class Plot:
             )
             ax.spines["right"].set_color(self.color_scheme["select_control_fom"])
             ax.spines["left"].set_color(self.color_scheme["select_control_flux"])
-            # TODO: fix
-            # ax.set_ylim(-ylim_fom*1.1, ylim_fom*1.1)
             ax.set_ylabel(
                 r"$\Sigma_{\rm FOM}$",
                 color=self.color_scheme["select_control_fom"],
@@ -1647,7 +1656,6 @@ class Plot:
             s=MARKER_SIZE,
             lw=MARKER_EDGEWIDTH,
             marker="o",
-            zorder=0,
             label=f"Light Curve",
         )
 
@@ -1670,28 +1678,6 @@ class Plot:
             y_colname_attr="fluxsim",
             indices=sim_lc.get_good_indices(),
         )
-
-        # bottom panel Simulation object
-        ax3.plot(
-            sim_lc.t.loc[sim_lc.get_good_indices(flag=flag), sim_lc.colnames.mjdbin],
-            sim_flux,
-            color=self.color_scheme["select_control_flux"],
-            linewidth=1.5,
-            alpha=1,
-            zorder=0,
-            linestyle=SIM_LS,
-        )
-        ax4.plot(
-            [0, 1],
-            [0, 0],
-            color=self.color_scheme["select_control_flux"],
-            linestyle=SIM_LS,
-            linewidth=1.5,
-            alpha=1,
-            label=f"Simulated Eruption",
-        )
-
-        # bottom panel simulated flux
         ax4.scatter(
             [0, 1],
             [0, 0],
@@ -1701,6 +1687,26 @@ class Plot:
             alpha=1,
             marker="o",
             label=f"Simulated Light Curve",
+        )
+
+        # bottom panel Simulation object
+        ax3.plot(
+            sim_lc.t.loc[sim_lc.get_good_indices(flag=flag), sim_lc.colnames.mjdbin],
+            sim_flux,
+            color=self.color_scheme["sim_object_flux"],
+            linewidth=1.5,
+            alpha=1,
+            linestyle=SIM_LS,
+            zorder=40,
+        )
+        ax4.plot(
+            [0, 1],
+            [0, 0],
+            color=self.color_scheme["sim_object_flux"],
+            linestyle=SIM_LS,
+            linewidth=1.5,
+            alpha=1,
+            label=f"Simulated Eruption",
         )
 
         # bottom panel simulated FOM
@@ -1716,8 +1722,11 @@ class Plot:
         self._set_symmetric_ylim(
             [ax1, ax3],
             sim_lc.t.loc[sim_lc.get_good_indices(), sim_lc.colnames.flux],
+            custom_window=flux_window,
         )
-        self._set_symmetric_ylim([ax2, ax4], sim_lc.t[sim_lc.colnames.snrsimsum])
+        self._set_symmetric_ylim(
+            [ax2, ax4], sim_lc.t[sim_lc.colnames.snrsimsum], custom_window=fom_window
+        )
 
         ax4.legend(loc="lower left", facecolor="white", framealpha=1.0).set_zorder(100)
 

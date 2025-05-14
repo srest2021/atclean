@@ -94,7 +94,7 @@ class Param(ABC):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         self.param_type: ParamType = param_type
         self.verbose = verbose
@@ -210,7 +210,7 @@ class ListParam(Param):
         """
         :param name (str): The name of the parameter.
         :param values (Optional[List]): The list of values for the parameter.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, values=values, param_type=param_type, verbose=verbose)
 
@@ -237,7 +237,7 @@ class RangeParam(Param):
         :param minval (float): The minimum value of the range.
         :param maxval (float): The maximum value of the range.
         :param step (float): The step size between consecutive values in the range.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, step)
@@ -280,7 +280,7 @@ class LogRangeParam(Param):
         :param base (int): The logarithmic base to use.
         :param n (int): The number of values to generate in the range.
         :param n_digits (int): The number of decimal places to round to.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, base, n, n_digits=n_digits)
@@ -330,7 +330,7 @@ class RandomParam(Param):
         :param maxval (float): The maximum value of the range.
         :param n (int): The number of random values to generate.
         :param n_digits (int): The number of decimal places to round to.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(minval, maxval, n, n_digits=n_digits)
@@ -373,7 +373,7 @@ class RandomInRangeParam(Param):
         :param name (str): The name of the parameter.
         :param valid_ranges (List[List[float]]): A list of valid ranges, where each range is a list of two floats [min, max].
         :param n (int): The number of random values to generate.
-        :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
+        :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
         super().__init__(name, param_type=param_type, verbose=verbose)
         self.generate(valid_ranges, n)
