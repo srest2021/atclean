@@ -16,7 +16,7 @@ from download import load_config
 def define_args(parser=None, usage=None, conflict_handler="resolve"):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage, conflict_handler=conflict_handler)
-    parser.add_argument("zipfiles", nargs="+", help="Path(s) to zip file(s) to unzip.")
+    parser.add_argument("filepaths", nargs="+", help="Path(s) to zip file(s) to unzip.")
     parser.add_argument(
         "--config_file",
         default="config.ini",
@@ -63,9 +63,9 @@ def extract_file(zf: zipfile.ZipFile, member: str, input_dir: str, output_dir: s
     print(f"✓ {member} → <{label} directory>/{member}")
 
 
-def unzip_file(zipfile_path: str, input_dir: str, output_dir: str):
-    print(f"\n📦 Unzipping: {os.path.basename(zipfile_path)}")
-    with zipfile.ZipFile(zipfile_path, "r") as zf:
+def unzip_file(path: str, input_dir: str, output_dir: str):
+    print(f"\n📦 Unzipping: {os.path.basename(path)}")
+    with zipfile.ZipFile(path, "r") as zf:
         for member in zf.namelist():
             extract_file(zf, member, input_dir, output_dir)
     print("✅ Done.\n")
@@ -81,5 +81,5 @@ if __name__ == "__main__":
     print(f"\n📁 ATClean input directory:  {input_dir}")
     print(f"📁 Output directory: {output_dir}")
 
-    for zipfile_path in args.zipfiles:
-        unzip_file(zipfile_path, input_dir, output_dir)
+    for path in args.filepaths:
+        unzip_file(path, input_dir, output_dir)
