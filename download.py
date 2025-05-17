@@ -273,11 +273,6 @@ class ControlCoordinatesTable:
             self.t.to_string(filename, index=False)
 
 
-"""
-DOWNLOADING ATLAS LIGHT CURVES
-"""
-
-
 # define command line arguments
 def define_args(parser=None, usage=None, conflict_handler="resolve"):
     if parser is None:
