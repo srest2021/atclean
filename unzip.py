@@ -39,7 +39,7 @@ def is_input_file(filename: str) -> bool:
     if re.match(r"^[^.]+\.[^.]+\.lc\.txt$", basename):
         return True
 
-    # Match control light curves: e.g. 2019vxm_i002.c.lc.txt
+    # Match control light curves: e.g. controls/2019vxm_i002.c.lc.txt
     if re.match(r"^[^.]+_i\d{3}\.[^.]+\.lc\.txt$", basename) and filename.startswith(
         "controls/"
     ):
