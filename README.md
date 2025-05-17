@@ -13,8 +13,9 @@ View our paper [here](https://iopscience.iop.org/article/10.3847/1538-4357/ad973
     - [`convert_to_atclean.py`](#convert_to_atcleanpy): Convert a non-ATLAS light curve (and, optionally, its control light curves) into an ATClean-readable format, so that it may be run through any of the following scripts.
     - [`clean.py`](#cleanpy): Apply one or more default and/or custom cuts and binning to one or more SNe and their control light curves. 
     - [`plotloop.py`](#plotlooppy): Generate a summary PDF file of diagnostic plots.
-    - [`generate_sim_tables.py`](#generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
-    - [`generate_detec_tables.py`](#generate_detec_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. For each row in each SimTable, add the simulation to a random control light curve and record its max FOM and MJD, then update the rows and save as SimDetecTables. Optionally calculate efficiencies using specified FOM detection limits.
+    - [`step1_generate_sim_tables.py`](#step1_generate_sim_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. Generate tables of simulations (SimTables) by specifying the type of model and possible parameter values.
+    - [`step2_generate_detec_tables.py`](#step2_generate_detec_tablespy) (**WIP**): Part of our pre-SN outburst detection analysis. For each row in each SimTable, add the simulation to a random control light curve and record its max FOM and MJD, then update the rows and save as SimDetecTables. 
+    - [`step3_calculate_efficiencies.py`](#step3_calculate_efficienciespy) (**WIP**): For a given set of SimDetecTables, determine best FOM limits, then calculate contamination, efficiencies, and magnitude thresholds.
 
 - [Jupyter Notebooks](#jupyter-notebooks)
     - [`clean.ipynb`](#cleanipynb): An in-depth walkthrough of our cleaning and binning process for a single SN and its control light curves. 
@@ -533,30 +534,43 @@ Arguments will override default config file settings if specified.
 - Generate default plots of SN 2019vxm without its control light curves: `./plotloop.py 2019vxm -o --num_controls 0`
 - Generate defaults plots of SN 2019vxm and its control light curves, as well as plots of the true uncertainties estimation, the uncertainty cut, the chi-square cut, the control light curve cut, and the bad day cut: `./plotloop.py 2019vxm -o -e -u -x -c -g`
 
-### `generate_sim_tables.py`
+### `step1_generate_sim_tables.py`
 
 **WIP**
 
-#### Configuration file: `simulation_settings.json`
-**WIP**
-
-#### Arguments
-**WIP**
-
-#### Example commands
-**WIP**
-
-### `generate_detec_tables.py`
-
-**WIP**
-
-#### Configuration file: `detection_settings.json`
+#### Configuration file: `step1_settings.json`
 **WIP**
 
 #### Arguments
 **WIP**
 
 #### Example commands
+**WIP**
+
+### `step2_generate_detec_tables.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+```
+./step2_generate_detec_tables.py 2019vxm o gaussian --sigma_kerns 1.0 1.31607 1.73205 2.27951 3.0 --num_controls 7 --mjd_ranges "[[57233.5, 57328.5],[57466.5, 57535.5],[57914.5, 58122.5],[58206.5, 58486.5],[58594.5, 58836.5],[58910.5, 59212.5],[59304.5, 59564.5],[59637.5, 59915.5],[60023.5, 60309.5],[60387.5, 60671.5],[60727.5, 60770.5]]" 
+```
+**WIP**
+
+### `step3_calculate_efficiencies.py`
+
+**WIP**
+
+#### Arguments
+**WIP**
+
+#### Example commands
+```
+./step3_calculate_efficiencies.py 2019vxm o gaussian --sigma_kerns 1.0 1.31607 1.73205 2.27951 3.0 --num_controls 7 --mjd_ranges "[[57233.5, 57328.5],[57466.5, 57535.5],[57914.5, 58122.5],[58206.5, 58486.5],[58594.5, 58836.5],[58910.5, 59212.5],[59304.5, 59564.5],[59637.5, 59915.5],[60023.5, 60309.5],[60387.5, 60671.5],[60727.5, 60770.5]]"
+```
 **WIP**
 
 ## Jupyter Notebooks

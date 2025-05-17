@@ -1177,6 +1177,7 @@ if __name__ == "__main__":
         mjdbinsize=float(args.mjd_bin_size),
         filt=args.filter,
         mjd_ranges=args.mjd_ranges,
+        skip_control_ix=args.skip_control_ix,
         flag=hexstring_to_int(config["averaging"]["flag"]),
     )
     if args.mjd_ranges is not None:
