@@ -1,10 +1,11 @@
 {
   "gaussian": {
     "time_parameter_name": "peak_mjd",
+    "brightness_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
-        "type": "list",
+        "type": "range",
         "list": [23.0, 22.63, 22.26, 21.89, 21.53, 21.16, 20.79, 20.42, 20.05, 19.68, 19.32, 18.95, 18.58, 18.21, 17.84, 17.47, 17.11, 16.74, 16.37, 16.0], 
         "range": {
           "minval": 16.0,
@@ -16,13 +17,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -39,13 +40,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -53,17 +54,12 @@
         "type": "random_inrange",
         "random_inrange": {
           "valid_ranges": [
-            [57302,57507],
-            [57701,57886],
-            [58021,58261],
-            [58415,58628], 
-            [58733,58986], 
-            [59094,59346], 
-            [59485,59729],
-            [59836,60072], 
-            [60195,60401]
+            [58765.9375, 58775.1875],
+            [58777.1875, 58786.6875],
+            [58792.0625, 58801.4375],
+            [58804.0625, 58814.5625]
           ],
-          "n": 500
+          "n": 10
         }
       }
     }
@@ -71,6 +67,7 @@
 
   "asymmetric_gaussian": {
     "time_parameter_name": "peak_mjd",
+    "brightness_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
@@ -86,13 +83,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -109,13 +106,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -132,13 +129,13 @@
           "maxval": 200,
           "base": 10,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         },
         "random": {
           "minval": 5,
           "maxval": 200,
           "n": 7,
-          "to_int": true
+          "n_digits": 5
         }
       },
 
@@ -146,15 +143,10 @@
         "type": "random_inrange",
         "random_inrange": {
           "valid_ranges": [
-            [57302,57507],
-            [57701,57886],
-            [58021,58261],
-            [58415,58628], 
-            [58733,58986], 
-            [59094,59346], 
-            [59485,59729],
-            [59836,60072], 
-            [60195,60401]
+            [58765.9375, 58775.1875],
+            [58777.1875, 58786.6875],
+            [58792.0625, 58801.4375],
+            [58804.0625, 58814.5625]
           ],
           "n": 500
         }
@@ -168,10 +160,11 @@
     "flux_column_name": false,
     "filename": "./extern/eruption_m3e-07.dat",
     "time_parameter_name": "peak_mjd",
+    "brightness_parameter_name": "peak_appmag",
 
     "parameters": {
       "peak_appmag": {
-        "type": "list",
+        "type": "range",
         "list": [23.0, 22.63, 22.26, 21.89, 21.53, 21.16, 20.79, 20.42, 20.05, 19.68, 19.32, 18.95, 18.58, 18.21, 17.84, 17.47, 17.11, 16.74, 16.37, 16.0], 
         "range": {
           "minval": 16.0,
@@ -183,13 +176,13 @@
           "maxval": 23.0,
           "base": 10,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         },
         "random": {
           "minval": 16.0,
           "maxval": 23.0,
           "n": 20,
-          "to_int": false
+          "n_digits": 2
         }
       },
 
@@ -197,69 +190,18 @@
         "type": "random_inrange",
         "random_inrange": {
           "valid_ranges": [
-            [57302,57507],
-            [57701,57886],
-            [58021,58261],
-            [58415,58628], 
-            [58733,58986], 
-            [59094,59346], 
-            [59485,59729],
-            [59836,60072], 
-            [60195,60401]
+            [58765.9375, 58775.1875],
+            [58777.1875, 58786.6875],
+            [58792.0625, 58801.4375],
+            [58804.0625, 58814.5625]
           ],
           "n": 500
         }
-      }
-    }
-  }, 
+      },
 
-  "qinan_model": {
-    "mjd_column_name": "MJD",
-    "mag_column_name": "m",
-    "flux_column_name": "uJy",
-    "filename": "",
-    "time_parameter_name": "peak_mjd",
-
-    "parameters": {
-      "peak_appmag": {
+      "sigma_sim": {
         "type": "list",
-        "list": [23.0, 22.63, 22.26, 21.89, 21.53, 21.16, 20.79, 20.42, 20.05, 19.68, 19.32, 18.95, 18.58, 18.21, 17.84, 17.47, 17.11, 16.74, 16.37, 16.0], 
-        "range": {
-          "minval": 16.0,
-          "maxval": 23.0,
-          "step": 0.5
-        },
-        "logrange": {
-          "minval": 16.0,
-          "maxval": 23.0,
-          "base": 10,
-          "n": 20,
-          "to_int": false
-        },
-        "random": {
-          "minval": 16.0,
-          "maxval": 23.0,
-          "n": 20,
-          "to_int": false
-        }
-      },
-
-      "peak_mjd": {
-        "type": "random_inrange",
-        "random_inrange": {
-          "valid_ranges": [
-            [57302,57507],
-            [57701,57886],
-            [58021,58261],
-            [58415,58628], 
-            [58733,58986], 
-            [59094,59346], 
-            [59485,59729],
-            [59836,60072], 
-            [60195,60401]
-          ],
-          "n": 500
-        }
+        "list": [2.8]
       }
     }
   }

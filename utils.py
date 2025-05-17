@@ -75,6 +75,21 @@ def print_progress_bar(
         print()
 
 
+def apparent_to_absolute_mag(values, distance_modulus=29.04, precision=2):
+    """
+    Convert a list of apparent magnitude values to absolute magnitude values.
+
+    Parameters:
+    - values: list or array of apparent magnitude values
+    - distance_modulus: float, the distance modulus (default 29.04)
+    - precision: int, number of decimal places to round to
+
+    Returns:
+    - list of converted absolute magnitude values (as floats)
+    """
+    return [round(v - distance_modulus, precision) for v in values]
+
+
 # load a JSON config file
 def load_json_config(filename: str):
     try:
@@ -83,6 +98,19 @@ def load_json_config(filename: str):
             return json.load(cfg)
     except Exception as e:
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
+
+
+def new_row(t: pd.DataFrame, d: Dict = None):
+    if d is None:
+        d = {}
+
+    new_row_df = pd.DataFrame([d])
+    if t is None or t.empty:
+        t = new_row_df
+    else:
+        new_row_df = new_row_df.reindex(columns=t.columns)
+        t = pd.concat([t, new_row_df], axis=0, ignore_index=True)
+    return t
 
 
 def abbreviate_list(l: List, max_length: int = 30, abbrev_length: int = 10) -> str:
@@ -127,8 +155,21 @@ def parse_comma_separated_string(string: str | None):
 
 
 def make_dir_if_not_exists(directory):
+    """
+    Creates a directory if it does not exist. Handles permission errors and other exceptions.
+
+    :param directory: Path to the directory to create.
+    """
     if not os.path.isdir(directory):
-        os.makedirs(directory)
+        try:
+            os.makedirs(directory)
+        except PermissionError:
+            print(f"Permission denied: Cannot create directory at {directory}")
+        except FileExistsError:
+            # This can occur if the directory is created between the `isdir` check and `makedirs` call.
+            print(f"Directory already exists: {directory}")
+        except Exception as e:
+            print(f"An error occurred while creating directory {directory}: {str(e)}")
 
 
 # load a .ini config file
@@ -143,31 +184,42 @@ def load_config(filename):
 
 
 def extract_from_subdir(
-    subdir: str,
+    directory: str,
     pattern: re.Pattern,
-    group_name: str,
+    group_name: str | int,
     convert_function: Callable = lambda x: x,
 ):
-    if not os.path.isdir(subdir):
-        raise RuntimeError(f"Cannot search because the path does not exist: {subdir}")
+    if not os.path.isdir(directory):
+        print(f"WARNING: Cannot search because the path does not exist: {directory}")
+        return []
 
     extracted_values = set()
 
-    for file in os.listdir(subdir):
+    for file in os.listdir(directory):
         match = pattern.match(file)
         if match:
             value = match.group(group_name)
             extracted_values.add(convert_function(value))
 
     if not extracted_values:
-        raise RuntimeError(f"Could not find {group_name} from the files in {subdir}")
+        raise RuntimeError(f"Could not find {group_name} from the files in {directory}")
 
     return extracted_values
 
 
+def has_match(directory: str, pattern: re.Pattern):
+    if not os.path.isdir(directory):
+        return False
+
+    for file in os.listdir(directory):
+        if pattern.match(file):
+            return True
+    return False
+
+
 def find_all_filts(directory: str, tnsname: str):
     pattern = re.compile(
-        rf"^{re.escape(tnsname)}"  # starts with tnsname
+        rf"^{re.escape(tnsname)}"  # tnsname
         r"(?:_i\d{3})?"  # optional control index
         r"\.(?P<filt>\w+)"  # filter (captured)
         r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
@@ -178,13 +230,262 @@ def find_all_filts(directory: str, tnsname: str):
     return extract_from_subdir(subdir, pattern, "filt")
 
 
-def find_all_control_indices(directory: str, tnsname: str):
+def find_all_control_indices(directory: str, tnsname: str, filt=None):
+    if filt is None:
+        filt_pattern = r".*"
+    else:
+        filt_pattern = re.escape(filt)
+
     pattern = re.compile(
         rf"^{re.escape(tnsname)}_i(?P<index>\d{{3}})"  # captures control index
-        r"\..*\.lc\.txt$"  # ensures it follows the general pattern
+        rf"\.{filt_pattern}"  # match specific filt if provided
+        r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+        r"(?:\.clean)?"  # optional 'clean'
+        r"\.lc\.txt$"  # ends with '.lc.txt'
     )
     subdir = os.path.join(directory, tnsname, "controls")
     return extract_from_subdir(subdir, pattern, "index", convert_function=int)
+
+
+def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
+    pattern = re.compile(
+        rf"^{re.escape(tnsname)}"  # tnsname
+        r"\.[^\.]+"  # filter
+        r"(?:\.clean)?"  # optional '.clean'
+        r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
+        r"\.lc\.txt$"  # ends with '.lc.txt'
+    )
+    subdir = os.path.join(directory, tnsname)
+    return has_match(subdir, pattern)
+
+
+def validate_fom_limits(
+    fom_limits: (
+        List[float] | List[List[float]] | Dict[float, float] | Dict[float, List[float]]
+    ),
+    sigma_kerns: List[float],
+) -> Dict[float, List[float]]:
+    """
+    Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
+
+    WARNING: If passing fom_limits as a list, both fom_limits and sigma_kerns must be sorted.
+
+    :param fom_limits: FOM limits as a list or dictionary.
+
+        Supports:
+
+        - List[float]: one FOM limit per sigma_kern
+        - List[List[float]]: multiple FOM limits per sigma_kern
+        - Dict[float, float]: one FOM limit per sigma_kern
+        - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
+
+    :param sigma_kerns: Kernel sizes corresponding to the FOM limits.
+    """
+    # List[float] or List[List[float]]
+    if isinstance(fom_limits, list):
+        if not fom_limits:
+            raise RuntimeError("No FOM limits provided")
+
+        if sigma_kerns and len(fom_limits) != len(sigma_kerns):
+            raise RuntimeError(
+                "Each entry in sigma_kerns must have a matching entry in fom_limits"
+            )
+
+        # List[float]
+        if all(isinstance(x, (int, float)) for x in fom_limits):
+            # wrap each float in a list
+            return dict(zip(sigma_kerns, [[x] for x in fom_limits]))
+
+        # List[List[float]]
+        elif all(isinstance(x, list) for x in fom_limits):
+            return dict(zip(sigma_kerns, fom_limits))
+
+        else:
+            raise TypeError("fom_limits list must contain sublists or numbers")
+
+    # Dict[float, float] or Dict[float, List[float]]
+    elif isinstance(fom_limits, dict):
+        if set(fom_limits.keys()) != set(sigma_kerns):
+            raise RuntimeError("FOM limits dict keys must exactly match sigma_kerns")
+
+        # wrap float values in lists if needed
+        return {
+            k: [v] if isinstance(v, (int, float)) else v for k, v in fom_limits.items()
+        }
+
+    else:
+        raise TypeError(
+            "fom_limits must be a list of lists/floats or a dict of lists/floats"
+        )
+
+
+def validate_mjd_ranges(ranges: List[List[int]], var_name: str = "MJD_RANGES") -> None:
+    """
+    Validates that a list of MJD ranges is properly formatted.
+    """
+    if not isinstance(ranges, list):
+        raise TypeError(f"{var_name} must be a list, got {type(ranges).__name__}")
+
+    for i, r in enumerate(ranges):
+        if not (isinstance(r, list) and len(r) == 2):
+            raise TypeError(f"{var_name}[{i}] must be a 2-element list, got: {r}")
+        if not all(isinstance(x, (int, float, np.integer, np.floating)) for x in r):
+            raise TypeError(f"{var_name}[{i}] must contain only integers, got: {r}")
+        if r[0] > r[1]:
+            raise ValueError(f"{var_name}[{i}] has start > end: {r}")
+
+
+def _merge_ranges(ranges: List[List[float]]) -> List[List[float]]:
+    """
+    Merges a list of [start, end] MJD ranges that may overlap or be adjacent.
+    """
+    if not ranges:
+        return []
+
+    ranges.sort()
+    merged = [ranges[0]]
+
+    for start, end in ranges[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+
+    return merged
+
+
+def _expand_ranges(
+    ranges: List[List[float]],
+    min_mjd: int,
+    max_mjd: int,
+    expand_edges: Optional[float] = 0.0,
+):
+    if expand_edges == 0.0 or expand_edges is None:
+        return ranges
+
+    print(f"Expanding range edges by {expand_edges}...")
+
+    expanded = []
+    for start, end in ranges:
+        new_start = max(min_mjd, start - expand_edges)
+        new_end = min(max_mjd, end + expand_edges)
+        expanded.append([new_start, new_end])
+    if not expanded:
+        return []
+
+    # merge overlapping or adjacent ranges
+    return _merge_ranges(expanded)
+
+
+def get_inverse_mjd_ranges(
+    mjd_ranges: List[List[float]],
+    min_mjd: int,
+    max_mjd: int,
+    expand_edges: Optional[float] = 0.0,
+    exclude_mjd_ranges: Optional[List[List[float]]] = None,
+) -> List[List[float]]:
+    if expand_edges < 0:
+        raise ValueError(
+            f"Cannot expand edges of the inverse ranges by a negative amount {expand_edges}"
+        )
+    if len(mjd_ranges) < 1:
+        return [[min_mjd, max_mjd]]
+        # raise RuntimeError("MJD ranges must contain at least one range")
+
+    validate_mjd_ranges(mjd_ranges)
+
+    mjd_ranges = sorted(mjd_ranges)
+    mjd_ranges[0][0] = max(min_mjd, mjd_ranges[0][0])
+    mjd_ranges[-1][-1] = min(max_mjd, mjd_ranges[-1][-1])
+
+    inverse = []
+    cur = min_mjd
+    for start, end in mjd_ranges:
+        if start > cur:
+            inverse.append([cur, start])
+        cur = max(cur, end)
+
+    # check if there's a gap at the end
+    if cur < max_mjd:
+        inverse.append([cur, max_mjd])
+
+    # merge exclude_mjd_ranges with the inverse list
+    if exclude_mjd_ranges is not None:
+        validate_mjd_ranges(exclude_mjd_ranges, var_name="EXCLUDE_MJD_RANGES")
+        print(f"Excluding additional MJD ranges {exclude_mjd_ranges}...")
+        if len(exclude_mjd_ranges) > 0:
+            combined = inverse + exclude_mjd_ranges
+            inverse = _merge_ranges(combined)
+
+    return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
+
+
+class PlotLimits:
+    def __init__(self, xlower=None, xupper=None, ylower=None, yupper=None):
+        self.xlower = xlower
+        self.xupper = xupper
+        self.ylower = ylower
+        self.yupper = yupper
+
+    def set_lims(
+        self,
+        xlims: Optional[Tuple[float, float]] = None,
+        ylims: Optional[Tuple[float, float]] = None,
+    ):
+        if xlims is not None:
+            self.set_xlims(xlims)
+        if ylims is not None:
+            self.set_ylims(ylims)
+
+    def set_xlims(self, xlims: Tuple[float, float]):
+        if len(xlims) != 2:
+            raise ValueError(f"xlims must be a tuple of length 2, got {len(xlims)}")
+
+        if xlims[0] is not None and xlims[1] is not None and xlims[0] >= xlims[1]:
+            raise ValueError(
+                f"xlims lower limit {xlims[0]} must be less than upper limit {xlims[1]}"
+            )
+
+        if xlims[0] is not None:
+            self.xlower = xlims[0]
+        if xlims[1] is not None:
+            self.xupper = xlims[1]
+
+    def set_ylims(self, ylims: Tuple[float, float]):
+        if len(ylims) != 2:
+            raise ValueError(f"ylims must be a tuple of length 2, got {len(ylims)}")
+
+        if ylims[0] is not None and ylims[1] is not None and ylims[0] >= ylims[1]:
+            raise ValueError(
+                f"ylims lower limit {ylims[0]} must be less than upper limit {ylims[1]}"
+            )
+
+        if ylims[0] is not None:
+            self.ylower = ylims[0]
+        if ylims[1] is not None:
+            self.yupper = ylims[1]
+
+    def get_xlims(self):
+        if self.xlower is None and self.xupper is None:
+            return None
+        return self.xlower, self.xupper
+
+    def get_ylims(self):
+        if self.ylower is None and self.yupper is None:
+            return None
+        return self.ylower, self.yupper
+
+    def is_empty(self):
+        return (
+            self.xlower is None
+            and self.xupper is None
+            and self.ylower is None
+            and self.yupper is None
+        )
+
+    def __str__(self):
+        return f"Plot limits: x-axis [{self.xlower}, {self.xupper}], y-axis [{self.ylower}, {self.yupper}]"
 
 
 class PresetColumnNames:
@@ -481,7 +782,7 @@ class SnInfoTable:
 
         try:
             print(f"Loading SN info table at {self.filename}...")
-            self.t = pd.read_table(self.filename, delim_whitespace=True)
+            self.t = pd.read_table(self.filename, sep="\s+")
             if not "tnsname" in self.t.columns:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
@@ -576,7 +877,7 @@ class SnInfoTable:
                 dec = f"{coords.dec.angle.degree:0.14f}"
 
         row = {"tnsname": tnsname, "ra": ra, "dec": dec, "mjd0": mjd0}
-        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+        self.t = new_row(self.t, row)
 
     def update_row(
         self, tnsname, coords: Coordinates = None, mjd0: float = None, overwrite=False
@@ -609,6 +910,16 @@ class SnInfoTable:
         return self.t.to_string()
 
 
+def format_float(value: int | float):
+    """
+    Format with up to 5 decimals, strip trailing zeros, then ensure at least 1 decimal
+    """
+    formatted = f"{value:.5f}".rstrip("0").rstrip(".")
+    if "." not in formatted:
+        formatted += ".0"
+    return formatted
+
+
 def get_filename(
     directory, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
 ):
@@ -625,7 +936,7 @@ def get_filename(
     filename += f".{filt}"
 
     if mjdbinsize:
-        filename += f".{mjdbinsize:0.2f}days"
+        filename += f".{format_float(mjdbinsize)}days"
 
     if cleaned:
         filename += f".clean"
@@ -823,6 +1134,42 @@ def hexstring_to_int(hexstring):
 
 def combine_flags(flags: List[int]) -> int:
     return reduce(lambda x, y: x | y, flags, 0)
+
+
+def get_config_custom_cuts(config: ConfigParser) -> List:
+    print("\nSearching config file for custom cuts...")
+
+    required_keys = {"column", "flag", "max_value", "min_value"}
+    custom_cuts = []
+
+    for key in config:
+        if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
+            if not required_keys.issubset(config[key].keys()):
+                print(
+                    f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys}); skipping..."
+                )
+            else:
+                custom_cuts.append(config[key])
+
+    print(f"Found {len(custom_cuts)}")
+    return custom_cuts
+
+
+def get_config_flags(config: ConfigParser) -> List[int]:
+    # get main flags for Uncertainty Cut, Chi-Square Cut, Control Light Curve Cut, and Bad Day Cut
+    flags = [
+        hexstring_to_int(config["uncert_cut"]["flag"]),
+        hexstring_to_int(config["x2_cut"]["flag"]),
+        hexstring_to_int(config["controls_cut"]["bad_flag"]),
+        hexstring_to_int(config["averaging"]["flag"]),
+    ]
+
+    # add custom cuts flags to flags list
+    custom_cuts = get_config_custom_cuts(config)
+    for cut in custom_cuts:
+        flags.append(hexstring_to_int(cut["flag"]))
+
+    return combine_flags(flags)
 
 
 class Cut(ABC):
@@ -1028,7 +1375,9 @@ class CutList:
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
-            raise RuntimeError(f"cut by the name {cut.name()} already exists.")
+            print(
+                f"WARNING: cut by the name {cut.name()} already exists; overwriting..."
+            )
         self.list[cut.name()] = cut
 
     def get(self, name: str):

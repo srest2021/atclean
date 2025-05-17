@@ -113,7 +113,7 @@ class PlotLoop:
         # plot original SN light curve and control light curves
         self.p.plot_SN(
             self.sn,
-            self.p.get_lims(lc=self.sn.lcs[0], custom_lims=custom_lims),
+            custom_lims=custom_lims,
             plot_controls=True,
             plot_template_changes=True,
         )
@@ -122,107 +122,68 @@ class PlotLoop:
         if not uncert_cut is None:
             # plot uncertainty cut
             self.p.plot_cut(
-                self.sn.lcs[0],
+                self.sn,
                 uncert_cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(uncert_cut.flag),
-                    custom_lims=custom_lims,
-                ),
-                title="Uncertainty cut",
+                custom_lims=custom_lims,
+                title=UncertaintyCut.name(),
             )
 
         if plot_uncert_est:
             # plot true uncertainties estimation
-            self.p.plot_uncert_est(
-                self.sn.lcs[0],
-                self.sn.tnsname,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=(
-                        self.sn.lcs[0].get_good_indices(uncert_cut.flag)
-                        if not uncert_cut is None
-                        else None
-                    ),
-                    custom_lims=custom_lims,
-                ),
-            )
+            self.p.plot_uncert_est(self.sn)
 
         x2_cut = self.cut_list.get(ChiSquareCut.name())
         if not x2_cut is None:
             # plot chi-square cut
             self.p.plot_cut(
-                self.sn.lcs[0],
-                x2_cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(x2_cut.flag),
-                    custom_lims=custom_lims,
-                ),
-                title="Chi-square cut",
+                self.sn, x2_cut.flag, custom_lims=custom_lims, title=ChiSquareCut.name()
             )
 
         controls_cut = self.cut_list.get(ControlLightCurveCut.name())
         if not controls_cut is None:
             # plot control light curve cut
             self.p.plot_cut(
-                self.sn.lcs[0],
+                self.sn,
                 controls_cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(controls_cut.flag),
-                    custom_lims=custom_lims,
-                ),
-                title="Control light curve cut",
+                custom_lims=custom_lims,
+                title=ControlLightCurveCut.name(),
             )
 
         custom_cuts = self.cut_list.get_custom_cuts()
         for cut in custom_cuts.values():
             # plot custom cut
             self.p.plot_cut(
-                self.sn.lcs[0],
-                cut.flag,
-                self.p.get_lims(
-                    lc=self.sn.lcs[0],
-                    indices=self.sn.lcs[0].get_good_indices(cut.flag),
-                    custom_lims=custom_lims,
-                ),
-                title=cut.name(),
+                self.sn, cut.flag, custom_lims=custom_lims, title=cut.name()
             )
 
         # plot cleaned light curve using all previous cuts
         previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
-        lims = self.p.get_lims(
-            lc=self.sn.lcs[0],
-            indices=self.sn.lcs[0].get_good_indices(previous_flags),
-            custom_lims=custom_lims,
+        self.p.plot_cut(
+            self.sn, previous_flags, custom_lims=custom_lims, title="All previous cuts"
         )
-        self.p.plot_cut(self.sn.lcs[0], previous_flags, lims, title="All previous cuts")
         self.p.plot_cleaned_SN(
-            self.sn, previous_flags, lims, plot_controls=True, plot_flagged=False
+            self.sn,
+            previous_flags,
+            custom_lims=custom_lims,
+            plot_controls=True,
+            plot_flagged=False,
         )
 
         badday_cut = self.cut_list.get(BadDayCut.name())
         if not badday_cut is None:
-            lims = self.p.get_lims(
-                lc=self.avg_sn.avg_lcs[0],
-                indices=self.avg_sn.avg_lcs[0].get_good_indices(badday_cut.flag),
-                custom_lims=custom_lims,
-            )
-
             # plot bad day cut
             self.p.plot_cut(
-                self.avg_sn.avg_lcs[0],
+                self.avg_sn,
                 badday_cut.flag,
-                lims,
-                title="Bad day cut",
+                custom_lims=custom_lims,
+                title=BadDayCut.name(),
             )
 
             # plot averaged light curves
             self.p.plot_averaged_SN(
                 self.avg_sn,
                 badday_cut.flag,
-                lims,
+                custom_lims=custom_lims,
                 plot_controls=True,
                 plot_flagged=False,
             )
@@ -414,7 +375,7 @@ if __name__ == "__main__":
         raise RuntimeError(
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
-    print(f"\nLoading {args.preset} preset column names from config.ini...")
+    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
     colnames = PresetColumnNames(config, args.preset)
     print(colnames.__str__())
     print("Success")

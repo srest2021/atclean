@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 """
-@author: Sofia Rest
-
 Zip all converted/download/cleaned light curves of one or more SNe into a single file or multiple files.
+@author: Sofia Rest
 """
 
 import argparse

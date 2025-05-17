@@ -244,7 +244,7 @@ class pdastroclass:
             if verbose:
                 print("Loading %s" % filename)
             self.t = pd.read_table(
-                filename, delim_whitespace=delim_whitespace, **kwargs
+                filename, sep="\s+" if delim_whitespace else None, **kwargs
             )
             self.filename = filename
         except Exception as e:
@@ -716,8 +716,17 @@ class pdastroclass:
         return ix_sorted
 
     def newrow(self, dicti=None):
-        # self.t = self.t.append(dicti,ignore_index=True)
-        self.t = pd.concat([self.t, pd.DataFrame([dicti])], axis=0, ignore_index=True)
+        if dicti is None:
+            dicti = {}
+
+        new_row_df = pd.DataFrame([dicti])
+        if self.t.empty:
+            self.t = new_row_df
+        else:
+            # Align columns with self.t to avoid dtype mismatch or missing columns
+            new_row_df = new_row_df.reindex(columns=self.t.columns)
+            self.t = pd.concat([self.t, new_row_df], axis=0, ignore_index=True)
+
         return self.t.index.values[-1]
 
     def add2row(self, index, dicti):

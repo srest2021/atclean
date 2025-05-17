@@ -12,7 +12,7 @@ Outputs:
 - if using TNS credentials, new or updated .txt table with TNS names, RA, Dec, and MJD0
 """
 
-from typing import Dict, Type
+from typing import Dict, Optional, Type
 import os, sys, requests, argparse, configparser, math
 import pandas as pd
 import numpy as np
@@ -25,8 +25,11 @@ from utils import (
     Credentials,
     PresetColumnNames,
     SnInfoTable,
+    find_all_control_indices,
+    is_sn_in_subdir,
     load_config,
     make_dir_if_not_exists,
+    new_row,
     parse_comma_separated_string,
 )
 
@@ -55,7 +58,7 @@ class ControlCoordinatesTable:
     def read(self, filename: str):
         try:
             print(f"Loading control coordinates table at {filename}...")
-            self.t = pd.read_table(filename, delim_whitespace=True)
+            self.t = pd.read_table(filename, sep="\s+")
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
                     'Control coordinates table must have "ra" and "dec" columns.'
@@ -126,7 +129,7 @@ class ControlCoordinatesTable:
             for filt in filt_lens:
                 row[f"n_detec_{filt}"] = filt_lens[filt]
 
-        self.t = pd.concat([self.t, pd.DataFrame([row])], ignore_index=True)
+        self.t = new_row(self.t, row)
 
     def get_distance(self, coord1: Coordinates, coord2: Coordinates) -> Angle:
         c1 = SkyCoord(coord1.ra.angle, coord1.dec.angle, frame="fk5")
@@ -231,23 +234,43 @@ class ControlCoordinatesTable:
         with pd.option_context("display.float_format", "{:,.8f}".format):
             print("Control light curve coordinates generated: \n", self.t.to_string())
 
-    def save(self, directory, filename=None, tnsname=None):
+    def get_filename(self, directory, tnsname):
+        return f"{directory}/{tnsname}/{tnsname}_control_coords.txt"
+
+    def load(self, directory: str, tnsname: str):
+        filename = self.get_filename(directory, tnsname)
+        try:
+            print(f"Loading control coordinates table at {filename}...")
+            self.t = pd.read_table(filename, sep="\s+")
+            if not "ra" in self.t.columns or not "dec" in self.t.columns:
+                raise RuntimeError(
+                    'Control coordinates table must have "ra" and "dec" columns.'
+                )
+            print("Success")
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not load control coordinates table at {filename}: {str(e)}"
+            )
+
+    def save(
+        self,
+        directory: str,
+        filename: Optional[str] = None,
+        tnsname: Optional[str] = None,
+        overwrite: bool = False,
+    ):
         if filename is None:
             if tnsname is None:
                 raise RuntimeError(
                     "Please provide either a filename or a TNS name to save the control coordinates table."
                 )
-            filename = f"{directory}/{tnsname}/{tnsname}_control_coords.txt"
+            filename = self.get_filename(directory, tnsname)
         else:
             filename = f"{directory}/{tnsname}/{filename}"
 
         print(f"Saving control coordinates table at {filename}...")
-        self.t.to_string(filename, index=False)
-
-
-"""
-DOWNLOADING ATLAS LIGHT CURVES
-"""
+        if overwrite or not os.path.exists(filename):
+            self.t.to_string(filename, index=False)
 
 
 # define command line arguments
@@ -502,34 +525,49 @@ class DownloadLoop:
             )
             return
 
-        # download SN light curves
-        self.lcs[0].download(
-            headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
-        )
-        self.lcs[0].save(colnames, self.input_dir, tnsname, overwrite=args.overwrite)
+        if not args.overwrite and is_sn_in_subdir(self.input_dir, tnsname):
+            print(
+                f"Overwrite set to {args.overwrite} and SN light curve already exists; skipping..."
+            )
+            self.ctrl_coords.load(self.input_dir, tnsname)
+        else:
+            # download SN light curve
+            self.lcs[0].download(
+                headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd
+            )
+            self.lcs[0].save(colnames, self.input_dir, tnsname, overwrite=True)
+
+            if args.controls and not args.ctrl_coords:
+                # construct control coordinates table
+                if args.closebright:
+                    # TODO: option to parse from SN info table
+                    parsed_ra, parsed_dec = self.parse_arg_coords(args.closebright)
+                    center_coords = Coordinates(parsed_ra, parsed_dec)
+                    self.ctrl_coords.construct(
+                        self.lcs[0], tnsname, center_coords, closebright=True
+                    )
+                else:
+                    self.ctrl_coords.construct(
+                        self.lcs[0], tnsname, self.lcs[0].coords, closebright=False
+                    )
 
         # save SN info table
         self.sninfo.save()
 
-        if args.controls and not args.ctrl_coords:
-            # construct control coordinates table
-            if args.closebright:
-                # TODO: option to parse from SN info table
-                parsed_ra, parsed_dec = self.parse_arg_coords(args.closebright)
-                center_coords = Coordinates(parsed_ra, parsed_dec)
-                self.ctrl_coords.construct(
-                    self.lcs[0], tnsname, center_coords, closebright=True
-                )
-            else:
-                self.ctrl_coords.construct(
-                    self.lcs[0], tnsname, self.lcs[0].coords, closebright=False
-                )
-
         if args.controls:
+            existing_control_indices = find_all_control_indices(self.input_dir, tnsname)
+
             # download control light curves
             for i in range(1, len(self.ctrl_coords.t)):
                 control_index = self.ctrl_coords.t.loc[i, "control_index"]
                 print(f"\nControl light curve {control_index}")
+
+                if not args.overwrite and control_index in existing_control_indices:
+                    print(
+                        f"Overwrite set to {args.overwrite} and light curve already exists; skipping..."
+                    )
+                    continue
+
                 self.lcs[control_index] = FullLightCurve(
                     control_index,
                     self.ctrl_coords.t.loc[i, "ra"],
