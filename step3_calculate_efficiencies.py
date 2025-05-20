@@ -2,13 +2,14 @@
 
 from abc import ABC
 import argparse
+import bisect
 from collections import defaultdict
 from configparser import ConfigParser
 from copy import deepcopy
 import itertools
 import re
 import sys
-from typing import Any, Dict, List, Optional, Self
+from typing import Any, DefaultDict, Dict, List, Optional, Self
 import numpy as np
 import pandas as pd
 from scipy import interpolate
@@ -33,18 +34,17 @@ from step2_generate_detec_tables import (
     mjd_range_type,
 )
 from utils import (
+    FomLimits,
     AandB,
     PresetColumnNames,
     SnInfoTable,
-    format_float,
+    format_float_string,
     get_allowed_presets,
     hexstring_to_int,
     load_config,
-    load_json_config,
     make_dir_if_not_exists,
     new_row,
     print_progress_bar,
-    validate_fom_limits,
 )
 
 
@@ -84,9 +84,8 @@ class ContaminationTable:
     def construct_prelim_t(
         self,
         sn: SimDetecSupernova,
-        # mjd_ranges: List[List[float]],
         sigma_kerns: List[float],
-        fom_limits: Dict[int, List[float]],
+        fom_limits: FomLimits,
     ):
         print(
             "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limit ranges..."
@@ -101,7 +100,7 @@ class ContaminationTable:
         try:
             self.t = pd.DataFrame()
             for sigma_kern in sigma_kerns:
-                for fom_limit in fom_limits[sigma_kern]:
+                for fom_limit in fom_limits.get_multi(sigma_kern):
                     row = self.calculate_row(sn, sigma_kern, fom_limit)
                     self.t = new_row(self.t, row)
 
@@ -121,16 +120,18 @@ class ContaminationTable:
                 f"Could not construct preliminary contamination table: {str(e)}"
             )
 
-    def get_initial_limits(
-        self, index: int, prelim_fom_limit_ranges: Dict[int, List[float]]
-    ):
-        sigma_kern = self.t.loc[index, "sigma_kern"]
-        lower_limit = round(self.t.loc[index, "fom_limit"], 2)
-        upper_limit = round(self.t.loc[index + 1, "fom_limit"], 2)
+    def get_initial_limits(self, index: int, prelim_fom_limit_ranges: FomLimits):
+        if self.t is None or self.t.empty:
+            raise RuntimeError("Table (self.t) cannot be None or empty")
 
-        assert (
-            lower_limit == prelim_fom_limit_ranges[sigma_kern][0]
-            and upper_limit == prelim_fom_limit_ranges[sigma_kern][1]
+        sigma_kern = self.t.at[index, "sigma_kern"]
+        lower_limit = round(self.t.at[index, "fom_limit"], 2)
+        upper_limit = round(self.t.at[index + 1, "fom_limit"], 2)
+
+        assert lower_limit == prelim_fom_limit_ranges.get(
+            sigma_kern, index=0
+        ) and upper_limit == prelim_fom_limit_ranges.get(
+            sigma_kern, index=-1
         ), "Mismatch in preliminary FOM limits"
 
         return sigma_kern, lower_limit, upper_limit
@@ -138,13 +139,13 @@ class ContaminationTable:
     def calculate(
         self,
         sn: SimDetecSupernova,
-        prelim_fom_limit_ranges: Dict[int, List[float]],
+        prelim_fom_limit_ranges: FomLimits,
         sigma_kerns: List[float],
         target_value: int = 2,
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
-    ) -> Dict[float, float]:
+    ) -> FomLimits:
         """
         Calculate contamination metrics and refine FOM limits to achieve the target contamination level.
 
@@ -160,11 +161,16 @@ class ContaminationTable:
 
         if sn._mjd_ranges is None:
             raise RuntimeError(
-                "Call sn.set_mjd_ranges() before calling self.calculate()"
+                "Valid MJD ranges cannot be None; call sn.set_mjd_ranges() before calling self.calculate()"
             )
 
         if self.t is None or not self.is_prelim:
             self.construct_prelim_t(sn, sigma_kerns, prelim_fom_limit_ranges)
+        if self.t is None or self.t.empty:
+            raise RuntimeError(
+                "Calculated preliminary contamination table is None or empty--failed"
+            )
+
         if verbose:
             print("Preliminary contamination table: ")
             print(self.t.to_string())
@@ -172,7 +178,7 @@ class ContaminationTable:
         print(
             f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {target_value} positive control light curves..."
         )
-        fom_limits = {}
+        fom_limits = FomLimits()
         i = 0
         while i < len(self.t) - 1:
             sigma_kern, lower_limit, upper_limit = self.get_initial_limits(
@@ -228,11 +234,12 @@ class ContaminationTable:
                 final_row = new_row
 
             self.t.loc[i + 1, :] = final_row
-            fom_limits[sigma_kern] = final_row["fom_limit"]
+            # fom_limits[sigma_kern] = final_row["fom_limit"]
+            fom_limits.add(sigma_kern, final_row["fom_limit"])
             if verbose:
                 print(
                     f"✔ Final FOM limit for sigma_kern={sigma_kern}: "
-                    f"{fom_limits[sigma_kern]:.2f} "
+                    f"{fom_limits.get(sigma_kern):.2f} "
                     f"(Contamination={final_row['n_pos_controls']})"
                 )
                 print("-" * 22)
@@ -248,20 +255,19 @@ class ContaminationTable:
 
         return fom_limits
 
-    def get_fom_limits_from_t(self):
-        if self.t.empty:
-            return {}
+    def get_fom_limits_from_t(
+        self,
+    ) -> FomLimits:
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
 
-        if self.t["sigma_kern"].duplicated().any():
-            fom_limits: Dict[int, List[float]] = defaultdict(list)
-            for i in range(len(self.t)):
-                fom_limits[self.t.loc[i, "sigma_kern"]].append(
-                    self.t.loc[i, "fom_limit"]
-                )
-        else:
-            fom_limits: Dict[int, float] = {}
-            for i in range(len(self.t)):
-                fom_limits[self.t.loc[i, "sigma_kern"]] = self.t.loc[i, "fom_limit"]
+        fom_limits = FomLimits()
+
+        if self.t.empty:
+            return fom_limits
+
+        for i in range(len(self.t)):
+            fom_limits.add(self.t.at[i, "sigma_kern"], self.t.at[i, "fom_limit"])
         return fom_limits
 
     def load(self, detec_tables_dir: str, prelim: bool = False):
@@ -275,12 +281,18 @@ class ContaminationTable:
             )
 
     def save(self, detec_tables_dir: str, prelim: bool = False):
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
+
         make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
         print(f"Saving contamination table as {filename}...")
         self.t.to_string(filename, index=False)
 
     def __str__(self):
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
+
         return self.t.to_string()
 
 
@@ -299,7 +311,7 @@ class EfficiencyTable(pdastrostatsclass):
         """
         pdastrostatsclass.__init__(self, **kwargs)
         self.sigma_kerns: List[float] = sigma_kerns
-        self._fom_limits: Optional[Dict[float, List[float]]] = None
+        self._fom_limits: FomLimits = FomLimits()
         self.params: Params = params
         self.setup()
 
@@ -308,6 +320,14 @@ class EfficiencyTable(pdastrostatsclass):
         Set up the table columns for sigma_kerns, brightnesses, and other known parameter values.
         The time column name will be skipped when constructing columns.
         """
+        if (
+            self.params.brightness_param is None
+            or self.params.brightness_param.values is None
+        ):
+            raise RuntimeError(
+                f"Brightness parameter cannot be None or empty; got:\n{self.params.brightness_param}"
+            )
+
         # make sure brightness sorted for MagnitudeThresholdTable calculations later on
         self.params.brightness_param.values.sort()
 
@@ -330,13 +350,22 @@ class EfficiencyTable(pdastrostatsclass):
     def set_fom_limits(
         self,
         fom_limits: (
-            List[float]
+            FomLimits
+            | List[float]
             | List[List[float]]
             | Dict[float, float]
             | Dict[float, List[float]]
         ),
     ):
-        self._fom_limits = validate_fom_limits(fom_limits, self.sigma_kerns)
+        if isinstance(fom_limits, FomLimits):
+            self._fom_limits = deepcopy(fom_limits)
+        else:
+            self._fom_limits.set(self.sigma_kerns, fom_limits)
+
+    def get_fom_limits(self) -> FomLimits:
+        if self._fom_limits is None:
+            raise RuntimeError("FOM limits cannot be None")
+        return self._fom_limits
 
     def get_params_at_index(self, index: int, skip_time_col: bool = False) -> Dict:
         """
@@ -356,7 +385,7 @@ class EfficiencyTable(pdastrostatsclass):
                 or re.search("^pct_detec_", col)
             )
         ]
-        return dict(self.t.loc[index, colnames])
+        return dict(self.t.at[index, colnames])
 
     def get_possible_values(self, column: str):
         """
@@ -371,12 +400,7 @@ class EfficiencyTable(pdastrostatsclass):
     def calculate_efficiencies(
         self,
         sd: SimDetecTables,
-        fom_limits: (
-            List[float]
-            | List[List[float]]
-            | Dict[float, float]
-            | Dict[float, List[float]]
-        ),
+        fom_limits: FomLimits,
         progress_bar: bool = True,
         **kwargs,
     ):
@@ -390,6 +414,8 @@ class EfficiencyTable(pdastrostatsclass):
         Example usage for columns A, B, C: self.get_efficiencies(sd, fom_limits, A=2, B=[5, 6], C=[[1, 2], [3, 4]])
         """
         self.set_fom_limits(fom_limits)
+        if self._fom_limits is None:
+            raise ValueError(f"Parsing FOM limits failed: {fom_limits}")
 
         l = len(self.t)
         print("Calculating efficiencies...")
@@ -397,24 +423,26 @@ class EfficiencyTable(pdastrostatsclass):
             print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
 
         for i in range(l):
-            sigma_kern = self.t.loc[i, "sigma_kern"]
-            brightness = self.t.loc[i, self.params.brightness_param.name]
+            sigma_kern = self.t.at[i, "sigma_kern"]
+            brightness = self.t.at[i, self.params.brightness_param.name]
 
             if kwargs:
                 params = kwargs
             else:
                 params = self.get_params_at_index(i)
 
-            for fom_limit in self._fom_limits[sigma_kern]:
+            for fom_limit in self._fom_limits.get_multi(sigma_kern):
                 try:
                     efficiency = sd.get_efficiency(
                         sigma_kern, brightness, fom_limit, **params
                     )
                 except Exception as e:
                     raise RuntimeError(
-                        f"Could not calculate efficiency for sigma_kern={format_float(sigma_kern)}, brightness={format_float(brightness)}, fom_limit={format_float(fom_limit)}: {str(e)}"
+                        f"Could not calculate efficiency for sigma_kern={format_float_string(sigma_kern)}, brightness={format_float_string(brightness)}, fom_limit={format_float_string(fom_limit)}: {str(e)}"
                     )
-                self.t.loc[i, f"pct_detec_{format_float(fom_limit)}"] = efficiency
+                self.t.loc[i, f"pct_detec_{format_float_string(fom_limit)}"] = (
+                    efficiency
+                )
 
             if progress_bar:
                 print_progress_bar(
@@ -445,7 +473,7 @@ class EfficiencyTable(pdastrostatsclass):
         if not fom_limits is None:
             for col in self.t.columns:
                 for fom_limit in fom_limits:
-                    if re.search(f"^pct_detec_{format_float(fom_limit)}", col):
+                    if re.search(f"^pct_detec_{format_float_string(fom_limit)}", col):
                         colnames.append(col)
         else:
             for col in self.t.columns:
@@ -466,23 +494,6 @@ class EfficiencyTable(pdastrostatsclass):
             if re.search("^pct_detec_", col):
                 self.t.drop(col, axis=1, inplace=True)
 
-    def _merge_fom_limits(
-        self,
-        other_fom_limits: Dict[float, List[float]],
-    ):
-        if self._fom_limits is None:
-            self._fom_limits = deepcopy(other_fom_limits)
-            return
-
-        for other_key, other_values in other_fom_limits.items():
-            if other_key in self._fom_limits:
-                self._fom_limits[other_key].extend(other_values)
-            else:
-                self._fom_limits[other_key] = list(other_values)
-
-        for key in self._fom_limits:
-            self._fom_limits[key] = sorted(set(self._fom_limits[key]))
-
     def merge_tables(self, other: Self):
         """
         Add table content, sigma_kerns, and fom_limits from another EfficiencyTable.
@@ -496,11 +507,7 @@ class EfficiencyTable(pdastrostatsclass):
             )
 
         self.sigma_kerns = list(sorted(set(self.sigma_kerns + other.sigma_kerns)))
-
-        if other._fom_limits:
-            self._merge_fom_limits(
-                validate_fom_limits(other._fom_limits, other.sigma_kerns)
-            )
+        self._fom_limits.merge(other._fom_limits)
 
         if other.t is not None and not other.t.empty:
             if self.t is not None and not self.t.empty:
@@ -539,12 +546,12 @@ class MagnitudeThresholdTable:
         """
         Initialize a MagnitudeThresholdTable.
         """
-        self.all: pd.DataFrame = None
-        self.best: pd.DataFrame = None
+        self.all: Optional[pd.DataFrame] = None
+        self.best: Optional[pd.DataFrame] = None
 
-        self.sigma_kerns: List[float] = None
-        self.select_param_name: str = None
-        self.percents: List[float] = None
+        self.sigma_kerns: Optional[List[float]] = None
+        self.select_param_name: Optional[str] = None
+        self.percents: Optional[List[float]] = None
 
     def get_limits(self) -> tuple[float, float]:
         """
@@ -556,7 +563,7 @@ class MagnitudeThresholdTable:
         if self.percents is None:
             raise RuntimeError("Percents cannot be None")
 
-        y_cols = [f"mag_threshold_{format_float(p)}" for p in self.percents]
+        y_cols = [f"mag_threshold_{format_float_string(p)}" for p in self.percents]
         y_vals = pd.concat([self.all[col].dropna() for col in y_cols])
 
         if not y_vals.empty:
@@ -581,10 +588,10 @@ class MagnitudeThresholdTable:
         if self.all is None or self.all.empty or self.select_param_name is None:
             raise ValueError("self.all and self.select_param_name must be set")
 
-        mag_threshold_colname = f"mag_threshold_{format_float(percent)}"
+        mag_threshold_colname = f"mag_threshold_{format_float_string(percent)}"
         if mag_threshold_colname not in self.all.columns:
             raise ValueError(
-                f"Column '{mag_threshold_colname}' for {format_float(percent)}% efficiency does not exist"
+                f"Column '{mag_threshold_colname}' for {format_float_string(percent)}% efficiency does not exist"
             )
 
         subset = self.all[self.all["sigma_kern"] == sigma_kern][
@@ -626,7 +633,7 @@ class MagnitudeThresholdTable:
     def _generate_combinations(self, e: EfficiencyTable, select_param_name: str):
         for sigma_kern in e.sigma_kerns:
             for select_param_value in e.get_possible_values(select_param_name):
-                for fom_limit in e._fom_limits[sigma_kern]:
+                for fom_limit in e.get_fom_limits().get_multi(sigma_kern):
                     yield sigma_kern, select_param_value, fom_limit
 
     def _calculate_row(
@@ -650,11 +657,11 @@ class MagnitudeThresholdTable:
             "fom_limit": fom_limit,
         }
         for p in percents:
-            colname = f"mag_threshold_{format_float(p)}"
+            colname = f"mag_threshold_{format_float_string(p)}"
             try:
                 row[colname] = self.get_mag_threshold(
                     subset[brightness_param_name],
-                    subset[f"pct_detec_{format_float(fom_limit)}"],
+                    subset[f"pct_detec_{format_float_string(fom_limit)}"],
                     p,
                 )
             except MultipleRootsFound as ex:
@@ -689,13 +696,17 @@ class MagnitudeThresholdTable:
 
         print("Calculating table of all magnitude thresholds...")
         columns = ["sigma_kern", select_param_name, "fom_limit"] + [
-            f"mag_threshold_{format_float(p)}" for p in percents
+            f"mag_threshold_{format_float_string(p)}" for p in percents
         ]
         self.all = pd.DataFrame(columns=columns)
 
         brightness_param_name = find_prefix_in_list(
             e.t.columns, BRIGHTNESS_PARAM_PREFIX
         )
+        if brightness_param_name is None:
+            raise RuntimeError(
+                f"Cannot find brightness parameter name with prefix {BRIGHTNESS_PARAM_PREFIX} in columns: {e.t.columns}"
+            )
 
         for i, (sigma_kern, select_param_value, fom_limit) in enumerate(
             self._generate_combinations(e, select_param_name)
@@ -723,14 +734,16 @@ class MagnitudeThresholdTable:
         """
         if e.t.empty:
             raise ValueError("EfficiencyTable cannot be empty")
-        if self.all.empty:
-            raise RuntimeError("Table of all magnitude thresholds cannot be empty")
+        if self.all is None or self.all.empty:
+            raise RuntimeError(
+                "Table of all magnitude thresholds cannot be None or empty"
+            )
 
         print("Calculating table of best magnitude thresholds...")
         columns = [select_param_name]
         for p in percents:
-            columns.append(f"best_sigma_kern_{format_float(p)}")
-            columns.append(f"best_mag_threshold_{format_float(p)}")
+            columns.append(f"best_sigma_kern_{format_float_string(p)}")
+            columns.append(f"best_mag_threshold_{format_float_string(p)}")
         self.best = pd.DataFrame(columns=columns)
 
         select_param_values = e.get_possible_values(select_param_name)
@@ -751,23 +764,28 @@ class MagnitudeThresholdTable:
 
                 for j in ix:
                     for p in percents:
-                        m_key = f"mag_threshold_{format_float(p)}"
-                        if self.all.loc[j, m_key] > best_data[p]["mag_threshold"]:
-                            best_data[p]["mag_threshold"] = self.all.loc[j, m_key]
-                            best_data[p]["sigma_kern"] = self.all.loc[j, "sigma_kern"]
+                        m_key = f"mag_threshold_{format_float_string(p)}"
+                        if self.all.at[j, m_key] > best_data[p]["mag_threshold"]:
+                            best_data[p]["mag_threshold"] = self.all.at[j, m_key]
+                            best_data[p]["sigma_kern"] = self.all.at[j, "sigma_kern"]
 
             row = {select_param_name: select_param_value}
             for p in percents:
-                row[f"best_mag_threshold_{format_float(p)}"] = best_data[p][
+                row[f"best_mag_threshold_{format_float_string(p)}"] = best_data[p][
                     "mag_threshold"
                 ]
-                row[f"best_sigma_kern_{format_float(p)}"] = best_data[p]["sigma_kern"]
-            self.best.loc[i] = row
+                row[f"best_sigma_kern_{format_float_string(p)}"] = best_data[p][
+                    "sigma_kern"
+                ]
+            self.best = new_row(self.best, row)
 
         print("Success")
 
     def calculate(
-        self, e: EfficiencyTable, select_param_name: str, percents: List[int] = [50, 80]
+        self,
+        e: EfficiencyTable,
+        select_param_name: str,
+        percents: List[float] = [50, 80],
     ):
         """
         Orchestrates full and best-case magnitude threshold table calculations.
@@ -781,9 +799,13 @@ class MagnitudeThresholdTable:
         self.percents = percents
 
         self._calculate_all(e, select_param_name, percents)
+        if self.all is None:
+            raise RuntimeError("Table of all magnitude thresholds cannot be None")
         print(self.all.to_string(index=False))
 
         self._calculate_best(e, select_param_name, percents)
+        if self.best is None:
+            raise RuntimeError("Table of best magnitude thresholds cannot be None")
         print(self.best.to_string(index=False))
 
     def save(self, detec_tables_dir: str, model_name: str):
@@ -812,12 +834,12 @@ class AnalysisLoop:
         self.model_name = model_name
         self.detec_tables_dir = detec_tables_dir
 
-        self._sn: SimDetecSupernova = None
-        self._tables: SimDetecTables = None
+        self._sn: Optional[SimDetecSupernova] = None
+        self._tables: Optional[SimDetecTables] = None
         self._params = Params()
 
-        self.efficiencies: EfficiencyTable = None
-        self.mag_thresholds: MagnitudeThresholdTable = None
+        self.efficiencies: Optional[EfficiencyTable] = None
+        self.mag_thresholds: Optional[MagnitudeThresholdTable] = None
 
     def _prepare_sn(
         self,
@@ -899,7 +921,7 @@ class AnalysisLoop:
 
     def calculate_best_fom_limits(
         self, target_value: int = 2, n_steps: int = 15
-    ) -> Dict[float, float]:
+    ) -> FomLimits:
         if self._sn is None:
             raise RuntimeError(
                 "Supernova (self._sn) must be set before calculating the best FOM limits"
@@ -1009,7 +1031,7 @@ class AnalysisLoop:
         return self.efficiencies
 
     def calculate_mag_thresholds(
-        self, select_param_name: str, percents: List[int] = [50, 80]
+        self, select_param_name: str, percents: List[float] = [50, 80]
     ) -> MagnitudeThresholdTable:
         if self.efficiencies is None or self.efficiencies.t.empty:
             raise RuntimeError(
@@ -1051,7 +1073,7 @@ class AtlasAnalysisLoop(AnalysisLoop):
         return super().get_brightness_param_from_detec_tables(param_name="peak_appmag")
 
     def calculate_mag_thresholds(
-        self, select_param_name: Optional[str] = "sigma_sim", percents=[50, 80]
+        self, select_param_name: str = "sigma_sim", percents=[50, 80]
     ):
         return super().calculate_mag_thresholds(select_param_name, percents)
 

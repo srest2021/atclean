@@ -31,7 +31,7 @@ from utils import (
     ChiSquareCut,
     PlotLimits,
     apparent_to_absolute_mag,
-    format_float,
+    format_float_string,
 )
 
 # plotting styles
@@ -1145,10 +1145,10 @@ class Plot:
     def plot_fom(
         self,
         sn: SimDetecSupernova,
-        all_fom_dict: Dict[int, pd.Series],
-        sigma_kerns: List[int],
+        all_fom_dict: Dict[float, pd.Series],
+        sigma_kerns: List[float],
         select_control_index: int,
-        fom_limits: Optional[Dict[int, float]] = None,
+        fom_limits: Optional[Dict[float, float]] = None,
         save: bool = False,
         filename: str = "all_fom",
     ):
@@ -1233,7 +1233,7 @@ class Plot:
             ax1.text(
                 0.98,
                 0.07,
-                r"$\sigma_{\rm kernel}$ = " + format_float(sigma_kern),
+                r"$\sigma_{\rm kernel}$ = " + format_float_string(sigma_kern),
                 ha="right",
                 va="bottom",
                 transform=ax1.transAxes,
@@ -1261,7 +1261,7 @@ class Plot:
                     0.05,
                     1.1 * fom_limits[sigma_kern],
                     r"$\Sigma_{\rm FOM, limit}$ = "
-                    + format_float(fom_limits[sigma_kern]),
+                    + format_float_string(fom_limits[sigma_kern]),
                     color="k",
                     transform=ax1.get_yaxis_transform(),
                     zorder=40,
@@ -1296,9 +1296,9 @@ class Plot:
 
     def plot_fom_dists(
         self,
-        sigma_kerns: List[int],
-        all_fom_dict: Dict[int, pd.Series],
-        fom_limits: Dict[int, float],
+        sigma_kerns: List[float],
+        all_fom_dict: Dict[float, pd.Series],
+        fom_limits: Dict[float, float],
         save: bool = False,
         filename: str = "all_fom",
     ):
@@ -1337,7 +1337,7 @@ class Plot:
             ax.text(
                 0.02,
                 0.95,
-                r"$\sigma_{\rm kernel}$ = " + format_float(sigma_kern),
+                r"$\sigma_{\rm kernel}$ = " + format_float_string(sigma_kern),
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
@@ -1353,7 +1353,7 @@ class Plot:
             ax.text(
                 fom_limit + 0.5,
                 0.5 * ax.get_ylim()[1],
-                r"$\Sigma_{\rm FOM, limit}$ = " + f"{format_float(fom_limit)}",
+                r"$\Sigma_{\rm FOM, limit}$ = " + f"{format_float_string(fom_limit)}",
                 fontsize=11,
             )
 
@@ -1404,7 +1404,7 @@ class Plot:
         ax1.text(
             0.03,
             0.05,
-            r"$\sigma_{\rm kernel}$ = " + f"{format_float(sigma_kern)}",
+            r"$\sigma_{\rm kernel}$ = " + f"{format_float_string(sigma_kern)}",
             ha="left",
             va="bottom",
             transform=ax1.transAxes,
@@ -1426,7 +1426,7 @@ class Plot:
                 label = f"{select_param_name} = {select_param_value}"
             ax1.scatter(
                 subset[brightness_param_name],
-                subset[f"pct_detec_{format_float(fom_limit)}"],
+                subset[f"pct_detec_{format_float_string(fom_limit)}"],
                 color=color,
                 edgecolors="none",
                 marker="o",
@@ -1436,7 +1436,7 @@ class Plot:
             )
             ax1.plot(
                 subset[brightness_param_name],
-                subset[f"pct_detec_{format_float(fom_limit)}"],
+                subset[f"pct_detec_{format_float_string(fom_limit)}"],
                 color=color,
                 zorder=-i * 10,
             )
@@ -1470,7 +1470,7 @@ class Plot:
 
         if save:
             if filename is None:
-                filename = f"efficiency_{format_float(sigma_kern)}"
+                filename = f"efficiency_{format_float_string(sigma_kern)}"
             self.save_plot(filename, bbox_inches="tight")
 
         return fig
@@ -1502,7 +1502,7 @@ class Plot:
             ax.text(
                 0.97,
                 0.08,
-                f"for {format_float(p)}% efficiency",
+                f"for {format_float_string(p)}% efficiency",
                 ha="right",
                 va="bottom",
                 transform=ax.transAxes,

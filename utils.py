@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from abc import ABC, abstractmethod
+import bisect
 from configparser import ConfigParser
 import configparser
 from functools import reduce
@@ -27,20 +28,20 @@ TEMPLATE_CHANGE_2_MJD = 58882
 CONFIG_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 
-def AandB(A, B):
-    return np.intersect1d(A, B, assume_unique=False)
+def AandB(A, B) -> List:
+    return list(np.intersect1d(A, B, assume_unique=False))
 
 
-def AnotB(A, B):
-    return np.setdiff1d(A, B)
+def AnotB(A, B) -> List:
+    return list(np.setdiff1d(A, B))
 
 
-def AorB(A, B):
-    return np.union1d(A, B)
+def AorB(A, B) -> List:
+    return list(np.union1d(A, B))
 
 
-def not_AandB(A, B):
-    return np.setxor1d(A, B)
+def not_AandB(A, B) -> List:
+    return list(np.setxor1d(A, B))
 
 
 # print iterations progress
@@ -100,7 +101,7 @@ def load_json_config(filename: str):
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
 
 
-def new_row(t: pd.DataFrame, d: Dict = None):
+def new_row(t: Optional[pd.DataFrame], d: Optional[Dict] = None):
     if d is None:
         d = {}
 
@@ -217,7 +218,7 @@ def has_match(directory: str, pattern: re.Pattern):
     return False
 
 
-def find_all_filts(directory: str, tnsname: str):
+def find_all_filts(directory: str, tnsname: str) -> List[str]:
     pattern = re.compile(
         rf"^{re.escape(tnsname)}"  # tnsname
         r"(?:_i\d{3})?"  # optional control index
@@ -227,7 +228,7 @@ def find_all_filts(directory: str, tnsname: str):
         r"\.lc\.txt$"  # ends with '.lc.txt'
     )
     subdir = os.path.join(directory, tnsname)
-    return extract_from_subdir(subdir, pattern, "filt")
+    return list(extract_from_subdir(subdir, pattern, "filt"))
 
 
 def find_all_control_indices(directory: str, tnsname: str, filt=None):
@@ -259,67 +260,9 @@ def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
     return has_match(subdir, pattern)
 
 
-def validate_fom_limits(
-    fom_limits: (
-        List[float] | List[List[float]] | Dict[float, float] | Dict[float, List[float]]
-    ),
-    sigma_kerns: List[float],
-) -> Dict[float, List[float]]:
-    """
-    Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
-
-    WARNING: If passing fom_limits as a list, both fom_limits and sigma_kerns must be sorted.
-
-    :param fom_limits: FOM limits as a list or dictionary.
-
-        Supports:
-
-        - List[float]: one FOM limit per sigma_kern
-        - List[List[float]]: multiple FOM limits per sigma_kern
-        - Dict[float, float]: one FOM limit per sigma_kern
-        - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
-
-    :param sigma_kerns: Kernel sizes corresponding to the FOM limits.
-    """
-    # List[float] or List[List[float]]
-    if isinstance(fom_limits, list):
-        if not fom_limits:
-            raise RuntimeError("No FOM limits provided")
-
-        if sigma_kerns and len(fom_limits) != len(sigma_kerns):
-            raise RuntimeError(
-                "Each entry in sigma_kerns must have a matching entry in fom_limits"
-            )
-
-        # List[float]
-        if all(isinstance(x, (int, float)) for x in fom_limits):
-            # wrap each float in a list
-            return dict(zip(sigma_kerns, [[x] for x in fom_limits]))
-
-        # List[List[float]]
-        elif all(isinstance(x, list) for x in fom_limits):
-            return dict(zip(sigma_kerns, fom_limits))
-
-        else:
-            raise TypeError("fom_limits list must contain sublists or numbers")
-
-    # Dict[float, float] or Dict[float, List[float]]
-    elif isinstance(fom_limits, dict):
-        if set(fom_limits.keys()) != set(sigma_kerns):
-            raise RuntimeError("FOM limits dict keys must exactly match sigma_kerns")
-
-        # wrap float values in lists if needed
-        return {
-            k: [v] if isinstance(v, (int, float)) else v for k, v in fom_limits.items()
-        }
-
-    else:
-        raise TypeError(
-            "fom_limits must be a list of lists/floats or a dict of lists/floats"
-        )
-
-
-def validate_mjd_ranges(ranges: List[List[int]], var_name: str = "MJD_RANGES") -> None:
+def validate_mjd_ranges(
+    ranges: List[List[float]], var_name: str = "MJD_RANGES"
+) -> None:
     """
     Validates that a list of MJD ranges is properly formatted.
     """
@@ -382,7 +325,7 @@ def get_inverse_mjd_ranges(
     mjd_ranges: List[List[float]],
     min_mjd: int,
     max_mjd: int,
-    expand_edges: Optional[float] = 0.0,
+    expand_edges: float = 0.0,
     exclude_mjd_ranges: Optional[List[List[float]]] = None,
 ) -> List[List[float]]:
     if expand_edges < 0:
@@ -488,6 +431,192 @@ class PlotLimits:
         return f"Plot limits: x-axis [{self.xlower}, {self.xupper}], y-axis [{self.ylower}, {self.yupper}]"
 
 
+class FomLimits:
+    def __init__(self):
+        self._values = {}
+
+    def add(self, sigma_kern: float, values: List[float | int] | float | int):
+        """
+        Add new FOM limit(s) to a sigma_kern.
+        """
+        if isinstance(values, list):
+            sorted_list_to_add = self._validate_flat_list(values)
+        else:
+            sorted_list_to_add = [float(values)]
+
+        if self.has(sigma_kern):
+            existing = set(self._values[sigma_kern])
+            for v in sorted_list_to_add:
+                if v not in existing:
+                    bisect.insort(self._values[sigma_kern], v)
+        else:
+            self._values[sigma_kern] = sorted_list_to_add
+
+    def set(
+        self,
+        sigma_kerns: List[float],
+        values: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
+    ):
+        """
+        Overwrite any current sigma_kerns and FOM limits with new ones.
+        """
+        if self._values:
+            print("WARNING: Overwriting current FOM limits with new ones")
+        self._values = self.validate(sigma_kerns, values)
+
+    def set_blank(self, sigma_kerns: List[float]):
+        """
+        Overwrite any current sigma_kerns with new ones, and any current FOM limits with 0.0.
+        """
+        self.set(sorted(sigma_kerns), [0.0] * len(sigma_kerns))
+
+    def has(self, sigma_kern) -> bool:
+        return sigma_kern in self._values.keys()
+
+    def get(self, sigma_kern: float, index: int = -1) -> float:
+        """
+        Get an FOM limit at a certain index for a specific sigma_kern.
+        """
+        if not self.has(sigma_kern):
+            raise ValueError(
+                f"FOM limits for sigma_kern {sigma_kern} not found (existing sigma_kerns: {self._values.keys()})"
+            )
+        if index >= len(self._values[sigma_kern]):
+            raise ValueError(
+                f"Cannot get FOM limit at index {index}; only {len(self._values[sigma_kern])} FOM limits exist per sigma_kern"
+            )
+        return self._values[sigma_kern][index]
+
+    def get_multi(self, sigma_kern: float) -> List[float]:
+        """
+        Get all FOM limits for a specific sigma_kern.
+        """
+        if not self.has(sigma_kern):
+            raise ValueError(
+                f"FOM limits for sigma_kern {sigma_kern} not found (existing sigma_kerns: {self._values.keys()})"
+            )
+        return self._values[sigma_kern]
+
+    def get_all_multi(self) -> Dict[float, List[float]]:
+        """
+        Get all FOM limits for each sigma_kern.
+        """
+        return self._values
+
+    def get_all_single(self, index: int = -1) -> Dict[float, float]:
+        """
+        Get an FOM limit at a certain index for each sigma_kern.
+        """
+        return {
+            sigma_kern: self.get(sigma_kern, index=index)
+            for sigma_kern in self._values.keys()
+        }
+
+    def _validate_flat_list(self, data: List | float) -> List[float]:
+        """
+        Verifies that all entries in a list are numbers and converts them to floats. Sorts the resulting list.
+
+        :param data: List of numbers (int or float)
+        :return: Sorted list of floats
+        :raises TypeError: If any item is not a number
+        """
+        if isinstance(data, list):
+            for i, item in enumerate(data):
+                if not isinstance(item, (int, float)):
+                    raise TypeError(f"Item at index {i} is not a number: {item}")
+            res = [float(x) for x in data]
+            res.sort()
+            return res
+        else:
+            return [float(data)]
+
+    def validate(
+        self,
+        sigma_kerns: List[float],
+        fom_limits: (
+            List[float]
+            | List[List[float]]
+            | Dict[float, float]
+            | Dict[float, List[float]]
+        ),
+    ) -> Dict[float, List[float]]:
+        """
+        Validate and convert FOM limits into a dictionary with sigma_kerns as keys.
+        WARNING: If passing fom_limits as a list, both fom_limits and sigma_kerns must be sorted.
+
+        :param fom_limits: FOM limits as a list or dictionary.
+
+            Supports:
+
+            - List[float]: one FOM limit per sigma_kern
+            - List[List[float]]: multiple FOM limits per sigma_kern
+            - Dict[float, float]: one FOM limit per sigma_kern
+            - Dict[float, List[float]]: multiple FOM limits per sigma_kern, already structured
+
+        :param sigma_kerns: Kernel sizes corresponding to the FOM limits.
+        """
+        # List[float] or List[List[float]]
+        if isinstance(fom_limits, list):
+            if not fom_limits:
+                raise ValueError("FOM limits list is empty")
+
+            if len(fom_limits) != len(sigma_kerns):
+                raise ValueError(
+                    f"Length mismatch: got {len(fom_limits)} FOM limits but {len(sigma_kerns)} sigma_kerns"
+                )
+
+            # List[float]
+            if all(isinstance(v, (int, float)) for v in fom_limits):
+                # wrap each float in a list
+                return dict(
+                    zip(
+                        sigma_kerns, [[v] for v in self._validate_flat_list(fom_limits)]
+                    )
+                )
+
+            # List[List[float]]
+            elif all(isinstance(v, list) for v in fom_limits):
+                return {
+                    sigma_kern: self._validate_flat_list(sublist)
+                    for sigma_kern, sublist in zip(sigma_kerns, fom_limits)
+                }
+
+            else:
+                raise TypeError(
+                    "If passing a list, it must contain only numbers or only sublists of numbers"
+                )
+
+        # Dict[float, float] or Dict[float, List[float]]
+        elif isinstance(fom_limits, dict):
+            if set(fom_limits.keys()) != set(sigma_kerns):
+                raise ValueError("FOM limits dict keys must exactly match sigma_kerns")
+
+            return {
+                sigma_kern: self._validate_flat_list(sublist)
+                for sigma_kern, sublist in fom_limits.items()
+            }
+
+        else:
+            raise TypeError(
+                "FOM limits must be a list of floats/sublists or a dict with float/list values"
+            )
+
+    def merge(self, other: Self):
+        if not isinstance(other, FomLimits):
+            raise TypeError("Argument must be an instance of FomLimits")
+
+        for other_key, other_values in other.get_all_multi().items():
+            self.add(other_key, other_values)
+
+    def __str__(self):
+        return self.get_all_multi().__str__()
+
+
 class PresetColumnNames:
     """
     Class to handle loading and managing column names for light curve conversion
@@ -510,7 +639,7 @@ class PresetColumnNames:
 
     def _read_config(self, config: ConfigParser):
         try:
-            config_preset_settings: Dict = config[f"column_name_preset.{self.preset}"]
+            config_preset_settings = dict(config[f"column_name_preset.{self.preset}"])
         except:
             raise RuntimeError(
                 f"Preset '{self.preset}' (field '{f'column_name_preset.{self.preset}'}') not found in config file."
@@ -541,6 +670,10 @@ class PresetColumnNames:
 
         # extra columns to copy
         extra_columns = parse_config_str(config_preset_settings["extra_columns"])
+        if not isinstance(extra_columns, str):
+            raise ValueError(
+                f"Extra columns in config file ({config_preset_settings['extra_columns']}) must be comma-separated list (got {extra_columns})"
+            )
         self.extra_columns: List[str] = (
             []
             if extra_columns is None
@@ -612,7 +745,7 @@ class PresetColumnNames:
         )
         return list(colset)
 
-    def __getattr__(self, name: str) -> Optional[str]:
+    def __getattr__(self, name: str) -> str:
         """
         Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
         """
@@ -703,7 +836,7 @@ class BaseAngle(ABC):
 class RA(BaseAngle):
     def _parse_angle(self, string):
         """Parse RA angle, using hours if ':' is present, degrees otherwise."""
-        s = re.compile("\:")
+        s = re.compile(":")
         if isinstance(string, str) and s.search(string):
             return Angle(string, u.hour)
         else:
@@ -794,22 +927,22 @@ class SnInfoTable:
                 columns=["tnsname", "ra", "dec", "mjd0"]
             )  # , 'closebright_ra', 'closebright_dec'])
 
-    def get_row(self, tnsname):
+    def get_row(self, tnsname) -> tuple[int, pd.Series] | tuple[int, None]:
         if self.t.empty:
             # raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--table is empty.')
             return -1, None
 
-        matching_ix = np.where(self.t["tnsname"].eq(tnsname))[0]
+        matching_ix = self.t.index[self.t["tnsname"].eq(tnsname)]
         if len(matching_ix) >= 2:
             print(
                 f"WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows..."
             )
-            self.t.drop(matching_ix[1:], inplace=True)
-            return matching_ix[0], self.t.loc[matching_ix[0], :]
+            self.t.drop(index=matching_ix[1:], inplace=True)
+            first_ix = self.t.index[self.t["tnsname"].eq(tnsname)][0]
+            return first_ix, self.t.loc[first_ix]
         elif len(matching_ix) == 1:
-            return matching_ix[0], self.t.loc[matching_ix[0], :]
+            return matching_ix[0], self.t.loc[matching_ix[0]]
         else:
-            # raise RuntimeError(f'Error: Cannot get info for SN {tnsname}--row doesn\'t exist.')
             return -1, None
 
     def is_nan(self, value) -> bool:
@@ -840,10 +973,14 @@ class SnInfoTable:
         return ra, dec, mjd0
 
     def update_row_at_index(
-        self, index, coords: Coordinates = None, mjd0: float = None, overwrite=False
+        self,
+        index,
+        coords: Optional[Coordinates] = None,
+        mjd0: Optional[float] = None,
+        overwrite=False,
     ):
         try:
-            if overwrite or np.isnan(self.t.loc[index, "mjd0"]):
+            if overwrite or np.isnan(self.t.at[index, "mjd0"]):
                 self.t.loc[index, "mjd0"] = mjd0
 
             if (
@@ -864,7 +1001,12 @@ class SnInfoTable:
                 f"Could not update SN info table at index {index}: {str(e)}"
             )
 
-    def add_new_row(self, tnsname, coords: Coordinates = None, mjd0: float = None):
+    def add_new_row(
+        self,
+        tnsname,
+        coords: Optional[Coordinates] = None,
+        mjd0: Optional[float] = None,
+    ):
         if mjd0 is None:
             mjd0 = np.nan
 
@@ -880,7 +1022,11 @@ class SnInfoTable:
         self.t = new_row(self.t, row)
 
     def update_row(
-        self, tnsname, coords: Coordinates = None, mjd0: float = None, overwrite=False
+        self,
+        tnsname,
+        coords: Optional[Coordinates] = None,
+        mjd0: Optional[float] = None,
+        overwrite=False,
     ):
         if self.t.empty:
             self.add_new_row(tnsname, coords, mjd0)
@@ -910,7 +1056,7 @@ class SnInfoTable:
         return self.t.to_string()
 
 
-def format_float(value: int | float):
+def format_float_string(value: int | float):
     """
     Format with up to 5 decimals, strip trailing zeros, then ensure at least 1 decimal
     """
@@ -936,7 +1082,7 @@ def get_filename(
     filename += f".{filt}"
 
     if mjdbinsize:
-        filename += f".{format_float(mjdbinsize)}days"
+        filename += f".{format_float_string(mjdbinsize)}days"
 
     if cleaned:
         filename += f".clean"
@@ -952,6 +1098,7 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
         )
         return None
 
+    json_data = None
     try:
         url = "https://www.wis-tns.org/api/get/object"
         json_file = OrderedDict(
@@ -969,7 +1116,10 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
         json_data = json.loads(response.text, object_pairs_hook=OrderedDict)
         return json_data
     except Exception as e:
-        print(json_data["data"])
+        if json_data and "data" in json_data:
+            print(json_data["data"])
+        else:
+            print("No JSON data received or failed to parse response")
         raise RuntimeError("ERROR in query_tns(): " + str(e))
 
 
@@ -1155,7 +1305,7 @@ def get_config_custom_cuts(config: ConfigParser) -> List:
     return custom_cuts
 
 
-def get_config_flags(config: ConfigParser) -> List[int]:
+def get_config_flags(config: ConfigParser) -> int:
     # get main flags for Uncertainty Cut, Chi-Square Cut, Control Light Curve Cut, and Bad Day Cut
     flags = [
         hexstring_to_int(config["uncert_cut"]["flag"]),
@@ -1175,10 +1325,10 @@ def get_config_flags(config: ConfigParser) -> List[int]:
 class Cut(ABC):
     def __init__(
         self,
-        column: str = None,
-        flag: int = None,
-        min_value: float = None,
-        max_value: float = None,
+        column: Optional[str] = None,
+        flag: Optional[int] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ):
         self.column = column
         self.flag = flag
@@ -1193,7 +1343,8 @@ class Cut(ABC):
     def can_apply_directly(self) -> bool:
         return (
             self.flag is not None
-            and self.column
+            and self.column is not None
+            and self.column != ""
             and (self.min_value is not None or self.max_value is not None)
         )
 
@@ -1202,14 +1353,14 @@ class Cut(ABC):
     def name() -> str:
         pass
 
-    def get_flags(self, keys=False) -> Dict | List:
+    def get_flags(self, return_keys=False) -> Dict[str, int] | List[int]:
         """Extract all attributes that end in '_flag' or are 'flag'."""
         flags = {
             key: value
             for key, value in vars(self).items()
             if isinstance(value, int) and (key.endswith("_flag") or key == "flag")
         }
-        return flags if keys else list(flags.values())
+        return flags if return_keys else list(flags.values())
 
     def __str__(self) -> str:
         details = []
@@ -1220,7 +1371,7 @@ class Cut(ABC):
         if self.max_value is not None:
             details.append(f"max_value={self.max_value}")
 
-        flags = self.get_flags(keys=True)
+        flags = self.get_flags(return_keys=True)
         if flags:
             for flag_name, flag_value in flags.items():
                 details.append(f"{flag_name}={hex(flag_value)}")
@@ -1230,7 +1381,11 @@ class Cut(ABC):
 
 class CustomCut(Cut):
     def __init__(
-        self, column: str, flag: int, min_value: float = None, max_value: float = None
+        self,
+        column: str,
+        flag: int,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ):
         super().__init__(
             column=column, flag=flag, min_value=min_value, max_value=max_value
@@ -1240,7 +1395,9 @@ class CustomCut(Cut):
 
     def name(self) -> str:
         """Generate a unique name based on all attributes that define this cut."""
-        params = [f"column={self.column}", f"flag={hex(self.flag)}"]
+        params = [f"column={self.column}"]
+        if self.flag is not None:
+            params.append(f"flag={hex(self.flag)}")
         if self.min_value is not None:
             params.append(f"min={self.min_value}")
         if self.max_value is not None:
@@ -1261,7 +1418,7 @@ class UncertaintyCut(Cut):
 
 
 class UncertaintyEstimation:
-    def __init__(self, temp_x2_max_value: int = 20, uncert_cut_flag: int = 0x2):
+    def __init__(self, temp_x2_max_value: float = 20, uncert_cut_flag: int = 0x2):
         super().__init__()
         self.temp_x2_max_value = temp_x2_max_value
         self.uncert_cut_flag = uncert_cut_flag
@@ -1371,7 +1528,7 @@ class BadDayCut(Cut):
 
 class CutList:
     def __init__(self):
-        self.list: Dict[str, Type[Cut]] = {}
+        self.list: Dict[str, Cut] = {}
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
@@ -1413,14 +1570,14 @@ class CutList:
     def can_apply_directly(self, name: str):
         return self.list[name].can_apply_directly()
 
-    def get_flag_duplicates(self):
+    def get_flag_duplicates(self) -> List[int]:
         if len(self.list) < 1:
             return
 
         unique_flags = set()
         duplicate_flags = []
 
-        for name, cut in self.list.items():
+        for cut in self.list.values():
             if isinstance(cut, UncertaintyEstimation):
                 continue
 
@@ -1454,7 +1611,7 @@ class CutList:
     def get_all_default_flags(self):
         mask = 0
         for cut in self.list.values():
-            if not isinstance(cut, UncertaintyEstimation):
+            if not isinstance(cut, UncertaintyEstimation) and cut.flag is not None:
                 mask = mask | cut.flag
         return mask
 
@@ -1479,8 +1636,9 @@ class CutList:
         skip_names = skip_names[: current_cut_index + 1]
         mask = 0
         for name in self.list:
-            if not name in skip_names:
-                mask = mask | self.list[name].flag
+            flag = self.list[name].flag
+            if not name in skip_names and flag is not None:
+                mask = mask | flag
         return mask
 
     def __str__(self):

@@ -4,6 +4,7 @@ wrapper around pandas with convenience functions to ease handling of tables
 A. Rest
 """
 import sys, os, re, types, copy, io
+from typing import List
 import numpy as np
 from astropy.time import Time
 import astropy.io.fits as fits
@@ -473,12 +474,12 @@ class pdastroclass:
 
         return 0
 
-    def getindices(self, indices=None):
+    def getindices(self, indices=None) -> List:
         """make indices conform (input can be None,([list],), int, str, or list). The output is a list"""
 
         # If indices is None, return all values
         if indices is None:
-            return self.t.index.values
+            return list(self.t.index.values)
 
         # If indices=([indiceslist],), then it needs to be changed to indices=indiceslist
         if isinstance(indices, tuple):
@@ -487,7 +488,7 @@ class pdastroclass:
                 return []
             # teh first entry is a list, then these are the relevant indices!
             if isinstance(indices[0], list) or isinstance(indices[0], np.ndarray):
-                return indices[0]
+                return list(indices[0])
             else:
                 return list(indices)
 
@@ -500,11 +501,7 @@ class pdastroclass:
             return [indices]
 
         indices = np.array(indices)
-
-        # if not (isinstance(indices,list) or isinstance(indices,np.ndarray)):
-        #    raise RuntimeError("Can't convert this to an indices list!",type(indices),indices)
-
-        return indices
+        return list(indices)
 
     def getcolnames(self, colnames=None):
         """Return a list of all colnames of colnames=None. If colnames=string, return a list"""

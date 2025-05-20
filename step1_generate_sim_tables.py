@@ -17,7 +17,7 @@ from enum import Enum, auto
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from utils import format_float, load_config, load_json_config, abbreviate_list
+from utils import format_float_string, load_config, load_json_config, abbreviate_list
 
 GAUSSIAN_MODEL_NAME = "gaussian"
 ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
@@ -48,7 +48,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     return parser
 
 
-def find_prefix_in_list(l: List[str], prefix: str):
+def find_prefix_in_list(l: pd.Index[str], prefix: str):
     for item in l:
         if item.startswith(prefix):
             return item
@@ -107,12 +107,19 @@ class Param(ABC):
         self._log(out)
 
         self.name = name
-        self.values = list(values) if values is not None else values
+        self._values: Optional[List] = list(values) if values is not None else values
         self.validate_name()
 
     def _log(self, message: str):
         if self.verbose:
             print(message)
+
+    @property
+    def values(self) -> List:
+        if self._values is None:
+            raise RuntimeError("Parameter values cannot be None")
+        else:
+            return self._values
 
     @property
     def is_time_param(self) -> bool:
@@ -130,8 +137,11 @@ class Param(ABC):
         pass
 
     def round_to(self, n_digits: int):
-        if self.values:
-            self.values = [round(v, n_digits) for v in self.values]
+        if self._values:
+            self._values = [round(v, n_digits) for v in self.values]
+
+    def has_values(self) -> bool:
+        return self._values is not None and len(self._values) > 0
 
     def validate_time_param(self):
         """
@@ -140,8 +150,8 @@ class Param(ABC):
         self._log(
             f"Making sure the time parameter '{self.name}' values match the MJDbin column format..."
         )
-        if self.values:
-            self.values = list(np.floor(self.values) + 0.5)
+        if self._values:
+            self._values = list(np.floor(self.values) + 0.5)
 
     def validate_brightness_param(self):
         """
@@ -150,8 +160,8 @@ class Param(ABC):
         self._log(
             f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places..."
         )
-        if self.values:
-            self.values = [round(v, 2) for v in self.values]
+        if self._values:
+            self._values = [round(v, 2) for v in self.values]
 
     def validate_name(self):
         if self.is_time_param and not self.name.startswith(TIME_PARAM_PREFIX):
@@ -171,7 +181,7 @@ class Param(ABC):
         if self.is_brightness_param:
             out += " (brightness param)"
         out += ": "
-        if self.values is not None:
+        if self._values is not None:
             out += abbreviate_list(self.values)
         else:
             out += "no values yet (call generate() to generate list of values)"
@@ -181,12 +191,12 @@ class Param(ABC):
         if not isinstance(other, Param):
             return False
 
-        if self.values is None and other.values is None:
+        if self._values is None and other._values is None:
             values_equal = True
-        elif self.values is None or other.values is None:
+        elif self._values is None or other._values is None:
             return False
         else:
-            values_equal = np.array_equal(self.values, other.values)
+            values_equal = np.array_equal(self._values, other._values)
 
         return (
             self.name == other.name
@@ -254,7 +264,7 @@ class RangeParam(Param):
             raise RuntimeError(
                 "Step size cannot be greater than the difference between min value and max value."
             )
-        self.values = list(np.arange(minval, maxval + step, step))
+        self._values = list(np.arange(minval, maxval + step, step))
 
 
 class LogRangeParam(Param):
@@ -305,7 +315,7 @@ class LogRangeParam(Param):
         minlog = np.log(minval) / np.log(base)
         maxlog = np.log(maxval) / np.log(base)
         res = list(np.logspace(minlog, maxlog, num=n, base=base))
-        self.values = res
+        self._values = res
         self.round_to(n_digits)
 
 
@@ -352,7 +362,7 @@ class RandomParam(Param):
         if maxval <= minval:
             raise RuntimeError("maxval must be greater than minval.")
         res = list(np.random.uniform(minval, maxval, n))
-        self.values = res
+        self._values = res
         self.round_to(n_digits)
 
 
@@ -405,7 +415,7 @@ class RandomInRangeParam(Param):
         self._log(
             f"Generating {n}-length random list of floats within the following valid ranges: {valid_ranges}"
         )
-        self.values = self._rec_get_valid_draws(valid_ranges, n)
+        self._values = self._rec_get_valid_draws(valid_ranges, n)
 
 
 class Params:
@@ -414,8 +424,8 @@ class Params:
     """
 
     def __init__(self):
-        self.time_param: Param = None
-        self.brightness_param: Param = None
+        self.time_param: Optional[Param] = None
+        self.brightness_param: Optional[Param] = None
         self.other: Dict[str, Param] = {}
 
     def add(self, param: Param):
@@ -472,7 +482,7 @@ class Params:
             else self.all_params()
         )
         for param in params:
-            if param.values:
+            if param.has_values():
                 total *= len(param.values)
         return total
 
@@ -616,7 +626,7 @@ class Params:
 
         mismatched = []
 
-        def check(p1: Param, p2: Param, name):
+        def check(p1: Optional[Param], p2: Optional[Param], name):
             if p1 != p2:
                 mismatched.append(name)
                 return False
@@ -756,7 +766,9 @@ class SimTable(pdastrostatsclass):
         # self.t = pd.concat([self.t, pd.DataFrame([data])], ignore_index=True)
 
     def get_sim_filename(self, model_name, tables_dir):
-        return f"{tables_dir}/sim_{model_name}_{format_float(self.brightness)}.txt"
+        return (
+            f"{tables_dir}/sim_{model_name}_{format_float_string(self.brightness)}.txt"
+        )
 
     def save_sim_table(self, model_name, tables_dir, verbose=False):
         filename = self.get_sim_filename(model_name, tables_dir)
@@ -783,21 +795,23 @@ class SimTables:
         :param model_name: Name of the model to be used assigned in the config file.
         """
         self.d: Dict[str, SimTable] = {}
-        self.brightness_param: Param = None
+        self.brightness_param: Optional[Param] = None
         self.model_name = model_name
 
     def set_brightness_param(self, brightness_param: Param):
         if not brightness_param.is_brightness_param:
             raise ValueError(
-                f"brightness.is_brightness_param must be True (got {brightness_param.is_brightness_param})"
+                f"Brightness parameter must be of ParamType.BRIGHTNESS (got {brightness_param.param_type})"
             )
+        if not brightness_param.has_values():
+            raise ValueError(f"Brightness parameter must contain values")
 
         self.brightness_param = brightness_param
 
     def generate(
         self,
         params: Params,
-        filename: str = None,
+        filename: Optional[str] = None,
         mjd_colname: Optional[bool] = False,
         mag_colname: Optional[bool] = False,
         flux_colname: Optional[bool] = False,
@@ -826,6 +840,11 @@ class SimTables:
         self.d = {}
         num_rows = params.get_num_combinations()
         self.set_brightness_param(params.get_brightness_param())
+        if self.brightness_param is None:
+            raise RuntimeError(
+                "Cannot generate SimTables: missing brightness parameter"
+            )
+
         for brightness in self.brightness_param.values:
             print(
                 f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}..."
@@ -849,7 +868,7 @@ class SimTables:
         print(f"\nSaving SimTables in directory: {tables_dir}")
 
         if self.brightness_param is None:
-            raise RuntimeError("Cannot save SimTables: missing brightness")
+            raise RuntimeError("Cannot save SimTables: missing brightness parameter")
 
         if not self.d:
             raise RuntimeError(
@@ -866,6 +885,8 @@ class SimTables:
         print(f"\nLoading SimTables in directory: {tables_dir}")
         self.d = {}
         self.set_brightness_param(brightness_param)
+        if self.brightness_param is None:
+            raise RuntimeError("Cannot load SimTables: missing brightness parameter")
 
         for brightness in self.brightness_param.values:
             self.d[brightness] = SimTable(brightness)

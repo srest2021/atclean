@@ -36,7 +36,7 @@ from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
     PresetColumnNames,
     extract_from_subdir,
-    format_float,
+    format_float_string,
     get_allowed_presets,
     hexstring_to_int,
     load_config,
@@ -140,8 +140,8 @@ class AsymmetricGaussian(Simulation):
         """
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.g = None
-        self.sigma_plus: float = None
-        self.sigma_minus: float = None
+        self.sigma_plus: Optional[float] = None
+        self.sigma_minus: Optional[float] = None
 
     def new(self, sigma_plus: float, sigma_minus: float, peak_appmag: float):
         """
@@ -168,10 +168,9 @@ class AsymmetricGaussian(Simulation):
         self,
         mjds,
         brightness: float,
-        sigma_sim_plus: float = None,
-        sigma_sim_minus: float = None,
-        time_peak_mjd: float = None,
-        **kwargs,
+        sigma_sim_plus: Optional[float] = None,
+        sigma_sim_minus: Optional[float] = None,
+        time_peak_mjd: Optional[float] = None,
     ):
         """
         Get the interpolated function of the AsymmetricGaussian at a given peak MJD and match it to the given time array.
@@ -222,8 +221,8 @@ class Gaussian(AsymmetricGaussian):
         self,
         mjds,
         brightness: float,
-        sigma_sim: float = None,
-        time_peak_mjd: float = None,
+        sigma_sim: Optional[float] = None,
+        time_peak_mjd: Optional[float] = None,
         **kwargs,
     ):
         """
@@ -249,9 +248,9 @@ class Model(Simulation):
     def __init__(
         self,
         filename: str,
-        mjd_colname: str = False,
-        mag_colname: str = False,
-        flux_colname: str = False,
+        mjd_colname: str | bool | None = False,
+        mag_colname: str | bool | None = False,
+        flux_colname: str | bool | None = False,
         model_name: str = "pre_SN_outburst",
         **kwargs,
     ):
@@ -277,9 +276,9 @@ class Model(Simulation):
     def load(
         self,
         filename: str,
-        mjd_colname: str = False,
-        mag_colname: str = False,
-        flux_colname: str = False,
+        mjd_colname: str | bool | None = False,
+        mag_colname: str | bool | None = False,
+        flux_colname: str | bool | None = False,
         verbose: bool = False,
     ):
         """
@@ -349,7 +348,7 @@ class Model(Simulation):
             print("Success")
 
     def get_sim_flux(
-        self, mjds, brightness: float, time_peak_mjd: float = None, **kwargs
+        self, mjds, brightness: float, time_peak_mjd: Optional[float] = None, **kwargs
     ):
         """
         Get the interpolated function of the model at a given peak MJD and peak apparent magnitude and match it to the given time array.
@@ -360,6 +359,9 @@ class Model(Simulation):
 
         :return: The simulated flux array corresponding to the given time array.
         """
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
+
         self.brightness = brightness
         if time_peak_mjd is None:
             raise RuntimeError("Peak MJD required to construct simulated model.")
@@ -368,13 +370,13 @@ class Model(Simulation):
         peak_idx = self.t["m"].idxmin()
 
         # scale flux to the desired peak appmag
-        self.t["uJy"] *= mag2flux(brightness) / self.t.loc[peak_idx, "uJy"]
+        self.t["uJy"] *= mag2flux(brightness) / self.t.at[peak_idx, "uJy"]
 
         # recalulate appmag column
         self.t["m"] = self.t["uJy"].apply(lambda flux: flux2mag(flux))
 
         # put peak appmag at peak_mjd
-        self.t["MJD"] -= self.t.loc[peak_idx, "MJD"]
+        self.t["MJD"] -= self.t.at[peak_idx, "MJD"]
         self.t["MJD"] += time_peak_mjd
 
         # interpolate lc and match to time array
@@ -441,21 +443,18 @@ class SimDetecTable(SimTable):
         colnames = self.get_param_colnames(
             skip_time_col=skip_time_col, skip_brightness_col=skip_brightness_col
         )
-        return dict(self.t.loc[index, colnames])
+        return dict(self.t.at[index, colnames])
 
     def get_params(
         self, skip_time_col: bool = True, skip_brightness_col: bool = True
     ) -> Params:
         params = Params()
-
         colnames = self.get_param_colnames(
             skip_time_col=skip_time_col, skip_brightness_col=skip_brightness_col
         )
         for col in colnames:
-            values = self.t[col].unique()
-            param = ListParam(col, values, verbose=False)
+            param = ListParam(col, list(self.t[col].unique()), verbose=False)
             params.add(param)
-
         return params
 
     def update_row(
@@ -493,7 +492,7 @@ class SimDetecTable(SimTable):
         :param model_name: Name of the model of which the SimDetecTable contains simulations.
         :param detec_tables_dir: Directory where the SimDetecTable is located.
         """
-        return f"{detec_tables_dir}/simdetec_{model_name}_{format_float(self.sigma_kern)}_{format_float(self.brightness)}.{filt}.txt"
+        return f"{detec_tables_dir}/simdetec_{model_name}_{format_float_string(self.sigma_kern)}_{format_float_string(self.brightness)}.{filt}.txt"
 
     def load_detec_table(self, model_name: str, filt: str, detec_tables_dir: str):
         """
@@ -569,7 +568,9 @@ class SimDetecTables:
         self.brightness_param = brightness_param
         self.d: Dict[float, Dict[float, SimDetecTable]] = {}
 
-    def _check_tables_exist(self, sigma_kern: float = None, brightness: float = None):
+    def _check_tables_exist(
+        self, sigma_kern: Optional[float] = None, brightness: Optional[float] = None
+    ):
         if self.d is None:
             raise RuntimeError("SimDetecTables not initialized. `self.d` is None.")
         if len(self.d) < 1:
@@ -698,8 +699,11 @@ class SimDetecTables:
                 first_params = params
             elif params != first_params:
                 raise ValueError(
-                    f"Inconsistent params found for SimDetecTable with sigma_kern={format_float(sigma_kern)}, brightness={format_float(brightness)}"
+                    f"Inconsistent params found for SimDetecTable with sigma_kern={format_float_string(sigma_kern)}, brightness={format_float_string(brightness)}"
                 )
+
+        if first_params is None:
+            raise RuntimeError("Could not get parameters from tables--failed")
         return first_params
 
 
@@ -712,9 +716,9 @@ class SimulationFactory:
             print(msg)
 
     def _parse_colname_val(self, colname: str, row: dict):
-        if colname in row:
-            return None if np.isnan(row[colname]) else row[colname]
-        return False
+        if colname not in row:
+            return False
+        return None if np.isnan(row[colname]) else row[colname]
 
     def from_table(
         self, table: Union[SimTable, SimDetecTable], row_index: int
@@ -722,9 +726,11 @@ class SimulationFactory:
         """
         Create a Simulation object given a row from a SimTable or SimDetecTable.
         """
-        row = dict(table.t.loc[row_index, :])
+        row = dict(table.t.at[row_index, :])
+
         model_name = row["model_name"]
-        filename = None if not isinstance(row["filename"], str) else row["filename"]
+        if not isinstance(model_name, str) or len(model_name) < 1:
+            raise ValueError(f"Invalid model name: {model_name}")
 
         mjd_colname = self._parse_colname_val("mjd_colname", row)
         mag_colname = self._parse_colname_val("mag_colname", row)
@@ -737,9 +743,14 @@ class SimulationFactory:
             self._log("\tConstructing AsymmetricGaussian simulation")
             return AsymmetricGaussian()
         else:
+            filename = row["filename"]
+            if not isinstance(filename, str) or len(filename) < 1:
+                raise ValueError(f"Invalid filename: {filename}")
+
             self._log(
                 f"\tConstructing '{model_name}' simulation with MJD column {mjd_colname}, mag column {mag_colname}, flux column {flux_colname}, filename: {filename}"
             )
+
             return Model(
                 filename=filename,
                 mjd_colname=mjd_colname,
@@ -771,10 +782,10 @@ class InjectionLoop(ABC):
         self.sim_tables_dir = sim_tables_dir
         self.detec_tables_dir = detec_tables_dir
 
-        self._brightness_param: Param = None
-        self._sn: SimDetecSupernova = None
+        self._brightness_param: Optional[Param] = None
+        self._sn: Optional[SimDetecSupernova] = None
 
-        self.tables: SimDetecTables = None
+        self.tables: Optional[SimDetecTables] = None
 
     def get_brightness_param_from_sim_tables(self, param_name: str = "brightness"):
         pattern = re.compile(rf"^sim_{re.escape(self.model_name)}_(\d+\.\d+)\.txt$")
@@ -967,7 +978,7 @@ class InjectionLoop(ABC):
         self,
         sim_lc: SimDetecLightCurve,
         **kwargs,
-    ):
+    ) -> List[int]:
         """
         From a light curve with a Simulation injected, return the indices within which to search for the max FOM.
 
@@ -984,6 +995,15 @@ class InjectionLoop(ABC):
         sigma_kern: float,
         brightness: float,
     ):
+        if self._sn is None:
+            raise ValueError(
+                "Supernova (self._sn) must be set before injecting a simulation"
+            )
+        if self.tables is None:
+            raise RuntimeError(
+                "SimDetecTables (self._tables) must be set before injecting a simulation"
+            )
+
         # pick random control light curve
         rand_control_index = random.choice(self._sn.control_lc_indices)
 
@@ -1071,7 +1091,7 @@ class AtlasInjectionLoop(InjectionLoop):
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
             print(
-                f"\nUsing rolling sum kernel size sigma_kern={format_float(sigma_kern)} days..."
+                f"\nUsing rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days..."
                 "\n-----------------------------------------------------"
             )
             self._sn.apply_rolling_sums(sigma_kern, valid_ix=True, pre_mjd0_ix=False)
@@ -1083,7 +1103,7 @@ class AtlasInjectionLoop(InjectionLoop):
                 sim_detec_table = self.tables.get_table(sigma_kern, peak_appmag)
                 sim_detec_table.validate_model_name_col()
                 print(
-                    f"- Commencing {len(sim_detec_table.t)} simulations for peak brightness of {format_float(peak_appmag)} app mag (= {format_float(mag2flux(peak_appmag))} uJy)..."
+                    f"- Commencing {len(sim_detec_table.t)} simulations for peak brightness of {format_float_string(peak_appmag)} app mag (= {format_float_string(mag2flux(peak_appmag))} uJy)..."
                 )
 
                 # load the Simulation object based on the data in the first row
@@ -1192,7 +1212,7 @@ if __name__ == "__main__":
     args = define_args(config).parse_args()
 
     print(
-        f"\nGenerating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float(args.mjd_bin_size)} days"
+        f"\nGenerating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float_string(args.mjd_bin_size)} days"
     )
     print(f"Simulations model name: {args.model_name}")
     print(f"Weighted Gaussian rolling sum kernel sizes (days): {args.sigma_kerns}")

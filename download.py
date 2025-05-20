@@ -49,11 +49,11 @@ CTRL_COORDINATES_COLNAMES = [
 
 class ControlCoordinatesTable:
     def __init__(self):
-        self.num_controls = None
-        self.radius = None
-        self.t = None
+        self.num_controls: Optional[int] = None
+        self.radius: Optional[Angle | float] = None
+        self.t: Optional[pd.DataFrame] = None
 
-        self.closebright_min_dist = None
+        self.closebright_min_dist: Optional[float] = None
 
     def read(self, filename: str):
         try:
@@ -82,6 +82,9 @@ class ControlCoordinatesTable:
             )
 
     def update_row(self, control_index: int, full_control_lc: FullLightCurve):
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
+
         ix = np.where(self.t["control_index"] == control_index)[0]
         if len(ix) > 1:
             raise RuntimeError(
@@ -91,20 +94,20 @@ class ControlCoordinatesTable:
 
         # update corresponding row in table with total and filter counts
         total_len, filt_lens = full_control_lc.get_filt_lens()
-        self.t.loc[index, "n_detec"] = total_len
+        self.t.at[index, "n_detec"] = total_len
         for filt in filt_lens:
-            self.t.loc[index, f"n_detec_{filt}"] = filt_lens[filt]
+            self.t.at[index, f"n_detec_{filt}"] = filt_lens[filt]
 
     def add_row(
         self,
-        tnsname: str,
+        tnsname: str | float,
         control_index: int,
         coords: Coordinates,
-        ra_offset=0,
-        dec_offset=0,
-        radius=0,
-        n_detec=0,
-        filt_lens=None,
+        ra_offset: float | Angle = 0,
+        dec_offset: float | Angle = 0,
+        radius: float | Angle = 0,
+        n_detec: int = 0,
+        filt_lens: Optional[Dict[str, int]] = None,
     ):
         row = {
             "tnsname": tnsname,
@@ -144,6 +147,9 @@ class ControlCoordinatesTable:
         r: Angle,
         closebright=False,
     ):
+        if self.num_controls is None:
+            raise RuntimeError("Number of control light curves cannot be None")
+
         angle = Angle(i * 360.0 / self.num_controls, u.degree)
 
         ra_distance = Angle(r.degree * math.cos(angle.radian), u.degree)
@@ -179,12 +185,14 @@ class ControlCoordinatesTable:
         full_sn_lc: FullLightCurve,
         tnsname: str,
         center_coords: Coordinates,
-        num_controls: int = None,
-        radius: float = None,
+        num_controls: Optional[int] = None,
+        radius: Optional[float] = None,
         closebright=False,
     ):
         if num_controls:
             self.num_controls = num_controls
+        if self.num_controls is None:
+            raise RuntimeError("Number of control light curves cannot be None")
         if radius:
             self.radius = radius
 
@@ -269,6 +277,10 @@ class ControlCoordinatesTable:
             filename = f"{directory}/{tnsname}/{filename}"
 
         print(f"Saving control coordinates table at {filename}...")
+        if self.t is None:
+            raise RuntimeError(
+                "Cannot save ControlCoordinatesTable: table (self.t) is None"
+            )
         if overwrite or not os.path.exists(filename):
             self.t.to_string(filename, index=False)
 
@@ -360,7 +372,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 class DownloadLoop:
     def __init__(self, args):
-        self.lcs: Dict[int, Type[FullLightCurve]] = {}
+        self.lcs: Dict[int, FullLightCurve] = {}
         self.ctrl_coords = ControlCoordinatesTable()
 
         self.tnsnames = args.tnsnames
@@ -374,7 +386,7 @@ class DownloadLoop:
             or not args.closebright is None
         ):
             raise RuntimeError(
-                f'Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with specific coordinates, use a SN info table at {self.settings["dir"]["atclean_input"]}/{self.settings["dir"]["sninfo_filename"]}.'
+                f"Cannot specify the same coordinates, MJD0, or control/closebright coordinates for multiple SNe in the command line. To run a batch with varying coordinates, set up a SnInfoTable in the config file."
             )
 
         self.overwrite = args.overwrite
@@ -469,8 +481,13 @@ class DownloadLoop:
             raise RuntimeError(f"ERROR in connect_atlas(): {resp.status_code}")
         return headers
 
-    def parse_arg_coords(self, arg_coords):
+    def parse_arg_coords(self, arg_coords: str):
         parsed_coords = parse_comma_separated_string(arg_coords)
+        if parsed_coords is None:
+            raise RuntimeError(
+                f"Parsing comma-separated --coords argument failed: {arg_coords}"
+            )
+
         if len(parsed_coords) > 2:
             raise RuntimeError(
                 "Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
@@ -559,7 +576,7 @@ class DownloadLoop:
 
             # download control light curves
             for i in range(1, len(self.ctrl_coords.t)):
-                control_index = self.ctrl_coords.t.loc[i, "control_index"]
+                control_index = self.ctrl_coords.t.at[i, "control_index"]
                 print(f"\nControl light curve {control_index}")
 
                 if not args.overwrite and control_index in existing_control_indices:
@@ -570,8 +587,8 @@ class DownloadLoop:
 
                 self.lcs[control_index] = FullLightCurve(
                     control_index,
-                    self.ctrl_coords.t.loc[i, "ra"],
-                    self.ctrl_coords.t.loc[i, "dec"],
+                    self.ctrl_coords.t.at[i, "ra"],
+                    self.ctrl_coords.t.at[i, "dec"],
                 )
                 self.lcs[control_index].download(
                     headers, lookbacktime=args.lookbacktime, max_mjd=args.max_mjd

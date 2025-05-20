@@ -15,7 +15,7 @@ import argparse
 import sys
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Optional
 from download import ControlCoordinatesTable, load_config, make_dir_if_not_exists
 from lightcurve import LightCurve
 from utils import (
@@ -193,7 +193,7 @@ class ConvertLoop:
         colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
-        sninfo_filename: str = None,
+        sninfo_filename: Optional[str] = None,
     ):
         self.colnames: PresetColumnNames = colnames
         self.input_dir: str = input_dir
