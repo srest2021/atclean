@@ -252,7 +252,7 @@ class Supernova:
             stdev_flux = self.lcs[control_index].get_stdev_flux(indices=clean_ix)
             if stdev_flux is None:
                 print(
-                    f'WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.params["temp_x2_max_value"]}...'
+                    f"WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.temp_x2_max_value}..."
                 )
                 stdev_flux = self.lcs[control_index].get_stdev_flux(
                     indices=dflux_clean_ix
@@ -658,6 +658,11 @@ class AveragedSupernova(Supernova):
 
         return self.lcs[control_index].ix_masked(self.colnames.mask, maskval=flag)
 
+    def get_mjd_ranges(self) -> List[List[float]]:
+        if self._mjd_ranges is None:
+            raise RuntimeError("MJD ranges not found")
+        return self._mjd_ranges
+
     def set_mjd_ranges(self, mjd_ranges: List[List[float]]):
         validate_mjd_ranges(mjd_ranges, var_name="mjd_ranges")
 
@@ -807,9 +812,9 @@ class LightCurve(pdastrostatsclass):
         flag: Optional[int] = None,
         use_all: bool = False,
         mjd0: Optional[float] = None,
-    ):
+    ) -> tuple[float | None, float | None]:
         if self.t.empty or len(self.t) < 2:
-            return [None, None]
+            return None, None
 
         if indices is None or len(indices) < 2:
             if use_all:
@@ -825,11 +830,13 @@ class LightCurve(pdastrostatsclass):
         flux_max = self.t.loc[indices, self.colnames.flux].max()
         offset = 0.05 * abs(flux_max - flux_min)
 
-        return [flux_min - offset, flux_max + offset]
+        return flux_min - offset, flux_max + offset
 
-    def get_xlims(self, mjd0: Optional[float] = None, colname_attr: str = "mjd"):
+    def get_xlims(
+        self, mjd0: Optional[float] = None, colname_attr: str = "mjd"
+    ) -> tuple[float | None, float | None]:
         if self.t.empty or len(self.t) < 2:
-            return [None, None]
+            return None, None
 
         if colname_attr and not hasattr(self.colnames, colname_attr):
             raise AttributeError(f"Invalid colname_attr: '{colname_attr}'")
@@ -846,7 +853,7 @@ class LightCurve(pdastrostatsclass):
                 )
             end = mjd0
 
-        return [first_mjd, end]
+        return first_mjd, end
 
     def can_plot(self, ix: List[int], columns: Optional[List[str]] = None) -> bool:
         if columns is None:
@@ -868,7 +875,7 @@ class LightCurve(pdastrostatsclass):
                 print(
                     f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
                 )
-            self.t.drop(index=AorB(dflux_zero_ix, flux_nan_ix).tolist(), inplace=True)
+            self.t.drop(index=AorB(dflux_zero_ix, flux_nan_ix), inplace=True)
 
     def calculate_fdf_column(self, verbose=False):
         # replace infs with NaNs
@@ -1820,7 +1827,7 @@ class SimDetecSupernova(AveragedSupernova):
     def get_all_fom(self, sigma_kern: float) -> pd.Series:
         self.apply_rolling_sums(
             sigma_kern,
-            valid_ix=self.has_valid_mjd_ix(),
+            valid_mjd_ix=self.has_valid_mjd_ix(),
             pre_mjd0_ix=self.has_pre_mjd0_ix(),
         )
 
@@ -1888,12 +1895,12 @@ class SimDetecSupernova(AveragedSupernova):
     def apply_rolling_sums(
         self,
         sigma_kern: float,
-        valid_ix: bool = False,
+        valid_mjd_ix: bool = False,
         pre_mjd0_ix: bool = False,
     ):
-        if valid_ix and not self.has_valid_mjd_ix():
+        if valid_mjd_ix and not self.has_valid_mjd_ix():
             raise RuntimeError(
-                "Valid MJD indices missing; set valid_ix=False or call self.set_valid_mjd_ix()"
+                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
             )
         if pre_mjd0_ix and not self.has_pre_mjd0_ix():
             raise RuntimeError(
@@ -1903,7 +1910,7 @@ class SimDetecSupernova(AveragedSupernova):
         msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
         out = []
         sn_indices = self.lcs[0].getindices()
-        if valid_ix:
+        if valid_mjd_ix:
             out.append("using only MJDs in included MJD ranges for all light curves")
             sn_indices = AandB(sn_indices, self.lcs[0].valid_mjd_ix)
         if pre_mjd0_ix:
@@ -1921,7 +1928,7 @@ class SimDetecSupernova(AveragedSupernova):
             self.lcs[control_index].apply_rolling_sum(
                 sigma_kern,
                 flag=self.flag,
-                indices=self.lcs[control_index].valid_mjd_ix if valid_ix else None,
+                indices=self.lcs[control_index].valid_mjd_ix if valid_mjd_ix else None,
             )
 
     def remove_rolling_sums(self):
@@ -2040,7 +2047,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
         )
 
-    def get_new_gaussian_sigma(self, sigma_kern: float):
+    def _get_new_gaussian_sigma(self, sigma_kern: float):
         """
         new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
         for TESS/other lcs:
@@ -2079,7 +2086,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             / self.t.loc[good_ix, self.colnames.dflux]
         )
 
-        new_gaussian_sigma = self.get_new_gaussian_sigma(sigma_kern)
+        new_gaussian_sigma = self._get_new_gaussian_sigma(sigma_kern)
         windowsize = int(6 * new_gaussian_sigma)
         halfwindowsize = int(windowsize * 0.5) + 1
         if verbose:

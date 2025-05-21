@@ -206,7 +206,7 @@ class OutputReadMe:
         )
 
     def add_custom_cut_section(self, cut: CustomCut, percent_cut):
-        self.f.write(f"\n\n### {cut.name}\n")
+        self.f.write(f"\n\n### {cut.name()}\n")
         self.f.write(
             f"\nTotal percent of SN light curve flagged ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
@@ -451,7 +451,7 @@ class CleanLoop:
         }
         return apply, uncert_est_info_row
 
-    def apply_uncert_cut(self, cut: UncertaintyCut, plot: bool = False):
+    def apply_uncert_cut(self, cut: UncertaintyCut | None, plot: bool = False):
         if cut is None:
             return
 
@@ -473,7 +473,7 @@ class CleanLoop:
                 raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.sn, cut.flag, title=UncertaintyCut.name())
 
-    def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
+    def apply_x2_cut(self, cut: ChiSquareCut | None, plot: bool = False):
         if cut is None:
             return None
 
@@ -543,7 +543,7 @@ class CleanLoop:
         return x2_info_row
 
     def apply_controls_cut(
-        self, cut: ControlLightCurveCut, previous_flags: int, plot: bool = False
+        self, cut: ControlLightCurveCut | None, previous_flags: int, plot: bool = False
     ):
         if cut is None:
             return
@@ -598,7 +598,9 @@ class CleanLoop:
                 raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.sn, cut.flag, title=ControlLightCurveCut.name())
 
-    def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
+    def apply_badday_cut(
+        self, cut: BadDayCut | None, previous_flags, plot: bool = False
+    ):
         if cut is None:
             return
 

@@ -10,8 +10,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
 from lightcurve import (
-    LimCutsTable,
     LightCurve,
+    LimCutsTable,
     SimDetecLightCurve,
     SimDetecSupernova,
     Simulation,
@@ -98,7 +98,9 @@ FOM_LIMIT_LS = "dotted"
 
 
 class Plot:
-    def __init__(self, output_dir: str = None, color_scheme: Dict = None):
+    def __init__(
+        self, output_dir: Optional[str] = None, color_scheme: Optional[Dict] = None
+    ):
         self.output_dir = output_dir
 
         if color_scheme is not None:
@@ -155,7 +157,7 @@ class Plot:
         lims = PlotLimits()
 
         # get auto xlims using min and max of mjd ranges
-        lims.set_xlims([sn._mjd_ranges[0][0], sn._mjd_ranges[-1][-1]])
+        lims.set_xlims((sn.get_mjd_ranges()[0][0], sn.get_mjd_ranges()[-1][-1]))
 
         # override auto xlims with custom ones where they exist
         if custom_lims is not None and custom_lims.get_xlims() is not None:
@@ -163,14 +165,14 @@ class Plot:
 
         # get auto ylims using min and max of FOM distribution
         lims.set_ylims(
-            [
+            (
                 min(all_fom) * 1.5,
                 (
                     max(max(all_fom) * 1.2, fom_limit * 1.4)
                     if fom_limit
                     else max(all_fom) * 1.2
                 ),
-            ]
+            )
         )
 
         # override auto ylims with custom ones where they exist
@@ -182,7 +184,7 @@ class Plot:
     def _setup_ax(
         self,
         ax: Axes,
-        lims: PlotLimits,
+        lims: PlotLimits | None,
         xlabel: bool | str = True,
         ylabel: bool | str = True,
         xticks: bool = True,
@@ -216,17 +218,19 @@ class Plot:
         if not yticks:
             ax.set_yticklabels([])
 
-    def _plot_snr(
+    def _plot_fom(
         self,
         ax: Axes,
         obj: SimDetecSupernova | SimDetecLightCurve,
         control_index: int | None,
         color: str,
-        y_colname_attr: Optional[str] = "snrsumnorm",
+        y_colname_attr: str = "snrsumnorm",
         indices: Optional[List[int]] = None,
         label: Optional[str] = None,
     ):
         if isinstance(obj, SimDetecSupernova):
+            if control_index is None:
+                raise RuntimeError(f"To plot SN FOM, please provide control index")
             obj = obj.lcs[control_index]
 
         if indices is None:
@@ -254,13 +258,15 @@ class Plot:
         obj: Supernova | LightCurve,
         control_index: int | None,
         color: str,
-        y_colname_attr: Optional[str] = "flux",
-        dy_colname_attr: Optional[str] = "dflux_new",
+        y_colname_attr: str = "flux",
+        dy_colname_attr: str = "dflux_new",
         indices: Optional[List[int]] = None,
         label: Optional[str] = None,
         open: bool = False,
     ):
         if isinstance(obj, Supernova):
+            if control_index is None:
+                raise RuntimeError(f"To plot SN flux, please provide control index")
             obj = obj.lcs[control_index]
 
         y_colname = getattr(obj.colnames, y_colname_attr)
@@ -350,6 +356,10 @@ class Plot:
                 if not label is None:
                     label = None
 
+        if sn.mjd0 is None:
+            raise ValueError(
+                "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
+            )
         preMJD0_ix = sn.lcs[0].get_preMJD0_indices(sn.mjd0)
         postMJD0_ix = sn.lcs[0].get_postMJD0_indices(sn.mjd0)
 
@@ -384,8 +394,8 @@ class Plot:
         flag: int,
         control_index: int = 0,
         custom_lims: Optional[PlotLimits] = None,
-        title: str | None = None,
-        save_filename: str = None,
+        title: Optional[str] = None,
+        save_filename: Optional[str] = None,
     ):
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
         ax1: Axes
@@ -587,6 +597,9 @@ class Plot:
         save: bool = False,
         filename: str = "limcutstable",
     ):
+        if limcuts.t is None or limcuts.t.empty:
+            raise ValueError("LimCutsTable cannot be None or empty")
+
         loss_color = "darkmagenta"
         contam_color = "teal"
 
@@ -642,7 +655,7 @@ class Plot:
     def plot_uncert_est(
         self,
         sn: Supernova,
-        custom_lims: PlotLimits,
+        custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "uncert_est",
     ):
@@ -719,7 +732,7 @@ class Plot:
     def plot_template_correction(
         self,
         lc: LightCurve,
-        custom_lims: PlotLimits,
+        custom_lims: Optional[PlotLimits] = None,
         title=None,
         save: bool = False,
         filename: str = "template_correction",
@@ -760,14 +773,12 @@ class Plot:
         )
         ax1.axvline(x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100)
         ax1.axhline(color="k", zorder=0)
-        if custom_lims.get_xlims() is not None:
+        if custom_lims is not None and custom_lims.get_xlims() is not None:
             ax1.set_xlim(custom_lims.get_xlims())
-        if custom_lims.get_ylims() is not None:
-            ax1.set_ylim(custom_lims.get_ylims())
 
-        self._plot_lc(ax1, lc, 0, colors[0], region1_ix, label="Region 1 flux")
-        self._plot_lc(ax1, lc, 0, colors[1], region2_ix, label="Region 2 flux")
-        self._plot_lc(ax1, lc, 0, colors[2], region3_ix, label="Region 3 flux")
+        self._plot_lc(ax1, lc, 0, colors[0], indices=region1_ix, label="Region 1 flux")
+        self._plot_lc(ax1, lc, 0, colors[1], indices=region2_ix, label="Region 2 flux")
+        self._plot_lc(ax1, lc, 0, colors[2], indices=region3_ix, label="Region 3 flux")
 
         # ax2: zoom in on first template change transition
         ax2 = plt.subplot(gs[1, 0])
@@ -775,14 +786,12 @@ class Plot:
         ax2.axvline(x=TEMPLATE_CHANGE_1_MJD, color="k", linestyle="dotted", zorder=100)
         ax2.axhline(color="k", zorder=0)
         ax2.set_xlim(
-            lc.t.loc[region1_ix[-40:][0], lc.colnames.mjd],
-            lc.t.loc[region2_ix[:40][-1], lc.colnames.mjd],
+            lc.t.at[region1_ix[-40:][0], lc.colnames.mjd],
+            lc.t.at[region2_ix[:40][-1], lc.colnames.mjd],
         )
-        if custom_lims.get_ylims() is not None:
-            ax2.set_ylim(custom_lims.get_ylims())
 
-        self._plot_lc(ax2, lc, 0, colors[0], region1_ix)
-        self._plot_lc(ax2, lc, 0, colors[1], region2_ix)
+        self._plot_lc(ax2, lc, 0, colors[0], indices=region1_ix)
+        self._plot_lc(ax2, lc, 0, colors[1], indices=region2_ix)
 
         ax2.axhline(
             y=region1_mean, color=colors[0], linestyle="dashed", label="Region 1 mean"
@@ -797,14 +806,12 @@ class Plot:
         ax3.axvline(x=TEMPLATE_CHANGE_2_MJD, color="k", linestyle="dotted", zorder=100)
         ax3.axhline(color="k", zorder=0)
         ax3.set_xlim(
-            lc.t.loc[region2_ix[-40:][0], lc.colnames.mjd],
-            lc.t.loc[region3_ix[:40][-1], lc.colnames.mjd],
+            lc.t.at[region2_ix[-40:][0], lc.colnames.mjd],
+            lc.t.at[region3_ix[:40][-1], lc.colnames.mjd],
         )
-        if custom_lims.get_ylims() is not None:
-            ax3.set_ylim(custom_lims.get_ylims())
 
-        self._plot_lc(ax3, lc, 0, colors[1], region2_ix)
-        self._plot_lc(ax3, lc, 0, colors[2], region3_ix)
+        self._plot_lc(ax3, lc, 0, colors[1], indices=region2_ix)
+        self._plot_lc(ax3, lc, 0, colors[2], indices=region3_ix)
 
         ax3.axhline(
             y=region2b_mean, color=colors[1], linestyle="dashed", label="Region 2 mean"
@@ -819,11 +826,13 @@ class Plot:
         ax2.legend(facecolor="white", framealpha=1)
         ax3.legend(facecolor="white", framealpha=1)
 
-        for ax in (ax1, ax2, ax3):
+        for ax in [ax1, ax2, ax3]:
             ax.minorticks_on()
             ax.tick_params(direction="in", which="both")
             ax.set_xlabel("MJD")
             ax.set_ylabel(r"Flux ($\mu$Jy)")
+            if custom_lims is not None and custom_lims.get_ylims() is not None:
+                ax.set_ylim(custom_lims.get_ylims())
 
         if save:
             self.save_plot(filename, bbox_inches="tight")
@@ -839,25 +848,19 @@ class Plot:
         save: bool = False,
         filename: str = "pre_sn",
     ):
+        if sn.mjd0 is None:
+            raise ValueError("MJD0 must be provided to plot SN pre-MJD0 indices")
+
+        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
+
         fig, (ax1, ax2) = plt.subplots(2, constrained_layout=True)
         ax1: Axes
         ax2: Axes
         fig.set_figwidth(4)
         fig.set_figheight(3.5)
 
-        lims = self.get_lims(sn, custom_lims=custom_lims, flag=flag, pre_sn=True)
-
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
-        ax1.set_title(
-            f"{'Pre-SN ' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}Light Curve",
-            fontsize=12,
-        )
-
         self._setup_ax(ax2, lims)
-        ax2.set_title(
-            f"Binned {'Pre-SN ' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}Light Curve",
-            fontsize=12,
-        )
 
         # cleaned original light curve
         self._plot_lc(
@@ -907,6 +910,16 @@ class Plot:
             borderaxespad=1,
             ncol=1,
         ).set_zorder(100)
+
+        is_preMJD0 = ax1.get_xlim()[0] <= sn.mjd0 <= ax1.get_xlim()[1]
+        ax1.set_title(
+            f"{'Pre-SN ' if is_preMJD0 else ''}Light Curve",
+            fontsize=12,
+        )
+        ax2.set_title(
+            f"Binned {'Pre-SN ' if is_preMJD0 else ''}Light Curve",
+            fontsize=12,
+        )
 
         if save:
             self.save_plot(filename, bbox_inches="tight")
@@ -1113,10 +1126,6 @@ class Plot:
         )
 
         self._setup_ax(ax1, lims, xlabel=False, xticks=False)
-        ax1.set_title(
-            f"Binned & Cleaned {'Pre-SN ' if lims.xlower <= avg_sn.mjd0 <= lims.xupper else ''}Light Curve",
-            fontsize=12,
-        )
         self._plot_lc(
             ax1,
             avg_sn,
@@ -1135,6 +1144,12 @@ class Plot:
             select_control_index,
             self.color_scheme["select_control_flux"],
             indices=avg_sn.get_good_indices(),
+        )
+
+        is_preMJD0 = ax1.get_xlim()[0] <= avg_sn.mjd0 <= ax1.get_xlim()[1]
+        ax1.set_title(
+            f"Binned & Cleaned {'Pre-SN ' if is_preMJD0 else ''}Light Curve",
+            fontsize=12,
         )
 
         if save:
@@ -1168,7 +1183,7 @@ class Plot:
             sigma_kern = sigma_kerns[i]
             sn.apply_rolling_sums(
                 sigma_kern,
-                valid_ix=sn.has_valid_mjd_ix(),
+                valid_mjd_ix=sn.has_valid_mjd_ix(),
                 pre_mjd0_ix=sn.has_pre_mjd0_ix(),
             )
 
@@ -1203,7 +1218,7 @@ class Plot:
                 label = None
                 if control_index == sn.control_lc_indices[0]:
                     label = f"{len(sn.control_lc_indices) - 1} Controls (#s: {label_control_lc_indices})"
-                self._plot_snr(
+                self._plot_fom(
                     ax1,
                     sn,
                     control_index,
@@ -1212,7 +1227,7 @@ class Plot:
                 )
 
             # selected control lc fom
-            self._plot_snr(
+            self._plot_fom(
                 ax1,
                 sn,
                 select_control_index,
@@ -1221,12 +1236,13 @@ class Plot:
             )
 
             # pre-SN lc fom
-            self._plot_snr(
+            is_preMJD0 = ax1.get_xlim()[0] <= sn.mjd0 <= ax1.get_xlim()[1]
+            self._plot_fom(
                 ax1,
                 sn,
                 0,
                 self.color_scheme["sn_fom"],
-                label=f"{'Pre-' if lims.xlower <= sn.mjd0 <= lims.xupper else ''}SN",
+                label=f"{'Pre-' if is_preMJD0 else ''}SN",
             )
 
             # sigma_kern label
@@ -1368,7 +1384,7 @@ class Plot:
         e: EfficiencyTable,
         select_param_name: str,
         save: bool = False,
-        filename: str = None,
+        filename: Optional[str] = None,
     ):
         if select_param_name.startswith(BRIGHTNESS_PARAM_PREFIX):
             raise ValueError(
@@ -1395,8 +1411,8 @@ class Plot:
         fig.set_figheight(2.5)
         fig.set_figwidth(4.5)
 
-        assert len(e._fom_limits[sigma_kern]) == 1
-        fom_limit = e._fom_limits[sigma_kern][0]
+        assert len(e.get_fom_limits().get_multi(sigma_kern)) == 1
+        fom_limit = e.get_fom_limits().get(sigma_kern)
 
         self._setup_ax(ax1, None, xlabel=False, ylabel=False)
         ax1.axhline(80, color="k", linestyle="dashed", linewidth=1.0)
@@ -1448,10 +1464,10 @@ class Plot:
             ax1.set_xlabel(r"$m_{peak}$ (app mag)")
 
             # abs mag
-            ax2 = ax1.twiny()
+            ax2: Axes = ax1.twiny()
             self._setup_ax(ax2, None, xlabel=r"$m_{peak}$ (abs mag)", ylabel=False)
             ax2.set_xticks(ax1.get_xticks())
-            ax2.set_xbound(ax1.get_xbound())
+            ax2.set_xbound(lower=ax1.get_xbound()[0], upper=ax1.get_xbound()[1])
             ax2.set_xticklabels(apparent_to_absolute_mag(ax1.get_xticks(), precision=0))
         else:
             ax1.set_xlabel(
@@ -1483,6 +1499,15 @@ class Plot:
         save: bool = False,
         filename: str = "magnitude_thresholds",
     ):
+        if (
+            mt.percents is None
+            or mt.sigma_kerns is None
+            or mt.select_param_name is None
+        ):
+            raise ValueError(
+                "Please run MagnitudeThresholdTable.calculate() before plotting"
+            )
+
         n = len(mt.percents)
         fig, axes = plt.subplots(n, 1, constrained_layout=True)
         fig.set_figheight(n * 1.5)
@@ -1660,7 +1685,7 @@ class Plot:
         )
 
         # top panel FOM
-        self._plot_snr(
+        self._plot_fom(
             ax2,
             sim_lc,
             None,
@@ -1710,7 +1735,7 @@ class Plot:
         )
 
         # bottom panel simulated FOM
-        self._plot_snr(
+        self._plot_fom(
             ax4,
             sim_lc,
             None,
@@ -1767,10 +1792,10 @@ class PlotPdf(Plot):
         self,
         sn: Supernova,
         flag: int,
-        control_index: bool = 0,
+        control_index: int = 0,
         custom_lims: Optional[PlotLimits] = None,
-        title: str | None = None,
-        save_filename: str = None,
+        title: Optional[str] = None,
+        save_filename: Optional[str] = None,
     ):
         print(f"Plotting cut for flag {hex(flag)}...")
         fig = super().plot_cut(

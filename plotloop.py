@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from clean import parse_config_cuts
 from download import (
@@ -37,14 +37,14 @@ class PlotLoop:
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
-        sninfo_filename: str = None,
+        sninfo_filename: Optional[str] = None,
         overwrite: bool = False,
     ):
         self.colnames = colnames
-        self.sn: Supernova = None
-        self.avg_sn: AveragedSupernova = None
-        self.cut_list: CutList = None
-        self.p: PlotPdf = None
+        self.sn: Optional[Supernova] = None
+        self.avg_sn: Optional[AveragedSupernova] = None
+        self.cut_list: Optional[CutList] = None
+        self.p: Optional[PlotPdf] = None
 
         self.credentials: Credentials = credentials
         self.input_dir: str = input_dir
@@ -202,9 +202,9 @@ class PlotLoop:
         cut_list: CutList,
         num_controls: int = 0,
         mjd0=None,
-        filters: List[str] = None,
+        filters: Optional[List[str]] = None,
         plot_uncert_est: bool = False,
-        lims: PlotLimits | None = None,
+        lims: Optional[PlotLimits] = None,
     ):
         self.cut_list = cut_list
 

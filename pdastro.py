@@ -588,7 +588,7 @@ class pdastroclass:
         indices=None,
         exclude_lowlim=False,
         exclude_uplim=False,
-    ):
+    ) -> List[int]:
 
         # get the indices based on input.
         indices = self.getindices(indices)

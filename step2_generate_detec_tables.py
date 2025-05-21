@@ -1094,7 +1094,9 @@ class AtlasInjectionLoop(InjectionLoop):
                 f"\nUsing rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days..."
                 "\n-----------------------------------------------------"
             )
-            self._sn.apply_rolling_sums(sigma_kern, valid_ix=True, pre_mjd0_ix=False)
+            self._sn.apply_rolling_sums(
+                sigma_kern, valid_mjd_ix=True, pre_mjd0_ix=False
+            )
 
             sim_factory = SimulationFactory(verbose=True)
 

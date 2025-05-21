@@ -373,15 +373,18 @@ class PlotLimits:
 
     def set_lims(
         self,
-        xlims: Optional[Tuple[float, float]] = None,
-        ylims: Optional[Tuple[float, float]] = None,
+        xlims: Optional[tuple[float | None, float | None]] = None,
+        ylims: Optional[tuple[float | None, float | None]] = None,
     ):
         if xlims is not None:
             self.set_xlims(xlims)
         if ylims is not None:
             self.set_ylims(ylims)
 
-    def set_xlims(self, xlims: Tuple[float, float]):
+    def set_xlims(self, xlims: tuple[float | None, float | None] | None):
+        if xlims is None:
+            return
+
         if len(xlims) != 2:
             raise ValueError(f"xlims must be a tuple of length 2, got {len(xlims)}")
 
@@ -395,7 +398,10 @@ class PlotLimits:
         if xlims[1] is not None:
             self.xupper = xlims[1]
 
-    def set_ylims(self, ylims: Tuple[float, float]):
+    def set_ylims(self, ylims: tuple[float | None, float | None] | None):
+        if ylims is None:
+            return
+
         if len(ylims) != 2:
             raise ValueError(f"ylims must be a tuple of length 2, got {len(ylims)}")
 
@@ -409,12 +415,12 @@ class PlotLimits:
         if ylims[1] is not None:
             self.yupper = ylims[1]
 
-    def get_xlims(self):
+    def get_xlims(self) -> tuple[float | None, float | None] | None:
         if self.xlower is None and self.xupper is None:
             return None
         return self.xlower, self.xupper
 
-    def get_ylims(self):
+    def get_ylims(self) -> tuple[float | None, float | None] | None:
         if self.ylower is None and self.yupper is None:
             return None
         return self.ylower, self.yupper
@@ -657,7 +663,7 @@ class PresetColumnNames:
             no_nones=True,
         )
 
-        self.optional_columns: Dict[str, Optional[str]] = self._validate_columns_dict(
+        self.optional_columns: Dict[str, str | None] = self._validate_columns_dict(
             {
                 "chisquare": config_preset_settings.get("chisquare_column_name"),
                 "filt": config_preset_settings.get("filter_column_name"),
@@ -745,7 +751,7 @@ class PresetColumnNames:
         )
         return list(colset)
 
-    def __getattr__(self, name: str) -> str:
+    def __getattr__(self, name: str) -> str | None:
         """
         Dynamic access to column names, e.g., obj.mjd or obj.chisquare.
         """
@@ -1417,7 +1423,7 @@ class UncertaintyCut(Cut):
         return "Uncertainty Cut"
 
 
-class UncertaintyEstimation:
+class UncertaintyEstimation(Cut):
     def __init__(self, temp_x2_max_value: float = 20, uncert_cut_flag: int = 0x2):
         super().__init__()
         self.temp_x2_max_value = temp_x2_max_value
@@ -1537,7 +1543,7 @@ class CutList:
             )
         self.list[cut.name()] = cut
 
-    def get(self, name: str):
+    def get(self, name: str) -> Cut | None:
         if not name in self.list:
             return None
         return self.list[name]
