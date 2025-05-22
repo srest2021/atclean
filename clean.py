@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 
-from configparser import ConfigParser
 from datetime import datetime
-import os
-import re
 from typing import Callable, Dict, List, Optional
 import sys, argparse
 import pandas as pd
@@ -65,6 +62,9 @@ class OutputReadMe:
 
         self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
         self.f.write(f"\n\nTimestamp: {timestamp.strftime('%B %d, %Y at %I:%M:%S %p')}")
+        full_command = " ".join(sys.argv)
+        self.f.write(f"\n\nCommand run: `{full_command}`")
+
         self.f.write(
             f'\n\nThe SN light curves are separated by filter and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.'
         )
