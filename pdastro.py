@@ -6,6 +6,7 @@ A. Rest
 import sys, os, re, types, copy, io
 from typing import List
 import numpy as np
+import numpy.typing as npt
 from astropy.time import Time
 import astropy.io.fits as fits
 import pandas as pd
@@ -474,12 +475,12 @@ class pdastroclass:
 
         return 0
 
-    def getindices(self, indices=None) -> List:
+    def getindices(self, indices=None):
         """make indices conform (input can be None,([list],), int, str, or list). The output is a list"""
 
         # If indices is None, return all values
         if indices is None:
-            return list(self.t.index.values)
+            return self.t.index.values
 
         # If indices=([indiceslist],), then it needs to be changed to indices=indiceslist
         if isinstance(indices, tuple):
@@ -488,7 +489,7 @@ class pdastroclass:
                 return []
             # teh first entry is a list, then these are the relevant indices!
             if isinstance(indices[0], list) or isinstance(indices[0], np.ndarray):
-                return list(indices[0])
+                return indices[0]
             else:
                 return list(indices)
 
@@ -500,8 +501,7 @@ class pdastroclass:
         ):
             return [indices]
 
-        indices = np.array(indices)
-        return list(indices)
+        return np.array(indices)
 
     def getcolnames(self, colnames=None):
         """Return a list of all colnames of colnames=None. If colnames=string, return a list"""

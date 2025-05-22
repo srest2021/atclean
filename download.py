@@ -263,8 +263,8 @@ class ControlCoordinatesTable:
     def save(
         self,
         directory: str,
+        tnsname: str,
         filename: Optional[str] = None,
-        tnsname: Optional[str] = None,
         overwrite: bool = False,
     ):
         if filename is None:
@@ -599,7 +599,7 @@ class DownloadLoop:
                 self.ctrl_coords.update_row(control_index, self.lcs[control_index])
 
             # save control coordinates table
-            self.ctrl_coords.save(self.input_dir, tnsname=tnsname)
+            self.ctrl_coords.save(self.input_dir, tnsname)
 
     def loop(self, args, colnames: PresetColumnNames):
         print("\nConnecting to ATLAS API...")

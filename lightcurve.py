@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
-from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
+from typing import Callable, Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, bisect
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -30,10 +30,12 @@ from utils import (
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
+    flux2mag,
     format_float_string,
     get_filename,
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
+    mag2flux,
     new_row,
     query_atlas,
     query_tns,
@@ -1782,12 +1784,21 @@ class Simulation:
         self.brightness = None
 
     @abstractmethod
-    def get_sim_flux(self, mjds, brightness, **kwargs):
+    def get_sim_flux(
+        self,
+        mjds,
+        brightness: float,
+        brightness_to_flux_fn: Callable = mag2flux,
+        flux_to_brightness_fn: Callable = flux2mag,
+        **kwargs,
+    ):
         """
         Compute the simulated flux for the given MJDs and peak apparent magnitude.
 
         :param mjds: List or array of MJDs into which we inject the Simulation.
         :param brightness: Desired brightness (e.g., peak apparent magnitude or flux) of the simulation.
+        :param brightness_to_flux_fn: Function to convert brightness to flux.
+        :param flux_to_brightness_fn: Function to convert flux to brightness.
         :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
 
         :return: An array of simulated flux values corresponding to the input MJDs.
@@ -2122,18 +2133,18 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     def add_sim_flux(
         self,
-        good_ix: List[int],
         sim_flux,
         cur_sigma_kern: Optional[float] = None,
+        indices: Optional[List[int]] = None,
         verbose: bool = False,
         remove_old: bool = True,
     ):
         """
         Add simulated flux to the light curve ("uJysim" column) and add "SNRsim" and "SNRsimsum" columns.
 
-        :param good_ix: Unmasked/unflagged indices of the light curve.
-        :param sim_flux: Array of simulated flux to add to the light curve
+        :param sim_flux: Array of simulated flux to add to the light curve.
         :param cur_sigma_kern: The current kernel size of the rolling sum.
+        :param indices: Indices of the light curve (e.g., unmasked/unflagged indices) to use when calculating the resulting FOM.
         :param remove_old: Remove any old simulations before adding the simulated flux.
         """
         if cur_sigma_kern is None:
@@ -2143,19 +2154,23 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
+        if indices is None:
+            indices = self.getindices()
+
         if remove_old:
             self.remove_simulations()
-            self.t.loc[good_ix, self.colnames.fluxsim] = self.t.loc[
-                good_ix, self.colnames.flux
+            self.t.loc[indices, self.colnames.fluxsim] = self.t.loc[
+                indices, self.colnames.flux
             ]
-        self.t.loc[good_ix, self.colnames.fluxsim] += sim_flux
+
+        self.t.loc[indices, self.colnames.fluxsim] += sim_flux
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         self.t[self.colnames.snrsim] = 0.0
         # include only simulated flux in the SNR
-        self.t.loc[good_ix, self.colnames.snrsim] = (
-            self.t.loc[good_ix, self.colnames.fluxsim]
-            / self.t.loc[good_ix, self.colnames.dflux]
+        self.t.loc[indices, self.colnames.snrsim] = (
+            self.t.loc[indices, self.colnames.fluxsim]
+            / self.t.loc[indices, self.colnames.dflux]
         )
 
         new_gaussian_sigma = round(cur_sigma_kern / self.mjdbinsize)

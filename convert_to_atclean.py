@@ -312,6 +312,7 @@ class ConvertLoop:
             print()
             ctrl_coords.save(
                 self.input_dir,
+                obj_name,
                 filename=f"{obj_name}_converted_control_coords.txt",
                 overwrite=overwrite,
             )

@@ -48,7 +48,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     return parser
 
 
-def find_prefix_in_list(l: pd.Index[str], prefix: str):
+def find_prefix_in_list(l: List[str], prefix: str):
     for item in l:
         if item.startswith(prefix):
             return item

@@ -28,6 +28,16 @@ TEMPLATE_CHANGE_2_MJD = 58882
 CONFIG_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
 
+# convert flux to magnitude
+def flux2mag(flux: float):
+    return -2.5 * np.log10(flux) + 23.9
+
+
+# convert magnitude to flux
+def mag2flux(mag: float):
+    return 10 ** ((mag - 23.9) / -2.5)
+
+
 def AandB(A, B) -> List:
     return list(np.intersect1d(A, B, assume_unique=False))
 
@@ -1270,9 +1280,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
             )
         else:
             result = s.get(result_url, headers=headers).text
-            dfresult = pd.read_csv(
-                io.StringIO(result.replace("###", "")), delim_whitespace=True
-            )
+            dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), sep="\s+")
 
     return dfresult
 
