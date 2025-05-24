@@ -53,7 +53,7 @@ class ControlCoordinatesTable:
         self.t: Optional[pd.DataFrame] = None
         self.num_controls: Optional[int] = None
         self.radius: Optional[Angle] = None
-        self.sn_coords = Optional[Coordinates] = None
+        self.sn_coords: Optional[Coordinates] = None
         self.center_coords: Optional[Coordinates] = None
         self.closebright: bool = False
         self.closebright_min_dist: Optional[float] = None
@@ -126,6 +126,7 @@ class ControlCoordinatesTable:
     def _set_num_controls_from_t(self):
         if self.t is None:
             raise RuntimeError("Table (self.t) cannot be None")
+        # first row is SN, remaining are controls
         self.num_controls = len(self.t) - 1
 
     def _read(self, filename: str):
@@ -141,7 +142,11 @@ class ControlCoordinatesTable:
             )
 
         self.num_controls = len(self.t)
-        self.t["control_index"] = range(1, self.num_controls + 1)
+        if (
+            "control_index" not in self.t.columns
+            or self.t["control_index"].isnull().all()
+        ):
+            self.t["control_index"] = range(1, self.num_controls + 1)
 
         for colname in CTRL_COORDINATES_COLNAMES:
             if not colname in self.t.columns:
@@ -164,7 +169,11 @@ class ControlCoordinatesTable:
             raise RuntimeError("Table (self.t) cannot be None")
 
         indices = np.where(self.t["control_index"] == control_index)[0]
-        if len(indices) > 1:
+        if len(indices) == 0:
+            raise RuntimeError(
+                f"Cannot update row in control coordinates table for control index {control_index}: no matching rows."
+            )
+        elif len(indices) > 1:
             raise RuntimeError(
                 f"Cannot update row in control coordinates table for control index {control_index}: duplicate rows."
             )
@@ -265,7 +274,7 @@ class ControlCoordinatesTable:
                 self.sn_coords,
                 ra_offset=np.nan,
                 dec_offset=np.nan,
-                radius=radius,
+                radius=self.radius,
                 n_detec=total_len,
                 filt_lens=filt_lens,
             )
@@ -286,7 +295,7 @@ class ControlCoordinatesTable:
         print("Control light curve coordinates generated: \n", self.__str__())
 
     def get_filename(self, directory, tnsname):
-        return f"{directory}/{tnsname}/{tnsname}_control_coords.txt"
+        return os.path.join(directory, tnsname, f"{tnsname}_control_coords.txt")
 
     def save(
         self,
