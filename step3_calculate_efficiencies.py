@@ -42,6 +42,7 @@ from utils import (
     get_allowed_presets,
     hexstring_to_int,
     load_config,
+    load_preset_column_names_from_config,
     make_dir_if_not_exists,
     new_row,
     print_progress_bar,
@@ -1162,18 +1163,9 @@ if __name__ == "__main__":
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-    if args.filter in allowed_presets and args.filter != args.preset:
-        print(
-            f"WARNING: filter {args.filter} identified as preset in config.ini, but does not match arg preset {args.preset}"
-        )
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
+    colnames = load_preset_column_names_from_config(
+        args.preset, config, filt=args.filter
+    )
 
     mjd0 = args.mjd0
     if mjd0 is None:

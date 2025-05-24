@@ -1690,7 +1690,12 @@ class FullLightCurve:
                 )
 
     # download the full light curve from ATLAS
-    def download(self, headers, lookbacktime=None, max_mjd=None):
+    def download(
+        self,
+        headers,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
+    ):
         if lookbacktime:
             min_mjd = float(Time.now().mjd - lookbacktime)
         else:

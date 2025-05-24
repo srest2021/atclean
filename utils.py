@@ -5,10 +5,11 @@ import bisect
 from configparser import ConfigParser
 import configparser
 from functools import reduce
+from getpass import getpass
 from typing import Callable, Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, os
 from astropy import units as u
-from astropy.coordinates import Angle
+from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time
 from collections import OrderedDict
 from pdastro import pdastrostatsclass
@@ -30,12 +31,32 @@ CONFIG_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "avera
 
 # convert flux to magnitude
 def flux2mag(flux: float):
+    """
+    Convert flux in microjanskeys to apparent magnitude
+    """
     return -2.5 * np.log10(flux) + 23.9
 
 
 # convert magnitude to flux
 def mag2flux(mag: float):
+    """
+    Convert apparent magnitude to flux in microjanskeys.
+    """
     return 10 ** ((mag - 23.9) / -2.5)
+
+
+def mag2count(mag: float):
+    """
+    Convert apparent magnitude to TESS counts per second.
+    """
+    return 10 ** ((20.44 - mag) / 2.5)
+
+
+def count2mag(count: float):
+    """
+    Convert TESS counts per second to apparent magnitude.
+    """
+    return -2.5 * np.log10(count) + 20.44
 
 
 def AandB(A, B) -> List:
@@ -86,7 +107,7 @@ def print_progress_bar(
         print()
 
 
-def apparent_to_absolute_mag(values, distance_modulus=29.04, precision=2):
+def app2absmag(values: List[float], distance_modulus=29.04, precision=2):
     """
     Convert a list of apparent magnitude values to absolute magnitude values.
 
@@ -147,7 +168,7 @@ def get_allowed_presets(config: ConfigParser) -> list[str]:
 
 
 def parse_config_str(value: str | None):
-    """Parse value from config file by converting None-like string to None."""
+    """Parse value from config file by converting string to string, None, or boolean."""
     if value:
         stripped = value.strip().lower()
         if stripped == "none":
@@ -801,6 +822,45 @@ class PresetColumnNames:
         return "\n".join(lines)
 
 
+def load_preset_column_names_from_config(
+    preset: str, config: ConfigParser, filt: str = None, verbose: bool = True
+) -> PresetColumnNames:
+    """
+    Load a set of preset column names from a configuration file.
+
+    This function retrieves column name presets defined in a config file and returns
+    a `PresetColumnNames` instance corresponding to the specified preset. It also performs
+    validation and optionally displays status messages.
+
+    :param preset: The name of the preset to load from the configuration file. Must be one of the allowed presets defined in the config.
+    :param config: A ConfigParser object containing preset definitions (typically parsed from config.ini).
+    :param filt: A filter name that may be used to warn if it matches a preset but differs from `preset`. Useful for catching potential mismatches.
+
+    Raises RuntimeError if the provided preset is None or not found among the allowed presets.
+
+    If `filt` is specified and matches a preset name different from `preset`, a warning is printed.
+    """
+    if verbose:
+        print(f"\nLoading '{preset}' preset column names from config.ini...")
+
+    allowed_presets = get_allowed_presets(config)
+    if preset is None or preset not in allowed_presets:
+        raise RuntimeError(
+            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
+        )
+
+    if filt is not None and filt in allowed_presets and filt != preset:
+        print(
+            f"WARNING: filter '{filt}' identified as preset in config file, but does not match preset {preset}"
+        )
+
+    colnames = PresetColumnNames(config, preset)
+    if verbose:
+        print(colnames.__str__())
+        print("Success")
+    return colnames
+
+
 class Credentials:
     def __init__(
         self, atlas_username, atlas_password, tns_api_key, tns_id, tns_bot_name
@@ -818,6 +878,10 @@ class Credentials:
             raise RuntimeError(
                 "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
             )
+
+    def prompt_for_atlas_password(self):
+        if self.atlas_password is None:
+            self.atlas_password = getpass(prompt="Enter ATLAS password: ")
 
 
 class BaseAngle(ABC):
@@ -870,20 +934,20 @@ class Coordinates:
         self.ra: RA = RA(ra)
         self.dec: Dec = Dec(dec)
 
-    def set_RA(self, ra):
+    def set_RA(self, ra: str):
         self.ra = RA(ra)
 
-    def set_Dec(self, dec):
+    def set_Dec(self, dec: str):
         self.dec = Dec(dec)
 
-    def RA_str(self):
+    def get_RA_str(self) -> str:
         if self._is_angle_missing(self.ra):
-            return np.nan
+            return str(np.nan)
         return f"{self.ra.angle.degree:0.14f}"
 
-    def Dec_str(self):
+    def get_Dec_str(self) -> str:
         if self._is_angle_missing(self.dec):
-            return np.nan
+            return str(np.nan)
         return f"{self.dec.angle.degree:0.14f}"
 
     def _is_angle_missing(self, angle: BaseAngle) -> bool:
@@ -908,12 +972,26 @@ class Coordinates:
             self.dec
         )
 
+    def get_distance(self, other: Self) -> Angle:
+        if self.is_incomplete():
+            raise ValueError(
+                "To get distance, RA and Dec must be present in this Coordinates object"
+            )
+        if other.is_incomplete():
+            raise ValueError(
+                "To get distance, RA and Dec must be present in other Coordinates object"
+            )
+
+        c1 = SkyCoord(self.ra.angle, self.dec.angle, frame="fk5")
+        c2 = SkyCoord(other.ra.angle, other.dec.angle, frame="fk5")
+        return c1.separation(c2)
+
     def __str__(self):
         output = []
         if self.is_ra_present():
-            output.append(f"RA {self.ra.angle.degree:0.14f}")
+            output.append(f"RA {self.get_RA_str()}")
         if self.is_dec_present():
-            output.append(f"Dec {self.dec.angle.degree:0.14f}")
+            output.append(f"Dec {self.get_Dec_str()}")
 
         if len(output) < 1:
             return f"WARNING: Coordinates are empty and cannot be printed."

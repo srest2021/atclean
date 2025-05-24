@@ -33,6 +33,7 @@ from utils import (
     get_allowed_presets,
     get_mjd0_from_tns,
     PresetColumnNames,
+    load_preset_column_names_from_config,
     new_row,
     parse_config_str,
     load_config,
@@ -1054,15 +1055,7 @@ if __name__ == "__main__":
         raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to clean: {args.tnsnames}")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
-    print("Success")
+    colnames = load_preset_column_names_from_config(args.preset, config)
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]

@@ -30,7 +30,7 @@ from utils import (
     TEMPLATE_CHANGE_2_MJD,
     ChiSquareCut,
     PlotLimits,
-    apparent_to_absolute_mag,
+    app2absmag,
     format_float_string,
 )
 
@@ -1468,7 +1468,7 @@ class Plot:
             self._setup_ax(ax2, None, xlabel=r"$m_{peak}$ (abs mag)", ylabel=False)
             ax2.set_xticks(ax1.get_xticks())
             ax2.set_xbound(lower=ax1.get_xbound()[0], upper=ax1.get_xbound()[1])
-            ax2.set_xticklabels(apparent_to_absolute_mag(ax1.get_xticks(), precision=0))
+            ax2.set_xticklabels(app2absmag(ax1.get_xticks(), precision=0))
         else:
             ax1.set_xlabel(
                 remove_prefix(brightness_param_name, BRIGHTNESS_PARAM_PREFIX)

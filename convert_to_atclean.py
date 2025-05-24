@@ -25,6 +25,7 @@ from utils import (
     SnInfoTable,
     get_allowed_presets,
     get_filename,
+    load_preset_column_names_from_config,
 )
 
 
@@ -378,16 +379,7 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
     print("Success")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
-    print("Success")
+    colnames = load_preset_column_names_from_config(args.preset, config)
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
