@@ -32,7 +32,7 @@ from utils import (
     find_all_control_indices,
     flux2mag,
     format_float_string,
-    get_filename,
+    get_filepath,
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
     mag2flux,
@@ -1418,14 +1418,14 @@ class LightCurve(pdastrostatsclass):
                 raise RuntimeError(f"Missing required column: {column_name}")
 
     def load_lc(self, input_dir: str, tnsname: str, cleaned=False):
-        filename = get_filename(
+        filename = get_filepath(
             input_dir, tnsname, self.filt, self.control_index, cleaned=cleaned
         )
-        self.load_lc_by_filename(filename)
+        self.load_lc_by_filepath(filename)
 
-    def load_lc_by_filename(self, filename: str):
+    def load_lc_by_filepath(self, filepath: str):
         self.load_spacesep(
-            filename, delim_whitespace=True, hexcols=[self.colnames.mask]
+            filepath, delim_whitespace=True, hexcols=[self.colnames.mask]
         )
         self.check_column_names(
             required_column_names=self.colnames.get_required_column_names()
@@ -1439,19 +1439,19 @@ class LightCurve(pdastrostatsclass):
         overwrite: bool = False,
         cleaned: bool = True,
     ):
-        filename = get_filename(
+        filename = get_filepath(
             output_dir, tnsname, self.filt, self.control_index, cleaned=cleaned
         )
-        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
-    def save_lc_by_filename(
+    def save_lc_by_filepath(
         self,
-        filename: str,
+        filepath: str,
         indices: Optional[List[int]] = None,
         overwrite: bool = False,
     ):
         self.write(
-            filename=filename,
+            filename=filepath,
             indices=indices,
             overwrite=overwrite,
             hexcols=[self.colnames.mask],
@@ -1540,7 +1540,7 @@ class AveragedLightCurve(LightCurve):
     def get_xlims(self, mjd0: Optional[float] = None, colname_attr: str = "mjdbin"):
         return super().get_xlims(mjd0=mjd0, colname_attr=colname_attr)
 
-    def load_lc_by_filename(self, filename):
+    def load_lc_by_filepath(self, filename):
         self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
         self.check_column_names(
             required_column_names=self.colnames.get_required_column_names(
@@ -1549,16 +1549,16 @@ class AveragedLightCurve(LightCurve):
         )
 
     def load_lc(self, input_dir, tnsname):
-        filename = get_filename(
+        filename = get_filepath(
             input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
-        self.load_lc_by_filename(filename)
+        self.load_lc_by_filepath(filename)
 
     def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
-        filename = get_filename(
+        filename = get_filepath(
             output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
-        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
 
 class LimCutsTable:
@@ -1762,14 +1762,14 @@ class FullLightCurve:
             lc.t = lc.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
         for filt in ["o", "c"]:
-            filename = get_filename(
+            filepath = get_filepath(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
             )
             indices = lc.ix_equal(colnames=["F"], val=filt)
             print(
-                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}..."
+                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
             )
-            lc.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+            lc.save_lc_by_filepath(filepath, indices=indices, overwrite=overwrite)
 
     def __str__(self):
         return f"Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}"

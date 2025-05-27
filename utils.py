@@ -1048,7 +1048,7 @@ class SnInfoTable:
             return True
         return False
 
-    def get_info(self, tnsname):
+    def get_info(self, tnsname) -> tuple[str | None, str | None, float | None]:
         _, row = self.get_row(tnsname)
         if row is None:
             return None, None, None
@@ -1160,7 +1160,7 @@ def format_float_string(value: int | float):
     return formatted
 
 
-def get_filename(
+def get_filepath(
     directory, tnsname, filt="o", control_index=0, mjdbinsize=None, cleaned=False
 ):
     filename = f"{directory}/{tnsname}"

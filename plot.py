@@ -1310,6 +1310,70 @@ class Plot:
 
         return fig
 
+    def plot_fom_single(
+        self,
+        sn: SimDetecSupernova,
+        sigma_kern: float,
+        select_control_index: int,
+        save: bool = False,
+        filename: str = "single_fom_plot",
+    ):
+        fig, ax = plt.subplots(figsize=(5.5, 2.5))
+
+        # Apply rolling sums for the specified kernel
+        sn.apply_rolling_sums(
+            sigma_kern,
+            valid_mjd_ix=sn.has_valid_mjd_ix(),
+            pre_mjd0_ix=sn.has_pre_mjd0_ix(),
+        )
+
+        self._setup_ax(ax, PlotLimits(), ylabel=r"$\Sigma_{\rm FOM}$")
+
+        ax.set_xlabel("MJD")
+
+        # Plot selected control light curve FOM
+        self._plot_fom(
+            ax,
+            sn,
+            select_control_index,
+            self.color_scheme["select_control_fom"],
+            label=f"Selected Control #{select_control_index}",
+        )
+
+        # Plot SN or pre-SN light curve FOM
+        is_preMJD0 = ax.get_xlim()[0] <= sn.mjd0 <= ax.get_xlim()[1]
+        self._plot_fom(
+            ax,
+            sn,
+            0,
+            self.color_scheme["sn_fom"],
+            label=f"{'Pre-' if is_preMJD0 else ''}SN",
+        )
+
+        # Kernel label
+        ax.text(
+            0.98,
+            0.07,
+            r"$\sigma_{\rm kernel}$ = " + format_float_string(sigma_kern),
+            ha="right",
+            va="bottom",
+            transform=ax.transAxes,
+            fontsize=11,
+            zorder=40,
+        )
+
+        ax.legend(
+            facecolor="white",
+            fontsize=10,
+            framealpha=0,
+            loc="upper right",
+        )
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
     def plot_fom_dists(
         self,
         sigma_kerns: List[float],

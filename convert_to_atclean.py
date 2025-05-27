@@ -24,7 +24,7 @@ from utils import (
     PresetColumnNames,
     SnInfoTable,
     get_allowed_presets,
-    get_filename,
+    get_filepath,
     load_preset_column_names_from_config,
 )
 
@@ -107,7 +107,7 @@ class ConvertLightCurve(LightCurve):
         return coords_from_t
 
     def _save_single_df(self, input_dir, overwrite=False):
-        filename = get_filename(
+        filename = get_filepath(
             input_dir,
             self.obj_name,
             filt=self.colnames.preset,
@@ -116,11 +116,11 @@ class ConvertLightCurve(LightCurve):
         print(
             f"Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
         )
-        self.save_lc_by_filename(filename, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, overwrite=overwrite)
 
     def _save_dfs_by_filter(self, input_dir, filts, overwrite=False):
         for filt in filts:
-            filename = get_filename(
+            filename = get_filepath(
                 input_dir,
                 self.obj_name,
                 filt=filt,
@@ -130,7 +130,7 @@ class ConvertLightCurve(LightCurve):
             print(
                 f"Saving converted light curve (control index {self.control_index}) with filter {filt}..."
             )
-            self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+            self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
     def get_filts(self) -> List[str]:
         if self.colnames.filt is None:  # if no filter column, set filter to preset

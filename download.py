@@ -19,13 +19,14 @@ import numpy as np
 from getpass import getpass
 from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
-from lightcurve import FullLightCurve
+from lightcurve import FullLightCurve, LightCurve
 from utils import (
     Coordinates,
     Credentials,
     PresetColumnNames,
     SnInfoTable,
     find_all_control_indices,
+    find_all_filts,
     is_sn_in_subdir,
     load_config,
     load_preset_column_names_from_config,
@@ -59,17 +60,17 @@ class ControlCoordinatesTable:
         self.closebright_min_dist: Optional[float] = None
 
     def init_load(self, directory: str, tnsname: str):
-        filename = self.get_filename(directory, tnsname)
+        filename = self.get_filepath(directory, tnsname)
         print(f"Loading control coordinates table at {filename}...")
-        self._load(filename)
+        self.load(filename)
         print("Success")
         print(self.__str__())
 
         self._set_num_controls_from_t()
 
-    def init_read_from_file(self, filename: str):
-        print(f"Loading control coordinates table at {filename}...")
-        self._read(filename)
+    def init_read_from_file(self, filepath: str):
+        print(f"Loading control coordinates table at {filepath}...")
+        self._read(filepath)
         print("Success")
         print(self.__str__())
 
@@ -108,20 +109,7 @@ class ControlCoordinatesTable:
             assert self.closebright_min_dist is not None
 
     def reset_table(self):
-        self.t = pd.DataFrame(
-            columns=[
-                "tnsname",
-                "control_index",
-                "ra",
-                "dec",
-                "ra_offset",
-                "dec_offset",
-                "radius_arcsec",
-                "n_detec",
-                "n_detec_o",
-                "n_detec_c",
-            ]
-        )
+        self.t = pd.DataFrame(columns=CTRL_COORDINATES_COLNAMES)
 
     def _set_num_controls_from_t(self):
         if self.t is None:
@@ -129,16 +117,16 @@ class ControlCoordinatesTable:
         # first row is SN, remaining are controls
         self.num_controls = len(self.t) - 1
 
-    def _read(self, filename: str):
+    def _read(self, filepath: str):
         try:
-            self.t = pd.read_table(filename, sep="\s+")
+            self.t = pd.read_table(filepath, sep="\s+")
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
                     'Control coordinates table must have "ra" and "dec" columns.'
                 )
         except Exception as e:
             raise RuntimeError(
-                f"Could not load control coordinates table at {filename}: {str(e)}"
+                f"Could not load control coordinates table at {filepath}: {str(e)}"
             )
 
         self.num_controls = len(self.t)
@@ -152,19 +140,33 @@ class ControlCoordinatesTable:
             if not colname in self.t.columns:
                 self.t[colname] = np.full(len(self.t), np.nan)
 
-    def _load(self, filename: str):
+    def load(self, directory, tnsname, filename: Optional[str] = None):
+        if filename is None:
+            if tnsname is None:
+                raise RuntimeError(
+                    "Please provide either a filename or a TNS name to save the control coordinates table."
+                )
+            filepath = self.get_filepath(directory, tnsname)
+        else:
+            filepath = f"{directory}/{tnsname}/{filename}"
+
+        if not os.path.exists(filepath):
+            raise ValueError(f"File path {filepath} does not exist")
+
         try:
-            self.t = pd.read_table(filename, sep="\s+")
+            self.t = pd.read_table(filepath, sep="\s+")
             if not "ra" in self.t.columns or not "dec" in self.t.columns:
                 raise RuntimeError(
                     'Control coordinates table must have "ra" and "dec" columns.'
                 )
         except Exception as e:
             raise RuntimeError(
-                f"Could not load control coordinates table at {filename}: {str(e)}"
+                f"Could not load control coordinates table at {filepath}: {str(e)}"
             )
 
-    def update_filt_lens(self, control_index: int, full_control_lc: FullLightCurve):
+    def update_filt_lens(
+        self, control_index: int, total_len: int, filt_lens: Dict[str, int]
+    ):
         if self.t is None:
             raise RuntimeError("Table (self.t) cannot be None")
 
@@ -180,7 +182,7 @@ class ControlCoordinatesTable:
         index = indices[0]
 
         # update corresponding row in table with total and filter counts
-        total_len, filt_lens = full_control_lc.get_filt_lens()
+        # total_len, filt_lens = full_control_lc.get_filt_lens()
         self.t.at[index, "n_detec"] = total_len
         for filt in filt_lens:
             self.t.at[index, f"n_detec_{filt}"] = filt_lens[filt]
@@ -294,7 +296,7 @@ class ControlCoordinatesTable:
 
         print("Control light curve coordinates generated: \n", self.__str__())
 
-    def get_filename(self, directory, tnsname):
+    def get_filepath(self, directory, tnsname):
         return os.path.join(directory, tnsname, f"{tnsname}_control_coords.txt")
 
     def save(
@@ -309,19 +311,21 @@ class ControlCoordinatesTable:
                 raise RuntimeError(
                     "Please provide either a filename or a TNS name to save the control coordinates table."
                 )
-            filename = self.get_filename(directory, tnsname)
+            filepath = self.get_filepath(directory, tnsname)
         else:
-            filename = f"{directory}/{tnsname}/{filename}"
+            filepath = f"{directory}/{tnsname}/{filename}"
 
-        print(f"Saving control coordinates table at {filename}...")
+        print(f"Saving control coordinates table at {filepath}...")
         if self.t is None:
             raise RuntimeError(
                 "Cannot save ControlCoordinatesTable: table (self.t) is None"
             )
-        if overwrite or not os.path.exists(filename):
-            self.t.to_string(filename, index=False)
+        if overwrite or not os.path.exists(filepath):
+            self.t.to_string(filepath, index=False)
 
     def __str__(self):
+        if self.t is None:
+            return "ControlCoordinatesTable is empty (no data loaded)"
         with pd.option_context("display.float_format", "{:,.8f}".format):
             return self.t.to_string()
 
@@ -351,7 +355,8 @@ class DownloadLoop:
         output_dir: str,
         creds: Credentials,
         sninfo: SnInfoTable,
-        controls: ControlCoordinatesTable,
+        # controls: ControlCoordinatesTable,
+        colnames: PresetColumnNames,
         overwrite: bool = False,
     ):
         self.input_dir = input_dir
@@ -360,14 +365,58 @@ class DownloadLoop:
 
         self.lcs: Dict[int, FullLightCurve] = {}
 
-        # control coordinates table
-        self.controls: ControlCoordinatesTable = controls
+        self.controls: Optional[ControlCoordinatesTable] = None
 
         # SN info table
         self.sninfo: SnInfoTable = sninfo
 
         # ATLAS and TNS credentials
         self.creds: Credentials = creds
+
+        # ATLAS preset column names
+        self.colnames: PresetColumnNames = colnames
+
+    def init_control_coordinates_table(
+        self,
+        ctrl_coords_filepath: Optional[str] = None,
+        num_controls: Optional[int] = None,
+        radius: Optional[float] = None,
+        center_coords: Optional[Coordinates] = None,
+        closebright_min_dist: Optional[float] = None,
+    ):
+        self.controls = ControlCoordinatesTable()
+
+        if ctrl_coords_filepath:
+            self.controls.init_read_from_file(ctrl_coords_filepath)
+
+        else:
+            if center_coords:
+                if num_controls is None:
+                    raise ValueError(
+                        "`num_controls` must be provided when using closebright strategy."
+                    )
+                if closebright_min_dist is None:
+                    raise ValueError(
+                        "`closebright_min_dist` must be provided when using closebright strategy."
+                    )
+
+                # TODO: option to parse from SN info table
+
+                self.controls.init_closebright(
+                    center_coords,
+                    num_controls,
+                    closebright_min_dist,
+                )
+            else:
+                if num_controls is None:
+                    raise ValueError(
+                        "`num_controls` must be provided when using closebright strategy."
+                    )
+                if radius is None:
+                    raise ValueError(
+                        "`radius` must be provided when using closebright strategy."
+                    )
+                self.controls.init_default(num_controls, radius)
 
     def connect_atlas(self):
         baseurl = "https://fallingstar-data.com/forcedphot"
@@ -386,10 +435,10 @@ class DownloadLoop:
             raise RuntimeError(f"ERROR in connect_atlas(): {resp.status_code}")
         return headers
 
-    def construct_full_lc(
+    def _construct_full_sn_lc(
         self,
         tnsname,
-        arg_coords: Optional[tuple[float, float]] = None,
+        arg_coords: Optional[Coordinates] = None,
         arg_mjd0: Optional[float] = None,
     ):
         # first, try SN info table
@@ -397,7 +446,7 @@ class DownloadLoop:
 
         # next, overwrite defaults with command line args
         if arg_coords is not None:
-            ra, dec = arg_coords[0], arg_coords[1]
+            ra, dec = arg_coords.get_RA_str(), arg_coords.get_Dec_str()
             print(f"Setting coordinates to --coords argument: RA {ra}, Dec {dec}")
         if arg_mjd0 is not None:
             mjd0 = arg_mjd0
@@ -421,60 +470,65 @@ class DownloadLoop:
         )
 
         # add final RA, Dec, MJD0 to SN info table
-        self.sninfo.update_row(tnsname, self.lcs[0].coords, self.lcs[0].mjd0)
+        self.sninfo.update_row(
+            tnsname, self.lcs[0].coords, self.lcs[0].mjd0, overwrite=self.overwrite
+        )
 
-    def download_lcs(
+    def _load_or_download_sn_lc(
         self,
         headers: Dict[str, str],
         tnsname: str,
-        colnames: PresetColumnNames,
-        download_controls: bool = False,
-        arg_coords: Optional[tuple[float, float]] = None,
-        arg_mjd0: Optional[float] = None,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
+        download_controls: bool = False,
     ):
-        print(f"\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n")
-        self.lcs: Dict[int, FullLightCurve] = {}
-
-        try:
-            self.construct_full_lc(tnsname, arg_coords=arg_coords, arg_mjd0=arg_mjd0)
-        except Exception as e:
-            print(
-                f"Could not construct light curve object: {str(e)}. Skipping to next SN..."
-            )
-            return
-
         if not self.overwrite and is_sn_in_subdir(self.input_dir, tnsname):
             print(
-                f"Overwrite set to {self.overwrite} and SN light curve already exists; skipping..."
+                f"Overwrite set to False and SN light curve already exists; skipping download..."
             )
-            # TODO: verify/test this?
-            self.controls._load(self.input_dir, tnsname)
+            if download_controls and self.controls.t is None:
+                self.controls.load(self.input_dir, tnsname)
         else:
             # download SN light curve
             self.lcs[0].download(headers, lookbacktime=lookbacktime, max_mjd=max_mjd)
-            self.lcs[0].save(colnames, self.input_dir, tnsname, overwrite=True)
+            self.lcs[0].save(self.colnames, self.input_dir, tnsname, overwrite=True)
 
             if download_controls and self.controls.t is None:
                 self.controls.construct(tnsname, self.lcs[0])
 
-        self.sninfo.save()
+                # save the constructed table without the filt lens
+                # so that if it crashes later, we can just load it again
+                self.controls.save(self.input_dir, tnsname)
 
-        if download_controls:
-            existing_control_indices = find_all_control_indices(self.input_dir, tnsname)
+    def _download_control_lightcurves(
+        self,
+        headers: Dict[str, str],
+        tnsname: str,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
+    ):
+        existing_control_indices = find_all_control_indices(self.input_dir, tnsname)
 
-            # download control light curves
-            for i in range(1, len(self.controls.t)):
-                control_index = self.controls.t.at[i, "control_index"]
-                print(f"\nControl light curve {control_index}")
+        for i in range(1, len(self.controls.t)):
+            control_index = self.controls.t.at[i, "control_index"]
+            print(f"\nControl light curve {control_index}")
 
-                if not self.overwrite and control_index in existing_control_indices:
-                    print(
-                        f"Overwrite set to {self.overwrite} and light curve already exists; skipping..."
+            if not self.overwrite and control_index in existing_control_indices:
+                print(
+                    f"Overwrite set to {self.overwrite} and light curve already exists; skipping download..."
+                )
+
+                # load saved lcs and update filt lens
+                filt_lens = {}
+                for filt in find_all_filts(self.input_dir, tnsname):
+                    lc = LightCurve(
+                        self.colnames, control_index=control_index, filt=filt
                     )
-                    continue
+                    lc.load_lc(self.input_dir, tnsname)
+                    filt_lens[filt] = len(lc.t)
+                total_len = sum([filt_len for filt_len in filt_lens.values()])
 
+            else:
                 self.lcs[control_index] = FullLightCurve(
                     control_index,
                     self.controls.t.at[i, "ra"],
@@ -484,36 +538,97 @@ class DownloadLoop:
                     headers, lookbacktime=lookbacktime, max_mjd=max_mjd
                 )
                 self.lcs[control_index].save(
-                    colnames, self.input_dir, tnsname, overwrite=self.overwrite
+                    self.colnames, self.input_dir, tnsname, overwrite=self.overwrite
                 )
-                self.controls.update_filt_lens(control_index, self.lcs[control_index])
 
-            # save control coordinates table
-            self.controls.save(self.input_dir, tnsname)
+                total_len, filt_lens = self.lcs[control_index].get_filt_lens()
+
+            self.controls.update_filt_lens(control_index, total_len, filt_lens)
+
+        # save control coordinates table
+        # always overwrite the previously saved version with no filt lens
+        self.controls.save(self.input_dir, tnsname, overwrite=True)
+
+    def download_lcs(
+        self,
+        headers: Dict[str, str],
+        tnsname: str,
+        download_controls: bool = False,
+        arg_coords: Optional[Coordinates] = None,
+        arg_mjd0: Optional[float] = None,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
+    ):
+        print(f"\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n")
+        self.lcs: Dict[int, FullLightCurve] = {}
+
+        try:
+            self._construct_full_sn_lc(
+                tnsname, arg_coords=arg_coords, arg_mjd0=arg_mjd0
+            )
+        except Exception as e:
+            print(
+                f"Could not construct light curve object: {str(e)}. Skipping to next SN..."
+            )
+            return
+
+        self._load_or_download_sn_lc(
+            headers,
+            tnsname,
+            lookbacktime=lookbacktime,
+            max_mjd=max_mjd,
+            download_controls=download_controls,
+        )
+
+        self.sninfo.save()
+
+        if download_controls:
+            self._download_control_lightcurves(
+                headers, tnsname, lookbacktime=lookbacktime, max_mjd=max_mjd
+            )
 
     def loop(
         self,
         tnsnames: List[str],
-        colnames: PresetColumnNames,
-        arg_coords: Optional[tuple[float, float]] = None,
+        arg_coords: Optional[Coordinates] = None,
         arg_mjd0: Optional[float] = None,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
         download_controls: bool = False,
-        overwrite: bool = False,
+        ctrl_coords_filepath: str | None = None,
+        num_controls: int | None = None,
+        radius: float | None = None,
+        center_coords: Coordinates | None = None,
+        closebright_min_dist: float | None = None,
     ):
+        if len(tnsnames) > 1 and (arg_coords or arg_mjd0):
+            raise ValueError(
+                "Cannot apply coordinates and MJD0 to more than one TNS name"
+            )
+
         print("\nConnecting to ATLAS API...")
         headers = self.connect_atlas()
         if headers is None:
             raise RuntimeError("No token header!")
 
         for obj_index in range(len(tnsnames)):
+            if download_controls:
+                self.init_control_coordinates_table(
+                    ctrl_coords_filepath=ctrl_coords_filepath,
+                    num_controls=num_controls,
+                    radius=radius,
+                    center_coords=center_coords,
+                    closebright_min_dist=closebright_min_dist,
+                )
+
             self.download_lcs(
                 headers,
                 tnsnames[obj_index],
-                colnames,
                 arg_coords=arg_coords,
                 arg_mjd0=arg_mjd0,
+                lookbacktime=lookbacktime,
+                max_mjd=max_mjd,
                 download_controls=download_controls,
-                overwrite=overwrite,
             )
 
 
@@ -568,7 +683,6 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "-c",
         "--controls",
         default=False,
-        type=bool,
         action="store_true",
         help="download control light curves in addition to transient light curve",
     )
@@ -587,7 +701,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         help="radius of control light curve circle pattern around SN",
     )
     parser.add_argument(
-        "--ctrl_coords_file",
+        "--ctrl_coords_filepath",
         type=str,
         default=None,
         help="file name of text file containing table of control light curve coordinates",
@@ -608,7 +722,7 @@ if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
-    colnames = load_preset_column_names_from_config(args.preset, config)
+    colnames = load_preset_column_names_from_config("atlas", config)
 
     # set up directories
     input_dir = config["dir"]["atclean_input"]
@@ -634,51 +748,39 @@ if __name__ == "__main__":
     sninfo_filename = args.sninfo_file or config["dir"]["sninfo_filename"]
     sninfo = SnInfoTable(output_dir, filename=sninfo_filename)
 
-    # set up control coordinates table
-    controls = None
-    if args.controls:
-        controls = ControlCoordinatesTable()
-
-        if args.ctrl_coords_file:
-            controls.init_read_from_file(args.ctrl_coords_file)
-
-        else:
-            num_controls = (
-                args.num_controls
-                if args.num_controls
-                else int(config["download"]["num_controls"])
-            )
-
-            radius = args.radius if args.radius else float(config["download"]["radius"])
-
-            if args.center_coords:
-                # TODO: option to parse from SN info table
-                center_coords = parse_arg_coords(args.center_coords)
-
-                controls.init_closebright(
-                    center_coords,
-                    num_controls,
-                    float(config["download"]["closebright_min_dist"]),
-                )
-            else:
-                controls.init_default(num_controls, radius)
-
-    elif (
-        args.ctrl_coords_file or args.center_coords or args.num_controls or args.radius
+    if not args.controls and (
+        args.ctrl_coords_filepath
+        or args.center_coords
+        or args.num_controls
+        or args.radius
     ):
         raise RuntimeError(
             "Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
         )
 
-    sn_coords = parse_arg_coords(args.sn_coords)
-
     download = DownloadLoop(
-        input_dir, output_dir, creds, sninfo, controls, overwrite=args.overwrite
+        input_dir,
+        output_dir,
+        creds,
+        sninfo,
+        colnames,
+        overwrite=args.overwrite,
     )
+
     download.loop(
         args.tnsnames,
-        colnames,
-        sn_coords,
+        arg_coords=parse_arg_coords(args.sn_coords) if args.sn_coords else None,
         arg_mjd0=args.mjd0,
+        lookbacktime=args.lookbacktime,
+        max_mjd=args.max_mjd,
         download_controls=args.controls,
+        ctrl_coords_filepath=args.ctrl_coords_filepath,
+        num_controls=(
+            args.num_controls
+            if args.num_controls
+            else int(config["download"]["num_controls"])
+        ),
+        radius=args.radius if args.radius else float(config["download"]["radius"]),
+        center_coords=args.center_coords,
+        closebright_min_dist=float(config["download"]["closebright_min_dist"]),
     )
