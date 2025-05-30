@@ -27,6 +27,7 @@ from utils import (
     Cut,
     FomLimits,
     PresetColumnNames,
+    StatParams,
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
@@ -36,6 +37,7 @@ from utils import (
     get_tns_coords_from_json,
     get_tns_mjd0_from_json,
     mag2flux,
+    nan_if_none,
     new_row,
     query_atlas,
     query_tns,
@@ -418,7 +420,7 @@ class Supernova:
 
         for control_index in self.lc_indices:
             avg_sn.set_avg_lc(
-                self.lcs[control_index].average(
+                self.lcs[control_index].create_averaged_lc(
                     cut,
                     previous_flags,
                     mjdbinsize=cut.mjd_bin_size,
@@ -977,7 +979,44 @@ class LightCurve(pdastrostatsclass):
                 self.t[self.colnames.mask], flags_to_copy
             )
 
-    def average(
+    def get_zpt(self):
+        if self.t is None or len(self.t) < 1:
+            raise RuntimeError("Cannot get zeropoint because table is empty")
+        if not self.colnames.has("zpt"):
+            raise RuntimeError(
+                "Cannot get zeropoint because zeropoint column name has not been specified in config file"
+            )
+        if self.colnames.zpt not in self.t.columns:
+            raise RuntimeError(
+                f"Cannot get zeropoint because zeropoint column '{self.colnames.zpt}' does not exist"
+            )
+
+        if self.t[self.colnames.zpt].nunique(dropna=False) == 1:
+            return self.t.at[0, self.colnames.zpt]
+        raise RuntimeError(
+            f"Cannot get zeropoint because values in zeropoint column '{self.colnames.zpt}' are not all the same"
+        )
+
+    def _get_average_flux(self, indices=None) -> StatParams:
+        self.calcaverage_sigmacutloop(
+            self.colnames.flux,
+            noisecol=self.colnames.dflux_new,
+            indices=indices,
+            Nsigma=3.0,
+            median_firstiteration=True,
+        )
+        return StatParams(self.statparams)
+
+    def _get_average_mjd(self, indices=None) -> float:
+        self.calcaverage_sigmacutloop(
+            self.colnames.mjd,
+            indices=indices,
+            Nsigma=0,
+            median_firstiteration=False,
+        )
+        return StatParams(self.statparams).mean
+
+    def create_averaged_lc(
         self, cut: BadDayCut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
@@ -1026,155 +1065,115 @@ class LightCurve(pdastrostatsclass):
                 "Nexcluded": len(range_ix) - len(range_good_ix),
                 self.colnames.mask: 0,
             }
-            avglc_index = avg_lc.newrow(new_row)
+            cur_index = avg_lc.newrow(new_row)
 
             # if no measurements present, flag or skip over day
             if len(range_ix) < 1:
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
                 mjd += mjdbinsize
                 continue
 
             # if no good measurements, average values anyway and flag
             if len(range_good_ix) < 1:
-                # average flux
-                self.calcaverage_sigmacutloop(
-                    self.colnames.flux,
-                    noisecol=self.colnames.dflux_new,
-                    indices=range_ix,
-                    Nsigma=3.0,
-                    median_firstiteration=True,
-                )
-                fluxstatparams = deepcopy(self.statparams)
-
-                # get average mjd
-                self.calcaverage_sigmacutloop(
-                    self.colnames.mjd,
-                    indices=range_ix,
-                    Nsigma=0,
-                    median_firstiteration=False,
-                )
-                avg_mjd = self.statparams["mean"]
+                flux_statparams = self._get_average_flux(indices=range_ix)
+                avg_mjd = self._get_average_mjd(indices=range_ix)
 
                 # add row and flag
                 row = {
                     self.colnames.mjd: avg_mjd,
-                    self.colnames.flux: (
-                        fluxstatparams["mean"]
-                        if not fluxstatparams["mean"] is None
-                        else np.nan
-                    ),
-                    self.colnames.dflux: (
-                        fluxstatparams["mean_err"]
-                        if not fluxstatparams["mean_err"] is None
-                        else np.nan
-                    ),
-                    "stdev": (
-                        fluxstatparams["stdev"]
-                        if not fluxstatparams["stdev"] is None
-                        else np.nan
-                    ),
-                    "x2": (
-                        fluxstatparams["X2norm"]
-                        if not fluxstatparams["X2norm"] is None
-                        else np.nan
-                    ),
-                    "Nclip": (
-                        fluxstatparams["Nclip"]
-                        if not fluxstatparams["Nclip"] is None
-                        else np.nan
-                    ),
-                    "Ngood": (
-                        fluxstatparams["Ngood"]
-                        if not fluxstatparams["Ngood"] is None
-                        else np.nan
-                    ),
+                    self.colnames.flux: flux_statparams.mean,
+                    self.colnames.dflux: flux_statparams.mean_err,
+                    "stdev": flux_statparams.stdev,
+                    "x2": flux_statparams.X2norm,
+                    "Nclip": flux_statparams.Nclip,
+                    "Ngood": flux_statparams.Ngood,
                     self.colnames.mask: 0,
                 }
-                avg_lc.add2row(avglc_index, row)
-                self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                avg_lc.add2row(cur_index, row)
+                self.update_mask_column(cut.flag, indices=range_ix, remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
 
                 mjd += mjdbinsize
                 continue
 
             # average good measurements
-            self.calcaverage_sigmacutloop(
-                self.colnames.flux,
-                noisecol=self.colnames.dflux_new,
-                indices=range_good_ix,
-                Nsigma=3.0,
-                median_firstiteration=True,
-            )
-            fluxstatparams = deepcopy(self.statparams)
+            flux_statparams = self._get_average_flux(indices=range_good_ix)
 
-            if fluxstatparams["mean"] is None or len(fluxstatparams["ix_good"]) < 1:
-                self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+            if np.isnan(flux_statparams.mean) or len(flux_statparams.ix_good) < 1:
+                self.update_mask_column(cut.flag, indices=range_ix, remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
                 mjd += mjdbinsize
                 continue
 
             # get average mjd
-            # TODO: SHOULD NOISECOL HERE BE DUJY OR NONE?
-            self.calcaverage_sigmacutloop(
-                self.colnames.mjd,
-                noisecol=self.colnames.dflux_new,
-                indices=fluxstatparams["ix_good"],
-                Nsigma=0,
-                median_firstiteration=False,
-            )
-            avg_mjd = self.statparams["mean"]
+            avg_mjd = self._get_average_mjd(indices=flux_statparams.ix_good)
 
             # add row to averaged light curve
             row = {
                 self.colnames.mjd: avg_mjd,
-                self.colnames.flux: fluxstatparams["mean"],
-                self.colnames.dflux: fluxstatparams["mean_err"],
-                "stdev": fluxstatparams["stdev"],
-                "x2": fluxstatparams["X2norm"],
-                "Nclip": fluxstatparams["Nclip"],
-                "Ngood": fluxstatparams["Ngood"],
+                self.colnames.flux: flux_statparams.mean,
+                self.colnames.dflux: flux_statparams.mean_err,
+                "stdev": flux_statparams.stdev,
+                "x2": flux_statparams.x2,
+                "Nclip": flux_statparams.Nclip,
+                "Ngood": flux_statparams.Ngood,
                 self.colnames.mask: 0,
             }
-            avg_lc.add2row(avglc_index, row)
+            avg_lc.add2row(cur_index, row)
 
             # flag clipped measurements in lc
-            if len(fluxstatparams["ix_clip"]) > 0:
+            if len(flux_statparams.ix_clip) > 0:
                 self.update_mask_column(
                     cut.ixclip_flag,
-                    fluxstatparams["ix_clip"],
+                    indices=flux_statparams.ix_clip,
                     remove_old=False,
                 )
 
             # if small number within this bin, flag measurements
             if len(range_good_ix) < 3:
-                self.update_mask_column(cut.smallnum_flag, range_ix, remove_old=False)
+                self.update_mask_column(
+                    cut.smallnum_flag, indices=range_ix, remove_old=False
+                )
                 avg_lc.update_mask_column(
-                    cut.smallnum_flag, [avglc_index], remove_old=False
+                    cut.smallnum_flag, indices=[cur_index], remove_old=False
                 )
             # else check sigmacut bounds and flag
             else:
                 is_bad = False
-                if fluxstatparams["Ngood"] < cut.Ngood_min:
+                if flux_statparams.Ngood < cut.Ngood_min:
                     is_bad = True
-                if fluxstatparams["Nclip"] > cut.Nclip_max:
+                if flux_statparams.Nclip > cut.Nclip_max:
                     is_bad = True
-                if (
-                    not (fluxstatparams["X2norm"] is None)
-                    and fluxstatparams["X2norm"] > cut.x2_max
-                ):
+                if flux_statparams.x2 is not None and flux_statparams.x2 > cut.x2_max:
                     is_bad = True
                 if is_bad:
-                    self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                    avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                    self.update_mask_column(
+                        cut.flag, indices=range_ix, remove_old=False
+                    )
+                    avg_lc.update_mask_column(
+                        cut.flag, indices=[cur_index], remove_old=False
+                    )
 
             mjd += mjdbinsize
+
+        zpt, zptcol = 23.9, None
+        if self.colnames.zpt is not None:
+            zpt, zptcol = None, self.colnames.zpt
+            avg_lc.t[self.colnames.zpt] = self.t[self.colnames.zpt]
 
         avg_lc.flux2mag(
             self.colnames.flux,
             self.colnames.dflux,
             self.colnames.mag,
             self.colnames.dmag,
-            zpt=23.9,
+            zpt=zpt,
+            zptcol=zptcol,
             upperlim_Nsigma=flux2mag_sigmalimit,
         )
 
@@ -1893,14 +1892,32 @@ class SimDetecSupernova(AveragedSupernova):
         print(f"Valid FOM limit ranges: {res}")
         return all_fom_dict, res
 
-    def get_n_falsepos(
+    def scan_sn_for_detections(self, sigma_kerns: List[float], fom_limits: FomLimits):
+        print("Scanning for detections in SN light curve...")
+        print("-" * 50)
+        for sigma_kern in sigma_kerns:
+            fom_limit = fom_limits.get(sigma_kern)
+            count, mjds = self.get_num_detections(
+                sigma_kern, fom_limit, control_index=0, verbose=False
+            )
+            print(
+                f"Sigma kernel: {format_float_string(sigma_kern)} days"
+                f"\n\tNumber of positives above detection limit {format_float_string(fom_limit)} FOM: {count}"
+            )
+            if mjds:
+                print(f"\tMJDs of positives: {', '.join(f'{mjd:.2f}' for mjd in mjds)}")
+            else:
+                print("\tNo positives detected.")
+            print("-" * 50)
+
+    def get_num_detections(
         self,
         sigma_kern: float,
         fom_limit: float,
         control_index: int = 0,
         verbose: bool = False,
-    ):
-        return self.lcs[control_index].get_n_falsepos(
+    ) -> tuple[int, List]:
+        return self.lcs[control_index].get_num_detections(
             sigma_kern,
             fom_limit,
             self.mjd0,
@@ -1995,14 +2012,14 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         self.cur_sigma_kern = None
 
-    def get_n_falsepos(
+    def get_num_detections(
         self,
         sigma_kern: float,
         fom_limit: float,
         mjd0: float,
         flag=0x800000,
         verbose=False,
-    ):
+    ) -> tuple[int, List]:
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 
@@ -2030,7 +2047,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             print(
                 f"sigma_kern {sigma_kern}, FOM limit {fom_limit:0.2f}, control index {self.control_index}: {count} trigger(s) at MJDs {mjds}"
             )
-        return count
+        return count, mjds
 
     def remove_columns(self, colnames: List[str]):
         dropcols = []

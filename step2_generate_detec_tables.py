@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from configparser import ConfigParser
+from functools import partial
 import itertools
 import json
 import os
@@ -173,6 +174,7 @@ class AsymmetricGaussian(Simulation):
         sigma_sim_plus: Optional[float] = None,
         sigma_sim_minus: Optional[float] = None,
         time_peak_mjd: Optional[float] = None,
+        **kwargs,
     ):
         """
         Get the interpolated function of the AsymmetricGaussian at a given peak MJD and match it to the given time array.
@@ -1208,14 +1210,26 @@ class TessInjectionLoop(InjectionLoop):
         )
         return indices
 
-    def compute_sim_flux(self, sim, brightness, lc, good_ix, **kwargs):
+    def compute_sim_flux(
+        self,
+        sim: Simulation,
+        brightness: float,
+        lc: SimDetecLightCurve,
+        indices: Optional[List[int]] = None,
+        **kwargs,
+    ):
+        # get zeropoint from the lc zpt column
+        zpt = lc.get_zpt()
+        mag2count_zpt = partial(mag2count, zpt=zpt)
+        count2mag_zpt = partial(count2mag, zpt=zpt)
+
         return super().compute_sim_flux(
             sim,
             brightness,
             lc,
-            good_ix,
-            brightness_to_flux_fn=mag2count,
-            flux_to_brightness_fn=count2mag,
+            indices=indices,
+            brightness_to_flux_fn=mag2count_zpt,
+            flux_to_brightness_fn=count2mag_zpt,
             **kwargs,
         )
 

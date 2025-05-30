@@ -68,7 +68,7 @@ class ContaminationTable:
         }
 
         for control_index in sn.lc_indices:
-            n_falsepos = sn.get_n_falsepos(
+            n_falsepos, _ = sn.get_num_detections(
                 sigma_kern, fom_limit, control_index=control_index
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
@@ -386,7 +386,7 @@ class EfficiencyTable(pdastrostatsclass):
                 or re.search("^pct_detec_", col)
             )
         ]
-        return dict(self.t.at[index, colnames])
+        return dict(self.t.loc[index, colnames])
 
     def get_possible_values(self, column: str):
         """

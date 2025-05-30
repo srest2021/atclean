@@ -45,18 +45,18 @@ def mag2flux(mag: float):
     return 10 ** ((mag - 23.9) / -2.5)
 
 
-def mag2count(mag: float):
+def mag2count(mag: float, zpt: float = 20.44):
     """
     Convert apparent magnitude to TESS counts per second.
     """
-    return 10 ** ((20.44 - mag) / 2.5)
+    return 10 ** ((zpt - mag) / 2.5)
 
 
-def count2mag(count: float):
+def count2mag(count: float, zpt: float = 20.44):
     """
     Convert TESS counts per second to apparent magnitude.
     """
-    return -2.5 * np.log10(count) + 20.44
+    return -2.5 * np.log10(count) + zpt
 
 
 def AandB(A, B) -> List:
@@ -130,6 +130,10 @@ def load_json_config(filename: str):
             return json.load(cfg)
     except Exception as e:
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
+
+
+def nan_if_none(x):
+    return x if x is not None else np.nan
 
 
 def new_row(t: Optional[pd.DataFrame], d: Optional[Dict] = None):
@@ -393,6 +397,20 @@ def get_inverse_mjd_ranges(
             inverse = _merge_ranges(combined)
 
     return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
+
+
+class StatParams:
+    def __init__(self, statparams: Dict[str, int | float | None]):
+        statparams = deepcopy(statparams)
+        self.mean: float = nan_if_none(statparams["mean"])
+        self.mean_err: float = nan_if_none(statparams["mean_err"])
+        self.stdev: float = nan_if_none(statparams["stdev"])
+        self.x2: float = nan_if_none(statparams["X2norm"])
+        self.Nclip: int | float = nan_if_none(statparams["Nclip"])
+        self.Ngood: int | float = nan_if_none(statparams["Ngood"])
+        # self.Nexcluded: int | float = nan_if_none(statparams["Nexcluded"])
+        self.ix_good: List[int] = list(statparams["ix_good"])
+        self.ix_clip: List[int] = list(statparams["ix_clip"])
 
 
 class PlotLimits:
@@ -702,6 +720,7 @@ class PresetColumnNames:
                 "dmag": config_preset_settings.get("dmag_column_name"),
                 "ra": config_preset_settings.get("ra_column_name"),
                 "dec": config_preset_settings.get("dec_column_name"),
+                "zpt": config_preset_settings.get("zpt_column_name"),
             }
         )
 
@@ -781,6 +800,9 @@ class PresetColumnNames:
             | set(self.extra_columns)
         )
         return list(colset)
+
+    def has(self, name: str):
+        return name in self.required_columns or name in self.optional_columns
 
     def __getattr__(self, name: str) -> str | None:
         """

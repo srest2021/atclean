@@ -330,6 +330,21 @@ class ControlCoordinatesTable:
             return self.t.to_string()
 
 
+class AtlasAuthenticator:
+    @staticmethod
+    def authenticate(username: str, password: str) -> Dict[str, str]:
+        resp = requests.post(
+            url=f"https://fallingstar-data.com/forcedphot/api-token-auth/",
+            data={"username": username, "password": password},
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Authentication failed: {resp.status_code}")
+        token = resp.json()["token"]
+        print(f"Token: {token}")
+        headers = {"Authorization": f"Token {token}", "Accept": "application/json"}
+        return headers
+
+
 def parse_arg_coords(arg_coords: str) -> Coordinates:
     parsed_coords = parse_comma_separated_string(arg_coords)
     if parsed_coords is None:
@@ -417,23 +432,6 @@ class DownloadLoop:
                         "`radius` must be provided when using closebright strategy."
                     )
                 self.controls.init_default(num_controls, radius)
-
-    def connect_atlas(self):
-        baseurl = "https://fallingstar-data.com/forcedphot"
-        resp = requests.post(
-            url=f"{baseurl}/api-token-auth/",
-            data={
-                "username": self.creds.atlas_username,
-                "password": self.creds.atlas_password,
-            },
-        )
-        if resp.status_code == 200:
-            token = resp.json()["token"]
-            print(f"Token: {token}")
-            headers = {"Authorization": f"Token {token}", "Accept": "application/json"}
-        else:
-            raise RuntimeError(f"ERROR in connect_atlas(): {resp.status_code}")
-        return headers
 
     def _construct_full_sn_lc(
         self,
@@ -607,7 +605,10 @@ class DownloadLoop:
             )
 
         print("\nConnecting to ATLAS API...")
-        headers = self.connect_atlas()
+        headers = AtlasAuthenticator.authenticate(
+            self.creds.atlas_username, self.creds.atlas_password
+        )
+
         if headers is None:
             raise RuntimeError("No token header!")
 

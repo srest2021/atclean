@@ -1379,6 +1379,7 @@ class Plot:
         sigma_kerns: List[float],
         all_fom_dict: Dict[float, pd.Series],
         fom_limits: Dict[float, float],
+        xlim_scale=1.1,
         save: bool = False,
         filename: str = "all_fom",
     ):
@@ -1391,8 +1392,10 @@ class Plot:
         xlim_lower = np.inf
         xlim_upper = -np.inf
         for sigma_kern, all_fom in all_fom_dict.items():
-            xlim_lower = min(xlim_lower, min(all_fom))
-            xlim_upper = max(xlim_upper, max(all_fom), fom_limits[sigma_kern])
+            xlim_lower = min(xlim_lower, min(all_fom)) * 1.1
+            xlim_upper = (
+                max(xlim_upper, max(all_fom), fom_limits[sigma_kern]) * xlim_scale
+            )
         lims = PlotLimits(xlower=xlim_lower, xupper=xlim_upper)
 
         for i in range(n):
@@ -1447,6 +1450,7 @@ class Plot:
         sigma_kern: float,
         e: EfficiencyTable,
         select_param_name: str,
+        percents: Optional[List[float]] = [50.0, 80.0],
         save: bool = False,
         filename: Optional[str] = None,
     ):
@@ -1479,8 +1483,6 @@ class Plot:
         fom_limit = e.get_fom_limits().get(sigma_kern)
 
         self._setup_ax(ax1, None, xlabel=False, ylabel=False)
-        ax1.axhline(80, color="k", linestyle="dashed", linewidth=1.0)
-        ax1.axhline(50, color="k", linestyle="dashed", linewidth=1.0)
         ax1.text(
             0.03,
             0.05,
@@ -1490,6 +1492,9 @@ class Plot:
             transform=ax1.transAxes,
             fontsize=11,
         )
+        if percents:
+            for p in percents:
+                ax1.axhline(p, color="k", linestyle="dashed", linewidth=1.0)
 
         select_param_values = e.get_possible_values(select_param_name)
         for i in range(len(select_param_values)):
