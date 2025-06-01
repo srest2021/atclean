@@ -35,6 +35,7 @@ from utils import (
     format_float_string,
     get_filepath,
     get_tns_coords_from_json,
+    get_tns_data,
     get_tns_mjd0_from_json,
     mag2flux,
     nan_if_none,
@@ -90,21 +91,31 @@ class Supernova:
 
         return lims
 
-    def get_tns_data(self, api_key, tns_id, bot_name):
-        if self.coords.is_incomplete() or self.mjd0 is None:
-            print(f"\nQuerying TNS for {self.tnsname} data...")
-            json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
-            if json_data is None:
-                print(f"Skipping...")
-                return
-
+    def get_tns_data(
+        self,
+        tns_api_key: str,
+        tns_id: str,
+        tns_bot_name: str,
+        use_disc_date_buffer: bool = True,
+    ):
+        if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
+            mjd0, coords = get_tns_data(
+                self.tnsname,
+                tns_api_key,
+                tns_id,
+                tns_bot_name,
+                use_disc_date_buffer=use_disc_date_buffer,
+            )
             if self.coords.is_incomplete():
-                self.coords = get_tns_coords_from_json(json_data)
-
-            if self.mjd0 is None:
-                self.mjd0 = get_tns_mjd0_from_json(json_data)
-
-            print("Success")
+                self.coords = coords
+                print(f"Setting coordinates to TNS coordinates: {self.coords}")
+            if self.mjd0 is None or np.isnan(self.mjd0):
+                self.mjd0 = mjd0
+                print(
+                    f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
+                )
+        else:
+            print("Coordinates and MJD0 both present; skipping TNS query...")
 
     def verify_mjds(self, verbose=False):
         """Sort SN and control light curves by MJD"""
@@ -1670,23 +1681,32 @@ class FullLightCurve:
         self.control_index = control_index
         self.filts = None
 
-    def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
+    def get_tns_data(
+        self,
+        tnsname: str,
+        tns_api_key: str,
+        tns_id: str,
+        tns_bot_name: str,
+        use_disc_date_buffer: bool = True,
+    ):
         if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
-            print("Querying TNS for RA, Dec, and discovery date...")
-            json_data = query_tns(tnsname, api_key, tns_id, bot_name)
-            if json_data is None:
-                print(f"Skipping...")
-                return
-
-            if self.coords.is_empty():
-                self.coords = get_tns_coords_from_json(json_data)
+            mjd0, coords = get_tns_data(
+                tnsname,
+                tns_api_key,
+                tns_id,
+                tns_bot_name,
+                use_disc_date_buffer=use_disc_date_buffer,
+            )
+            if self.coords.is_incomplete():
+                self.coords = coords
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
-
             if self.mjd0 is None or np.isnan(self.mjd0):
-                self.mjd0 = get_tns_mjd0_from_json(json_data)
+                self.mjd0 = mjd0
                 print(
-                    f"Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}"
+                    f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
+        else:
+            print("Coordinates and MJD0 both present; skipping TNS query...")
 
     # download the full light curve from ATLAS
     def download(
@@ -1699,7 +1719,6 @@ class FullLightCurve:
             min_mjd = float(Time.now().mjd - lookbacktime)
         else:
             min_mjd = 50000.0
-
         if not max_mjd:
             max_mjd = float(Time.now().mjd)
 

@@ -12,6 +12,7 @@ Outputs:
 - if using TNS credentials, new or updated .txt table with TNS names, RA, Dec, and MJD0
 """
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Type
 import os, sys, requests, argparse, configparser, math
 import pandas as pd
@@ -21,12 +22,14 @@ from astropy import units as u
 from astropy.coordinates import Angle, SkyCoord
 from lightcurve import FullLightCurve, LightCurve
 from utils import (
+    DISC_DATE_BUFFER,
     Coordinates,
     Credentials,
     PresetColumnNames,
     SnInfoTable,
     find_all_control_indices,
     find_all_filts,
+    get_tns_data,
     is_sn_in_subdir,
     load_config,
     load_preset_column_names_from_config,
@@ -56,8 +59,8 @@ class ControlCoordinatesTable:
         self.radius: Optional[Angle] = None
         self.sn_coords: Optional[Coordinates] = None
         self.center_coords: Optional[Coordinates] = None
-        self.closebright: bool = False
-        self.closebright_min_dist: Optional[float] = None
+        self._closebright: bool = False
+        self.sn_min_dist: Optional[float] = None
 
     def init_load(self, directory: str, tnsname: str):
         filename = self.get_filepath(directory, tnsname)
@@ -77,16 +80,19 @@ class ControlCoordinatesTable:
         self._set_num_controls_from_t()
 
     def init_closebright(
-        self, center_coords: Coordinates, num_controls: int, closebright_min_dist: float
+        self, center_coords: Coordinates, num_controls: int, sn_min_dist: float
     ):
         self.num_controls = num_controls
         # set self.radius later
 
-        self.closebright = True
+        self._closebright = True
         self.center_coords = center_coords
-        self.closebright_min_dist = closebright_min_dist
+        self.sn_min_dist = sn_min_dist
 
-        print(f"Setting circle pattern of {self.num_controls} control light curves")
+        print(
+            f"Setting circle pattern of {self.num_controls} control light curves around center location {self.center_coords},"
+            f' with minimum {self.sn_min_dist}" distance from SN'
+        )
 
     def init_default(self, num_controls: int, radius: float):
         self.num_controls = num_controls
@@ -105,8 +111,8 @@ class ControlCoordinatesTable:
         assert self.sn_coords is not None
         assert self.center_coords is not None
 
-        if self.closebright:
-            assert self.closebright_min_dist is not None
+        if self._closebright:
+            assert self.sn_min_dist is not None
 
     def reset_table(self):
         self.t = pd.DataFrame(columns=CTRL_COORDINATES_COLNAMES)
@@ -243,12 +249,12 @@ class ControlCoordinatesTable:
         coords.ra.angle = ra
         coords.dec.angle = dec
 
-        if self.closebright:
+        if self._closebright:
             # check to see if control light curve location is within minimum distance from SN location
             offset_sep = self.sn_coords.get_distance(coords).arcsecond
-            if offset_sep < self.closebright_min_dist:
+            if offset_sep < self.sn_min_dist:
                 print(
-                    f'Control light curve {control_index:3d} too close to SN location ({offset_sep}" away) with minimum distance to SN as {self.closebright_min_dist}"; skipping control light curve...'
+                    f'Control light curve {control_index:3d} too close to SN location ({offset_sep}" away) with minimum distance to SN as {self.sn_min_dist}"; skipping control light curve...'
                 )
                 return
 
@@ -261,12 +267,15 @@ class ControlCoordinatesTable:
             radius=self.radius,
         )
 
-    def construct(self, tnsname: str, full_sn_lc: FullLightCurve):
-        self.sn_coords = full_sn_lc.coords
+    def construct(
+        self,
+        tnsname: str,
+        sn_coords: Coordinates,
+    ):
+        self.sn_coords = sn_coords
 
         # add row for SN position
-        total_len, filt_lens = full_sn_lc.get_filt_lens()
-        if self.closebright:
+        if self._closebright:
             # circle pattern radius is distance between SN and close bright object
             self.radius = self.sn_coords.get_distance(self.center_coords)
 
@@ -277,15 +286,15 @@ class ControlCoordinatesTable:
                 ra_offset=np.nan,
                 dec_offset=np.nan,
                 radius=self.radius,
-                n_detec=total_len,
-                filt_lens=filt_lens,
             )
         else:
             # center coordinates are the SN location
             self.center_coords = self.sn_coords
 
             self.add_row(
-                tnsname, 0, self.sn_coords, n_detec=total_len, filt_lens=filt_lens
+                tnsname,
+                0,
+                self.sn_coords,
             )
 
         self.ready_for_construction()
@@ -296,8 +305,21 @@ class ControlCoordinatesTable:
 
         print("Control light curve coordinates generated: \n", self.__str__())
 
+    def iterator(self, include_sn: bool = False):
+        """
+        Yields tuples of (control_index, coordinates) from the control coordinates table.
+
+        :param include_sn (bool): If True, include the first row (SN). Defaults to False.
+        """
+        if self.t is None:
+            raise RuntimeError("ControlCoordinatesTable is empty (self.t is None)")
+
+        df = self.t if include_sn else self.t.iloc[1:]
+        for _, row in df.iterrows():
+            yield row["control_index"], Coordinates(ra=row["ra"], ra=row["dec"])
+
     def get_filepath(self, directory, tnsname):
-        return os.path.join(directory, tnsname, f"{tnsname}_control_coords.txt")
+        return os.path.join(directory, tnsname, f"{tnsname}_control_coords_table.txt")
 
     def save(
         self,
@@ -330,9 +352,77 @@ class ControlCoordinatesTable:
             return self.t.to_string()
 
 
+class ControlCoordinatesTableFactory:
+    @staticmethod
+    def validate(
+        download_controls: bool,
+        num_controls: int = 0,
+        control_coords_table_filepath: Optional[str] = None,
+        radius: Optional[float] = None,
+        center_coords: Optional[Coordinates] = None,
+        sn_min_dist: Optional[float] = None,
+    ):
+        """
+        Validates the input arguments for constructing a ControlCoordinatesTable.
+        Ensures consistency between download mode and related parameters.
+        """
+        if not download_controls and (
+            control_coords_table_filepath is not None
+            or num_controls != 0
+            or center_coords is not None
+        ):
+            raise ValueError(
+                "If not downloading control light curves, none of the following should be provided: "
+                "File path to table of control light curve coordinates (`control_coords_table_filepath`), nonzero number of control light curves to download (`num_controls`), or center coordinates of the circle pattern (`center_coords`)"
+            )
+
+        if download_controls:
+            if radius is None or num_controls < 1:
+                raise ValueError(
+                    "If downloading control light curves in circle pattern, both radius (`radius`) and number of controls to download (`num_controls`) must be provided"
+                )
+
+            if center_coords is not None and sn_min_dist is None:
+                raise ValueError(
+                    "If centering circle pattern around a different location, both coordinates of the new center (`center_coords`) and minimum distance from SN location (`sn_min_dist`) must be provided"
+                )
+
+    @staticmethod
+    def new(
+        download_controls: bool,
+        num_controls: int = 0,
+        control_coords_table_filepath: Optional[str] = None,
+        radius: Optional[float] = None,
+        center_coords: Optional[Coordinates] = None,
+        sn_min_dist: Optional[float] = None,
+    ) -> ControlCoordinatesTable:
+        ControlCoordinatesTableFactory.validate(
+            download_controls,
+            num_controls=num_controls,
+            control_coords_table_filepath=control_coords_table_filepath,
+            radius=radius,
+            center_coords=center_coords,
+            sn_min_dist=sn_min_dist,
+        )
+
+        control_coords_table = ControlCoordinatesTable()
+
+        if control_coords_table_filepath:
+            control_coords_table.init_read_from_file(control_coords_table_filepath)
+        elif center_coords is not None and sn_min_dist is not None:
+            control_coords_table.init_closebright(
+                center_coords, num_controls, sn_min_dist
+            )
+        else:
+            control_coords_table.init_default(num_controls, radius)
+
+        return control_coords_table
+
+
 class AtlasAuthenticator:
     @staticmethod
     def authenticate(username: str, password: str) -> Dict[str, str]:
+        print("\nConnecting to ATLAS API...")
         resp = requests.post(
             url=f"https://fallingstar-data.com/forcedphot/api-token-auth/",
             data={"username": username, "password": password},
@@ -345,13 +435,10 @@ class AtlasAuthenticator:
         return headers
 
 
-def parse_arg_coords(arg_coords: str) -> Coordinates:
+def parse_arg_coords(arg_coords: Optional[str]) -> Optional[Coordinates]:
     parsed_coords = parse_comma_separated_string(arg_coords)
     if parsed_coords is None:
-        raise RuntimeError(
-            f"Parsing comma-separated --coords argument failed: {arg_coords}"
-        )
-
+        return None
     if len(parsed_coords) > 2:
         raise RuntimeError(
             "Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
@@ -360,277 +447,236 @@ def parse_arg_coords(arg_coords: str) -> Coordinates:
         raise RuntimeError(
             "Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
         )
+
     return Coordinates(parsed_coords[0], parsed_coords[1])
 
 
-class DownloadLoop:
-    def __init__(
-        self,
-        input_dir: str,
-        output_dir: str,
-        creds: Credentials,
-        sninfo: SnInfoTable,
-        # controls: ControlCoordinatesTable,
-        colnames: PresetColumnNames,
-        overwrite: bool = False,
-    ):
-        self.input_dir = input_dir
-        self.output_dir = output_dir
-        self.overwrite = overwrite
+def resolve_sn_coords_and_mjd0(
+    tnsname: str,
+    sninfo: Optional[SnInfoTable] = None,
+    creds: Optional[Credentials] = None,
+    arg_mjd0: Optional[float] = None,
+    arg_sn_coords: Optional[Coordinates] = None,
+    use_disc_date_buffer: bool = True,
+) -> tuple[float, Coordinates]:
+    print("\nResolving SN RA, Dec, and MJD0 from command line, SnInfoTable, or TNS API")
+    sn_coords, mjd0 = None, None
 
-        self.lcs: Dict[int, FullLightCurve] = {}
+    # first, try SN info table
+    if sninfo is not None:
+        sn_coords, mjd0 = sninfo.get_info(tnsname)
 
-        self.controls: Optional[ControlCoordinatesTable] = None
+    # next, overwrite defaults with command line args
+    if arg_sn_coords is not None:
+        sn_coords = arg_sn_coords
+        print(f"Setting coordinates to --coords argument: {sn_coords}")
+    if arg_mjd0 is not None:
+        mjd0 = arg_mjd0
+        print(f"Setting MJD0 to --mjd0 argument: {mjd0} MJD")
 
-        # SN info table
-        self.sninfo: SnInfoTable = sninfo
-
-        # ATLAS and TNS credentials
-        self.creds: Credentials = creds
-
-        # ATLAS preset column names
-        self.colnames: PresetColumnNames = colnames
-
-    def init_control_coordinates_table(
-        self,
-        ctrl_coords_filepath: Optional[str] = None,
-        num_controls: Optional[int] = None,
-        radius: Optional[float] = None,
-        center_coords: Optional[Coordinates] = None,
-        closebright_min_dist: Optional[float] = None,
-    ):
-        self.controls = ControlCoordinatesTable()
-
-        if ctrl_coords_filepath:
-            self.controls.init_read_from_file(ctrl_coords_filepath)
-
-        else:
-            if center_coords:
-                if num_controls is None:
-                    raise ValueError(
-                        "`num_controls` must be provided when using closebright strategy."
-                    )
-                if closebright_min_dist is None:
-                    raise ValueError(
-                        "`closebright_min_dist` must be provided when using closebright strategy."
-                    )
-
-                # TODO: option to parse from SN info table
-
-                self.controls.init_closebright(
-                    center_coords,
-                    num_controls,
-                    closebright_min_dist,
-                )
-            else:
-                if num_controls is None:
-                    raise ValueError(
-                        "`num_controls` must be provided when using closebright strategy."
-                    )
-                if radius is None:
-                    raise ValueError(
-                        "`radius` must be provided when using closebright strategy."
-                    )
-                self.controls.init_default(num_controls, radius)
-
-    def _construct_full_sn_lc(
-        self,
-        tnsname,
-        arg_coords: Optional[Coordinates] = None,
-        arg_mjd0: Optional[float] = None,
-    ):
-        # first, try SN info table
-        ra, dec, mjd0 = self.sninfo.get_info(tnsname)
-
-        # next, overwrite defaults with command line args
-        if arg_coords is not None:
-            ra, dec = arg_coords.get_RA_str(), arg_coords.get_Dec_str()
-            print(f"Setting coordinates to --coords argument: RA {ra}, Dec {dec}")
-        if arg_mjd0 is not None:
-            mjd0 = arg_mjd0
-            print(f"Setting MJD0 to --mjd0 argument: {mjd0} MJD")
-
-        try:
-            self.lcs[0] = FullLightCurve(0, ra, dec, mjd0)
-        except Exception as e:
-            print(
-                f"WARNING: Could not construct light curve object with RA {ra}, Dec {dec}, and MJD0 {mjd0}: {str(e)}."
+    # now try querying TNS for missing info
+    if sn_coords.is_incomplete() or mjd0 is None or np.isnan(mjd0):
+        if creds is None:
+            raise ValueError(
+                "Cannot find coordinates or MJD0 in command line or SnInfoTable, but TNS credentials not provided"
             )
-            self.lcs[0] = FullLightCurve(0)
+        creds.validate_tns_credentials()
 
-        # try to query TNS for any missing data
-        self.creds.validate_tns_credentials()
-        self.lcs[0].get_tns_data(
+        tns_mjd0, tns_sn_coords = get_tns_data(
             tnsname,
-            self.creds.tns_api_key,
-            self.creds.tns_id,
-            self.creds.tns_bot_name,
+            creds.tns_api_key,
+            creds.tns_id,
+            creds.tns_bot_name,
+            use_disc_date_buffer=use_disc_date_buffer,
         )
 
-        # add final RA, Dec, MJD0 to SN info table
-        self.sninfo.update_row(
-            tnsname, self.lcs[0].coords, self.lcs[0].mjd0, overwrite=self.overwrite
+        if sn_coords.is_incomplete():
+            sn_coords = tns_sn_coords
+            print(f"Setting coordinates to TNS coordinates: {sn_coords}")
+
+        if mjd0 is None or np.isnan(mjd0):
+            mjd0 = tns_mjd0
+            print(
+                f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {mjd0}"
+            )
+
+    # make sure nothing is missing
+    if sn_coords.is_incomplete():
+        raise RuntimeError(
+            "Could not resolve SN coordinates from command line, SnInfoTable, or TNS"
+        )
+    if mjd0 is None or np.isnan(mjd0):
+        raise RuntimeError(
+            "Could not resolve SN MJD0 from command line, SnInfoTable, or TNS discovery date"
         )
 
-    def _load_or_download_sn_lc(
+    return mjd0, sn_coords
+
+
+class AtlasLightCurveDownloader:
+    def __init__(
+        self, atclean_input_dir: str, atlas_username: str, atlas_password: str
+    ):
+        self.atclean_input_dir = atclean_input_dir
+
+        self.headers = AtlasAuthenticator.authenticate(atlas_username, atlas_password)
+        if self.headers is None:
+            raise RuntimeError("No token header!")
+
+        self._lcs: Dict[int, FullLightCurve] = None
+
+    @property
+    def lcs(self):
+        if self._lcs is None:
+            self._lcs = {}
+        return self._lcs
+
+    def download_lc(
         self,
-        headers: Dict[str, str],
-        tnsname: str,
+        control_index: int,
+        coords: Coordinates,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
-        download_controls: bool = False,
-    ):
-        if not self.overwrite and is_sn_in_subdir(self.input_dir, tnsname):
+    ) -> tuple[int, Dict[str, int]]:
+        self.lcs[control_index] = FullLightCurve(
+            control_index, ra=coords.get_RA_str(), dec=coords.get_Dec_str()
+        )
+        self.lcs[control_index].download(
+            self.headers, lookbacktime=lookbacktime, max_mjd=max_mjd
+        )
+        return self.lcs[control_index].get_filt_lens()
+
+    def load_existing_lc(
+        self, tnsname: str, control_index: int
+    ) -> tuple[int, Dict[str, int]]:
+        filt_lens = {}
+
+        for filt in find_all_filts(self.atclean_input_dir, tnsname):
+            lc = LightCurve(None, control_index=control_index, filt=filt)
+            lc.load_lc(self.atclean_input_dir, tnsname)
+            filt_lens[filt] = len(lc.t)
+
+        total_len = sum([filt_len for filt_len in filt_lens.values()])
+
+        return total_len, filt_lens
+
+    def update_and_save_control_coords_table(
+        self,
+        tnsname: str,
+        control_index: int,
+        total_len: int,
+        filt_lens: Dict[str, int],
+        overwrite: bool = False,
+    ) -> ControlCoordinatesTable:
+        """
+        Update and save the constructed ControlCoordinatesTable
+        so that if it crashes later, we can just load it again.
+        """
+        control_coords_table.update_filt_lens(control_index, total_len, filt_lens)
+        control_coords_table.save(self.atclean_input_dir, tnsname, overwrite=overwrite)
+        return control_coords_table
+
+    def download_sn_lc(
+        self,
+        tnsname: str,
+        sn_coords: Coordinates,
+        control_coords_table: ControlCoordinatesTable,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
+        overwrite: bool = False,
+    ) -> ControlCoordinatesTable:
+        if not overwrite and is_sn_in_subdir(self.atclean_input_dir, tnsname):
             print(
                 f"Overwrite set to False and SN light curve already exists; skipping download..."
             )
-            if download_controls and self.controls.t is None:
-                self.controls.load(self.input_dir, tnsname)
-        else:
-            # download SN light curve
-            self.lcs[0].download(headers, lookbacktime=lookbacktime, max_mjd=max_mjd)
-            self.lcs[0].save(self.colnames, self.input_dir, tnsname, overwrite=True)
+            if control_coords_table.t is None:
+                # load previously saved ControlCoordinatesTable
+                control_coords_table = ControlCoordinatesTable()
+                control_coords_table.load(input_dir, tnsname)
+            return control_coords_table
 
-            if download_controls and self.controls.t is None:
-                self.controls.construct(tnsname, self.lcs[0])
+        control_coords_table.construct(tnsname, sn_coords)
 
-                # save the constructed table without the filt lens
-                # so that if it crashes later, we can just load it again
-                self.controls.save(self.input_dir, tnsname)
+        total_len, filt_lens = self.download_lc(
+            0, sn_coords, lookbacktime=lookbacktime, max_mjd=max_mjd
+        )
 
-    def _download_control_lightcurves(
+        return self.update_and_save_control_coords_table(
+            tnsname, 0, total_len, filt_lens, overwrite=overwrite
+        )
+
+    def download_control_lcs(
         self,
-        headers: Dict[str, str],
         tnsname: str,
+        control_coords_table: ControlCoordinatesTable,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
-    ):
-        existing_control_indices = find_all_control_indices(self.input_dir, tnsname)
+        overwrite: bool = False,
+    ) -> ControlCoordinatesTable:
+        existing_control_indices = find_all_control_indices(
+            self.atclean_input_dir, tnsname
+        )
 
-        for i in range(1, len(self.controls.t)):
-            control_index = self.controls.t.at[i, "control_index"]
+        for control_index, coords in control_coords_table.iterator():
             print(f"\nControl light curve {control_index}")
-
-            if not self.overwrite and control_index in existing_control_indices:
+            if not overwrite and control_index in existing_control_indices:
                 print(
-                    f"Overwrite set to {self.overwrite} and light curve already exists; skipping download..."
+                    f"Overwrite set to {overwrite} and light curve already exists; skipping download..."
                 )
-
-                # load saved lcs and update filt lens
-                filt_lens = {}
-                for filt in find_all_filts(self.input_dir, tnsname):
-                    lc = LightCurve(
-                        self.colnames, control_index=control_index, filt=filt
-                    )
-                    lc.load_lc(self.input_dir, tnsname)
-                    filt_lens[filt] = len(lc.t)
-                total_len = sum([filt_len for filt_len in filt_lens.values()])
-
+                total_len, filt_lens = self.load_existing_lc(tnsname)
             else:
-                self.lcs[control_index] = FullLightCurve(
-                    control_index,
-                    self.controls.t.at[i, "ra"],
-                    self.controls.t.at[i, "dec"],
-                )
-                self.lcs[control_index].download(
-                    headers, lookbacktime=lookbacktime, max_mjd=max_mjd
-                )
-                self.lcs[control_index].save(
-                    self.colnames, self.input_dir, tnsname, overwrite=self.overwrite
+                total_len, filt_lens = self.download_lc(
+                    control_index, coords, lookbacktime=lookbacktime, max_mjd=max_mjd
                 )
 
-                total_len, filt_lens = self.lcs[control_index].get_filt_lens()
+            control_coords_table = self.update_and_save_control_coords_table(
+                tnsname, control_index, total_len, filt_lens, overwrite=overwrite
+            )
 
-            self.controls.update_filt_lens(control_index, total_len, filt_lens)
+        return control_coords_table
 
-        # save control coordinates table
-        # always overwrite the previously saved version with no filt lens
-        self.controls.save(self.input_dir, tnsname, overwrite=True)
-
-    def download_lcs(
+    def download(
         self,
-        headers: Dict[str, str],
         tnsname: str,
-        download_controls: bool = False,
-        arg_coords: Optional[Coordinates] = None,
-        arg_mjd0: Optional[float] = None,
+        sn_coords: Coordinates,
+        control_coords_table: ControlCoordinatesTable,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
-    ):
-        print(f"\nDOWNLOADING ATLAS LIGHT CURVES FOR: SN {tnsname}\n")
-        self.lcs: Dict[int, FullLightCurve] = {}
-
-        try:
-            self._construct_full_sn_lc(
-                tnsname, arg_coords=arg_coords, arg_mjd0=arg_mjd0
-            )
-        except Exception as e:
-            print(
-                f"Could not construct light curve object: {str(e)}. Skipping to next SN..."
-            )
-            return
-
-        self._load_or_download_sn_lc(
-            headers,
+        overwrite: bool = False,
+    ) -> ControlCoordinatesTable:
+        control_coords_table = self.download_sn_lc(
             tnsname,
+            sn_coords,
+            control_coords_table,
             lookbacktime=lookbacktime,
             max_mjd=max_mjd,
-            download_controls=download_controls,
+            overwrite=overwrite,
         )
 
-        self.sninfo.save()
+        control_coords_table = self.download_control_lcs(
+            tnsname,
+            control_coords_table,
+            lookbacktime=lookbacktime,
+            max_mjd=max_mjd,
+            overwrite=overwrite,
+        )
 
-        if download_controls:
-            self._download_control_lightcurves(
-                headers, tnsname, lookbacktime=lookbacktime, max_mjd=max_mjd
-            )
+        return control_coords_table
 
-    def loop(
-        self,
-        tnsnames: List[str],
-        arg_coords: Optional[Coordinates] = None,
-        arg_mjd0: Optional[float] = None,
-        lookbacktime: Optional[float] = None,
-        max_mjd: Optional[float] = None,
-        download_controls: bool = False,
-        ctrl_coords_filepath: str | None = None,
-        num_controls: int | None = None,
-        radius: float | None = None,
-        center_coords: Coordinates | None = None,
-        closebright_min_dist: float | None = None,
+    def save_downloaded_lc(
+        self, tnsname: str, control_index: str, overwrite: bool = False
     ):
-        if len(tnsnames) > 1 and (arg_coords or arg_mjd0):
+        if control_index not in self.lcs.keys():
             raise ValueError(
-                "Cannot apply coordinates and MJD0 to more than one TNS name"
+                f"Light curve with control_index {control_index} has not been downloaded yet"
             )
-
-        print("\nConnecting to ATLAS API...")
-        headers = AtlasAuthenticator.authenticate(
-            self.creds.atlas_username, self.creds.atlas_password
+        self.lcs[control_index].save(
+            None, self.atclean_input_dir, tnsname, overwrite=overwrite
         )
 
-        if headers is None:
-            raise RuntimeError("No token header!")
-
-        for obj_index in range(len(tnsnames)):
-            if download_controls:
-                self.init_control_coordinates_table(
-                    ctrl_coords_filepath=ctrl_coords_filepath,
-                    num_controls=num_controls,
-                    radius=radius,
-                    center_coords=center_coords,
-                    closebright_min_dist=closebright_min_dist,
-                )
-
-            self.download_lcs(
-                headers,
-                tnsnames[obj_index],
-                arg_coords=arg_coords,
-                arg_mjd0=arg_mjd0,
-                lookbacktime=lookbacktime,
-                max_mjd=max_mjd,
-                download_controls=download_controls,
-            )
+    def save_downloaded_lcs(self, tnsname: str, overwrite: bool = False):
+        for control_index in self.lcs.keys():
+            self.save_downloaded_lc(tnsname, control_index, overwrite=overwrite)
 
 
 # define command line arguments
@@ -671,7 +717,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     # for downloading single SN only
     parser.add_argument(
         "--sn_coords",
-        type=str,
+        type=parse_arg_coords,
         default=None,
         help="comma-separated RA and Dec of SN light curve to download",
     )
@@ -682,7 +728,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     # for control light curves
     parser.add_argument(
         "-c",
-        "--controls",
+        "--download_controls",
         default=False,
         action="store_true",
         help="download control light curves in addition to transient light curve",
@@ -711,7 +757,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     # for downloading single SN with control light curves only
     parser.add_argument(
         "--center_coords",
-        type=str,
+        type=parse_arg_coords,
         default=None,
         help="comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle",
     )
@@ -731,7 +777,7 @@ if __name__ == "__main__":
     make_dir_if_not_exists(input_dir)
     make_dir_if_not_exists(output_dir)
 
-    # set up credentials
+    # set up Credentials
     creds = Credentials(
         config["credentials"]["atlas_username"],
         config["credentials"]["atlas_password"],
@@ -749,39 +795,54 @@ if __name__ == "__main__":
     sninfo_filename = args.sninfo_file or config["dir"]["sninfo_filename"]
     sninfo = SnInfoTable(output_dir, filename=sninfo_filename)
 
-    if not args.controls and (
-        args.ctrl_coords_filepath
-        or args.center_coords
-        or args.num_controls
-        or args.radius
-    ):
-        raise RuntimeError(
-            "Please specify control light curve downloading (-c or --controls) before using any of the following arguments: --ctrl_coords, --closebright, --num_controls, --radius."
+    if len(args.tnsnames) > 1 and (args.sn_coords is not None or args.mjd0 is not None):
+        raise ValueError("Cannot apply coordinates and MJD0 to more than one TNS name")
+
+    # parse control light curve args
+    num_controls = (
+        args.num_controls
+        if args.num_controls
+        else int(config["download"]["num_controls"])
+    )
+    radius = args.radius if args.radius else float(config["download"]["radius"])
+    sn_min_dist = float(config["download"]["sn_min_dist"])
+
+    downloader = AtlasLightCurveDownloader(
+        input_dir, creds.atlas_username, creds.atlas_password
+    )
+
+    for tnsname in args.tnsnames:
+        # construct new ControlCoordinatesTable
+        control_coords_table = ControlCoordinatesTableFactory.new(
+            args.download_controls,
+            num_controls=num_controls,
+            radius=radius,
+            center_coords=args.center_coords,
+            sn_min_dist=sn_min_dist,
         )
 
-    download = DownloadLoop(
-        input_dir,
-        output_dir,
-        creds,
-        sninfo,
-        colnames,
-        overwrite=args.overwrite,
-    )
+        # get RA, Dec, and MJD0 from command line, SnInfoTable, or TNS API
+        mjd0, sn_coords = resolve_sn_coords_and_mjd0(
+            tnsname,
+            sninfo=sninfo,
+            creds=creds,
+            arg_mjd0=args.mjd0,
+            arg_sn_coords=args.sn_coords,
+        )
 
-    download.loop(
-        args.tnsnames,
-        arg_coords=parse_arg_coords(args.sn_coords) if args.sn_coords else None,
-        arg_mjd0=args.mjd0,
-        lookbacktime=args.lookbacktime,
-        max_mjd=args.max_mjd,
-        download_controls=args.controls,
-        ctrl_coords_filepath=args.ctrl_coords_filepath,
-        num_controls=(
-            args.num_controls
-            if args.num_controls
-            else int(config["download"]["num_controls"])
-        ),
-        radius=args.radius if args.radius else float(config["download"]["radius"]),
-        center_coords=args.center_coords,
-        closebright_min_dist=float(config["download"]["closebright_min_dist"]),
-    )
+        # update SnInfoTable with resolved RA, Dec, and MJD0
+        sninfo.update_row(
+            tnsname, coords=sn_coords, mjd0=mjd0, overwrite=args.overwrite
+        )
+
+        # download SN and control light curves
+        control_coords_table = downloader.download(
+            tnsname,
+            sn_coords,
+            control_coords_table,
+            lookbacktime=args.lookbacktime,
+            max_mjd=args.max_mjd,
+            overwrite=args.overwrite,
+        )
+
+    sninfo.save()

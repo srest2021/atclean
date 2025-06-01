@@ -184,10 +184,16 @@ def parse_config_str(value: str | None):
     return value
 
 
-def parse_comma_separated_string(string: str | None):
+def parse_comma_separated_string(string: Optional[str]):
     if string is None:
         return None
-    return [item.strip() for item in string.split(",")]
+
+    try:
+        return [item.strip() for item in string.split(",")]
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not parse comma-separated string: {string}" f"\nERROR: {str(e)}"
+        )
 
 
 def make_dir_if_not_exists(directory):
@@ -1070,7 +1076,7 @@ class SnInfoTable:
             return True
         return False
 
-    def get_info(self, tnsname) -> tuple[str | None, str | None, float | None]:
+    def get_info(self, tnsname) -> tuple[Coordinates, float | None]:
         _, row = self.get_row(tnsname)
         if row is None:
             return None, None, None
@@ -1086,7 +1092,7 @@ class SnInfoTable:
                 raise RuntimeError(f"Invalid MJD0: {row['mjd0']}")
             mjd0 = float(row["mjd0"])
 
-        return ra, dec, mjd0
+        return Coordinates(ra, dec), mjd0
 
     def update_row_at_index(
         self,
@@ -1247,13 +1253,16 @@ def get_tns_coords_from_json(json_data):
         raise RuntimeError(f"Failed to get coordinates from TNS JSON data: {str(e)}")
 
 
-def get_tns_mjd0_from_json(json_data):
+def get_tns_mjd0_from_json(json_data, use_disc_date_buffer: bool = True):
     try:
         disc_date = json_data["data"]["discoverydate"]
         date = list(disc_date.partition(" "))[0]
         time = list(disc_date.partition(" "))[2]
         date_object = Time(date + "T" + time, format="isot", scale="utc")
-        mjd0 = date_object.mjd - DISC_DATE_BUFFER
+
+        mjd0 = date_object.mjd
+        if use_disc_date_buffer:
+            mjd0 -= DISC_DATE_BUFFER
         return mjd0
     except Exception as e:
         raise RuntimeError(f"Failed to get discovery date from TNS JSON data: {str(e)}")
@@ -1285,6 +1294,21 @@ def get_mjd0_from_tns(
         mjd0 = get_tns_mjd0_from_json(json_data)
         coords = get_tns_coords_from_json(json_data)
         return mjd0, coords
+
+
+def get_tns_data(
+    tnsname: str, tns_api_key, tns_id, tns_bot_name, use_disc_date_buffer: bool = True
+) -> tuple[float, Coordinates]:
+    print(f"\nQuerying TNS for {tnsname} data...")
+    json_data = query_tns(tnsname, tns_api_key, tns_id, tns_bot_name)
+    if json_data is None:
+        print(f"Skipping...")
+        return
+
+    coords = get_tns_coords_from_json(json_data)
+    mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
+    print("Success")
+    return mjd0, coords
 
 
 def query_atlas(headers, ra, dec, min_mjd, max_mjd):

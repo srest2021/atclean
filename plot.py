@@ -1027,16 +1027,19 @@ class Plot:
         flag: int,
         custom_lims: Optional[PlotLimits] = None,
         two_columns: bool = False,
+        include_sn: bool = False,
         save: bool = False,
         filename: str = "all_controls",
     ):
-        if sn.num_controls < 1:
+        if sn.num_controls < 1 and not include_sn:
             print("WARNING: No control light curves to plot")
             return
 
-        if two_columns and sn.num_controls % 2 != 0:
+        total_panels = sn.num_controls + int(include_sn)
+
+        if two_columns and total_panels % 2 != 0:
             raise RuntimeError(
-                f"Number of control light curves ({sn.num_controls}) must be even; "
+                f"Number of control light curves ({total_panels}) must be even; "
                 "set two_columns=False for one column"
             )
 
@@ -1046,25 +1049,63 @@ class Plot:
 
         # set up figure and axes
         if two_columns:
-            num_rows = sn.num_controls // 2
+            num_rows = total_panels // 2
             fig, axes = plt.subplots(
                 num_rows, 2, constrained_layout=True, figsize=(7, num_rows * 1.2)
             )
             axes = axes.flatten()
         else:
             fig, axes = plt.subplots(
-                sn.num_controls,
+                total_panels,
                 1,
                 constrained_layout=True,
-                figsize=(5, sn.num_controls),
+                figsize=(5, total_panels),
             )
             axes = np.atleast_1d(axes)
 
+        idx = 0
+
+        # optional SN light curve
+        if include_sn:
+            ax: Axes = axes[idx]
+            is_last_row = idx >= total_panels - (2 if two_columns else 1)
+            is_rightmost_col = idx % 2 == 1 if two_columns else False
+
+            self._setup_ax(
+                ax,
+                lims,
+                xlabel=is_last_row,
+                xticks=is_last_row,
+                ylabel=False,
+                yticks=not is_rightmost_col,
+            )
+
+            good_ix = sn.lcs[0].get_good_indices(flag)
+            self._plot_lc(
+                ax,
+                sn,
+                0,
+                self.color_scheme["sn_flux"][sn.filt],
+                indices=good_ix,
+            )
+
+            ax.text(
+                0.03,
+                0.92,
+                "SN Light Curve",
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                fontsize=11,
+                zorder=20,
+            )
+            idx += 1
+
         # loop over control light curves
-        for idx, control_index in enumerate(sn.control_lc_indices):
+        for control_index in sn.control_lc_indices:
             ax: Axes = axes[idx]
 
-            is_last_row = idx >= len(sn.control_lc_indices) - (2 if two_columns else 1)
+            is_last_row = idx >= total_panels - (2 if two_columns else 1)
             is_rightmost_col = idx % 2 == 1 if two_columns else False
             self._setup_ax(
                 ax,
@@ -1086,7 +1127,7 @@ class Plot:
 
             label_text = (
                 f"Binned & Cleaned Control Light Curve #{control_index}"
-                if idx == 0
+                if idx == int(include_sn)
                 else f"#{control_index}"
             )
             ax.text(
@@ -1099,6 +1140,8 @@ class Plot:
                 fontsize=11,
                 zorder=20,
             )
+
+            idx += 1
 
         fig.supylabel(r"Flux (µJy)")
 

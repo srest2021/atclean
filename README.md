@@ -108,7 +108,7 @@ Lastly, we give users the chance to either specify the control light curve coord
 
 - `radius`: The radius in arcseconds for the circle pattern of control light curves around a center location (default is SN location). 
 
-- `closebright_min_dist`: The minimum distance in arcseconds from the SN location to a control light curve location. This distance is used when the center of the circle pattern is set to a nearby bright object, and helps avoid any control locations landing on top of or too close to the SN.
+- `sn_min_dist`: The minimum distance in arcseconds from the SN location to a control light curve location. This distance is used when the center of the circle pattern is set to a nearby bright object, and helps avoid any control locations landing on top of or too close to the SN.
 
 #### Arguments
 Arguments will override default config file settings if specified.

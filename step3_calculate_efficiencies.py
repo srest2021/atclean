@@ -1173,7 +1173,7 @@ if __name__ == "__main__":
         sninfo = SnInfoTable(
             config["dir"]["output"], filename=config["dir"]["sninfo_filename"]
         )
-        _, _, mjd0 = sninfo.get_info(args.tnsname)
+        _, mjd0 = sninfo.get_info(args.tnsname)
     print(f"MJD0: {mjd0}")
 
     analysis_loop = AtlasAnalysisLoop(
