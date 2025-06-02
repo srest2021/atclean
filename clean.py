@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 
-from configparser import ConfigParser
 from datetime import datetime
-import os
-import re
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 import sys, argparse
 import pandas as pd
 import numpy as np
@@ -27,7 +24,7 @@ from utils import (
     UncertaintyCut,
     UncertaintyEstimation,
     find_all_filts,
-    format_float,
+    format_float_string,
     get_config_custom_cuts,
     hexstring_to_int,
     Cut,
@@ -36,6 +33,7 @@ from utils import (
     get_allowed_presets,
     get_mjd0_from_tns,
     PresetColumnNames,
+    load_preset_column_names_from_config,
     new_row,
     parse_config_str,
     load_config,
@@ -65,6 +63,9 @@ class OutputReadMe:
 
         self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
         self.f.write(f"\n\nTimestamp: {timestamp.strftime('%B %d, %Y at %I:%M:%S %p')}")
+        full_command = " ".join(sys.argv)
+        self.f.write(f"\n\nCommand run: `{full_command}`")
+
         self.f.write(
             f'\n\nThe SN light curves are separated by filter and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.'
         )
@@ -80,7 +81,7 @@ class OutputReadMe:
         )
         if self.cut_list.has(BadDayCut.name()):
             self.f.write(
-                f"\n\t- Averaged light curves (for MJD bin size {format_float(mjdbinsize)} days): {self.tnsname}.o.{format_float(mjdbinsize)}days.lc.txt and {self.tnsname}.c.{format_float(mjdbinsize)}days.lc.txt"
+                f"\n\t- Averaged light curves (for MJD bin size {format_float_string(mjdbinsize)} days): {self.tnsname}.o.{format_float_string(mjdbinsize)}days.lc.txt and {self.tnsname}.c.{format_float_string(mjdbinsize)}days.lc.txt"
             )
         if self.cut_list.has(ControlLightCurveCut.name()):
             self.f.write(
@@ -206,7 +207,7 @@ class OutputReadMe:
         )
 
     def add_custom_cut_section(self, cut: CustomCut, percent_cut):
-        self.f.write(f"\n\n### {cut.name}\n")
+        self.f.write(f"\n\n### {cut.name()}\n")
         self.f.write(
             f"\nTotal percent of SN light curve flagged ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
@@ -333,16 +334,16 @@ class CleanLoop:
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
-        sninfo_filename: str = None,
+        sninfo_filename: Optional[str] = None,
         flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ):
         self.colnames = colnames
-        self.sn: Supernova = None
-        self.avg_sn: AveragedSupernova = None
-        self.cut_list: CutList = None
-        self.f: OutputReadMe = None
-        self.p: PlotPdf = None
+        self.sn: Optional[Supernova] = None
+        self.avg_sn: Optional[AveragedSupernova] = None
+        self.cut_list: Optional[CutList] = None
+        self.f: Optional[OutputReadMe] = None
+        self.p: Optional[PlotPdf] = None
 
         self.credentials: Credentials = credentials
         self.input_dir: str = input_dir
@@ -367,6 +368,9 @@ class CleanLoop:
         plot: bool = False,
     ):
         print(f"\nApplying ATLAS template change correction:")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
+
         output = self.sn.apply_template_correction(
             maskval=maskval,
             region1_offset=region1_offset,
@@ -375,15 +379,22 @@ class CleanLoop:
             num_measurements=num_measurements,
         )
         print("\n".join(output))
+
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_template_correction_section(output)
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_template_correction(self.sn.lcs[0])
 
     def check_uncert_est(
         self, cut: UncertaintyEstimation, apply_function: Callable, plot: bool = False
     ):
         print(f"\nChecking true uncertainties estimation:")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
 
         stats = self.sn.get_uncert_est_stats(cut)
         final_sigma_extra = np.median(stats["sigma_extra"])
@@ -413,10 +424,14 @@ class CleanLoop:
                 )
 
                 if plot:
+                    if self.p is None:
+                        raise RuntimeError("Output plots (self.p) cannot be None")
                     self.p.plot_uncert_est(self.sn)
         else:
             print("True uncertainties estimation not needed; skipping procedure...")
 
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_uncert_est_section(
             sigma_typical_old,
             sigma_typical_new,
@@ -437,25 +452,35 @@ class CleanLoop:
         }
         return apply, uncert_est_info_row
 
-    def apply_uncert_cut(self, cut: UncertaintyCut, plot: bool = False):
+    def apply_uncert_cut(self, cut: UncertaintyCut | None, plot: bool = False):
         if cut is None:
             return
+
         print(f"\nApplying uncertainty cut ({cut}):")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
         percent_cut = self.sn.apply_cut(cut)
         print("Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
+
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_uncert_cut_section(cut, percent_cut)
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.sn, cut.flag, title=UncertaintyCut.name())
 
-    def apply_x2_cut(self, cut: ChiSquareCut, plot: bool = False):
+    def apply_x2_cut(self, cut: ChiSquareCut | None, plot: bool = False):
         if cut is None:
             return None
 
         print(f"\nApplying chi-square cut ({cut}):")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
         if self.sn.colnames.chisquare is None:
             print(
                 "WARNING: No chi-square column name provided in config file; skipping..."
@@ -496,9 +521,13 @@ class CleanLoop:
         )
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_limcuts(limcuts, cut)
             self.p.plot_cut(self.sn, cut.flag, title=ChiSquareCut.name())
 
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_x2_cut_section(
             cut, data["Pcontamination"], data["Ploss"], percent_cut
         )
@@ -515,11 +544,14 @@ class CleanLoop:
         return x2_info_row
 
     def apply_controls_cut(
-        self, cut: ControlLightCurveCut, previous_flags: int, plot: bool = False
+        self, cut: ControlLightCurveCut | None, previous_flags: int, plot: bool = False
     ):
         if cut is None:
             return
+
         print(f"\nApplying control light curve cut ({cut}):")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
 
         (
             x2_percent_cut,
@@ -549,6 +581,9 @@ class CleanLoop:
         print(
             f"Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
+
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_controls_cut_section(
             cut,
             x2_percent_cut,
@@ -560,43 +595,60 @@ class CleanLoop:
         )
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.sn, cut.flag, title=ControlLightCurveCut.name())
 
-    def apply_badday_cut(self, cut: BadDayCut, previous_flags, plot: bool = False):
+    def apply_badday_cut(
+        self, cut: BadDayCut | None, previous_flags, plot: bool = False
+    ):
         if cut is None:
             return
+
         print(
             f"\nApplying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
         )
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
+
         self.avg_sn, percent_cut = self.sn.apply_badday_cut(
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
         print("Success")
-
         print(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
+
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_badday_cut_section(percent_cut)
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.avg_sn, cut.flag, title=BadDayCut.name())
-
             self.p.plot_averaged_SN(
                 self.avg_sn, cut.flag, plot_controls=True, plot_flagged=False
             )
 
-    def apply_custom_cut(self, name, cut: CustomCut, plot: bool = False):
-        cut = self.cut_list.get(name)
+    def apply_custom_cut(self, cut: CustomCut, plot: bool = False):
         print(f"\nApplying custom cut ({cut})...")
+        if self.sn is None:
+            raise RuntimeError("Supernova (self.sn) cannot be None")
+
         percent_cut = self.sn.apply_cut(cut)
         print("Success")
-
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
+
+        if self.f is None:
+            raise RuntimeError("Output README file (self.f) cannot be None")
         self.f.add_custom_cut_section(cut, percent_cut)
 
         if plot:
+            if self.p is None:
+                raise RuntimeError("Output plots (self.p) cannot be None")
             self.p.plot_cut(self.sn, cut.flag, title=cut.name())
 
     def clean_lcs(
@@ -628,6 +680,9 @@ class CleanLoop:
 
             # plot original SN light curve and control light curves
             self.p.plot_SN(self.sn, plot_controls=True, plot_template_changes=True)
+
+        if self.cut_list is None:
+            raise RuntimeError("CutList (self.cut_list) cannot be None")
 
         # template correction
         if apply_template_correction:
@@ -662,8 +717,8 @@ class CleanLoop:
 
         # custom cuts
         custom_cuts = self.cut_list.get_custom_cuts()
-        for name, cut in custom_cuts.items():
-            self.apply_custom_cut(name, cut, plot=plot)
+        for cut in custom_cuts.values():
+            self.apply_custom_cut(cut, plot=plot)
 
         # plot the cleaned light curves so far
         previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
@@ -685,6 +740,8 @@ class CleanLoop:
         self.sn.save_all(self.output_dir, overwrite=self.overwrite)
 
         if self.cut_list.has(BadDayCut.name()):
+            if self.avg_sn is None:
+                raise RuntimeError("Averaged supernova (self.avg_sn) cannot be None")
             # save averaged SN and control light curves
             self.avg_sn.save_all(self.output_dir, overwrite=self.overwrite)
 
@@ -709,8 +766,8 @@ class CleanLoop:
         apply_uncert_est_function: Callable,
         num_controls: int = 0,
         mjd0=None,
-        filts: List[str] = None,
-        cut_list: CutList = None,
+        filts: Optional[List[str]] = None,
+        cut_list: Optional[CutList] = None,
         apply_template_correction: bool = False,
         plot: bool = False,
     ):
@@ -998,15 +1055,7 @@ if __name__ == "__main__":
         raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to clean: {args.tnsnames}")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
-    print("Success")
+    colnames = load_preset_column_names_from_config(args.preset, config)
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]

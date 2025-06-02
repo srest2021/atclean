@@ -81,34 +81,33 @@ To run tests, run the following command from inside the `atclean` directory:
 
 This script allows you to download ATLAS light curve(s) using [ATLAS's REST API](https://fallingstar-data.com/forcedphot/apiguide/) and [TNS's API](https://www.wis-tns.org/content/tns-getting-started) (to optionally fetch RA, Dec, and discovery date information for the SN). All downloaded files will be storied in the directory specified by the `atclean_input` field in `config.ini`. Make sure to add your ATLAS username and password to the `credentials` section in `config.ini`. 
 
-This script allows the user to download a single SN or a batch of SNe, as well as their optional control light curves. 
+The user can download a single SN or a batch of SNe, as well as their optional control light curves. 
+
+We give users the chance to either specify the control light curve coordinates through a table, or have them calculated automatically as a circle pattern.
 - To download control light curves, use the `-c` argument.
 - To specify the number of control light curves to download, verify that the `num_controls` field in `config.ini` is set to the correct number, or use the `--num_controls` argument. 
 - To specify the radius in arcseconds of the circle pattern of control light curves from the center location, verify that the `radius` field in `config.ini` is set to the correct number, or use the `--radius` argument. 
+- To manually specify all control light curve coordinates, you must provide a control coordinates file name using the `--ctrl_coords_filepath` argument.
+    - The file must be space-separated and include at least the following columns: `ra` and `dec`.
 
-We additionally allow the user to change the center location of the control light curve circle pattern. By default, we use the SN location. However, this location can be changed via the `--closebright` argument. 
+We additionally allow the user to change the center location of the control light curve circle pattern. By default, we use the SN location. However, this location can be changed via the `--center_coords` argument, or by filling out the `center_ra` and `center_dec` columns in the SN info file.
 
 We allow the user to either specify certain RA and Dec coordinates, or to query the TNS API and automatically retrieve and save the coordinates. 
-- To manually specify RA, Dec, and MJD0 for a single SN, use the `--coords` and `--mjd0` arguments. 
+- To manually specify RA, Dec, and MJD0 for a single SN, use the `--sn_coords` and `--mjd0` arguments. 
 - To manually specify RA, Dec, and MJD0 for one or more SNe, you must provide a SN info file in the output directory. 
     - The file must be space-separated and include at least the following columns: `tnsname`, `ra`, `dec`, and `mjd0`. Any blank or unknown fields should be denoted by `NaN`. 
     - If TNS credentials are provided, the script will query TNS for any blank or unknown fields and update the SN info file with the missing information.
 - To automatically retrieve RA, Dec, and MJD0 from TNS, simply provide your credentials in `config.ini`. The SN info file will be automatically generated and maintained inside the output directory. 
 
-Lastly, we give users the chance to either specify the control light curve coordinates through a control coordinates table, or have them calculated automatically as a circle pattern.
-- To specify all control light curve coordinates, you must provide a control coordinates file name using the `--ctrl_coords` argument.  
-    - The file must be space-separated and include at least the following columns: `ra` and `dec`.
-- To automatically calculate the control light curve coordinates, simply do not use the `--ctrl_coords` argument.
-
 #### `download` config section in `config.ini`
 
 - `flux2mag_sigmalimit`: The sigma limit used when converting flux to magnitude. Magnitudes are set as limits when their uncertainties are `NaN`.
 
-- `num_controls`: The number of control light curves to be downloaded and used for analysis.
+- `num_controls`: The default number of control light curves to be downloaded and used for analysis.
 
-- `radius`: The radius in arcseconds for the circle pattern of control light curves around a center location (default is SN location). 
+- `radius`: The default radius in arcseconds for the circle pattern of control light curves around a center location (default is SN location). 
 
-- `closebright_min_dist`: The minimum distance in arcseconds from the SN location to a control light curve location. This distance is used when the center of the circle pattern is set to a nearby bright object, and helps avoid any control locations landing on top of or too close to the SN.
+- `sn_min_dist`: The minimum distance in arcseconds from the SN location to a control light curve location. This distance is used when the center of the circle pattern is set to a nearby bright object, and helps avoid any control locations landing on top of or too close to the SN.
 
 #### Arguments
 Arguments will override default config file settings if specified.
@@ -133,18 +132,18 @@ Arguments will override default config file settings if specified.
     - Type: float
     - Default: `None`
     - Usage: `--max_mjd 59500.0`
-- `--coords`: comma-separated RA and Dec of the SN light curve to download.
+- `--sn_coords`: comma-separated RA and Dec of the SN light curve to download.
     - Type: str
     - Default: `None` (i.e., reference the SN info file or query TNS)
-    - Usage: `--coords 10.684,41.269`
+    - Usage: `--sn_coords 10.684,41.269`
 - `--mjd0`: The start date of the SN in MJD.
     - Type: float
     - Default: `None` (i.e., reference the SN info file or query TNS)
     - Usage: `--mjd0 58800.0`
-- `-c`, `--controls`: If specified, control light curves will be downloaded in addition to the SN light curve.
+- `-c`, `--download_controls`: If specified, control light curves will be downloaded in addition to the SN light curve.
     - Type: bool
     - Default: `False`
-    - Usage: `-c` or `--controls`
+    - Usage: `-c` or `--download_controls`
 - `-n`, `--num_controls`: The number of control light curves to download per SN.
     - Type: int
     - Default: `None` (i.e., the `num_controls` field in `config.ini`)
@@ -153,14 +152,14 @@ Arguments will override default config file settings if specified.
     - Type: float
     - Default: `None`
     - Usage: `-r 20.0` or `--radius 20.0`
-- `--ctrl_coords`: Specifies the file name of the control coordinates table.
+- `--ctrl_coords_filepath`: Specifies the file path of the control coordinates table to load (instead of generating one).
     - Type: str
     - Default: `None` (i.e., calculate the coordinates of each control light curve)
-    - Usage: `--ctrl_coords ctrl_coords.txt`
-- `--closebright`: Comma-separated RA and Dec of a nearby bright object interfering with the SN light curve. This object becomes the center of the control light curve circle pattern.
+    - Usage: `--ctrl_coords_filepath ctrl_coords.txt`
+- `--center_coords`: Comma-separated RA and Dec of a nearby bright object interfering with the SN light curve. This object becomes the center of the control light curve circle pattern.
     - Type: str
     - Default: `None` (i.e., use the SN location as the center of the circle pattern)
-    - Usage: `--closebright 10.684,41.269`
+    - Usage: `--center_coords 10.684,41.269`
 
 #### Filename scheme
 - All downloaded files will be storied in the directory specified by the `atclean_input` field in `config.ini`.
@@ -174,12 +173,12 @@ Arguments will override default config file settings if specified.
 #### Example commands
 - Download a single SN: `./download.py 2020lse -o`
 - Download a batch of SNe: `./download.py 2020lse 2019vxm 2023ixf -o`
-- Specify coordinates and MJD0: `./download.py 2020lse --coords 10:41:02.190,-27:05:00.42 --mjd0 58985.264 -o`
+- Specify SN coordinates and MJD0: `./download.py 2020lse --sn_coords 10:41:02.190,-27:05:00.42 --mjd0 58985.264 -o`
 - Specify SN info table: `./download.py 2020lse 2019vxm 2023ixf --sninfo_file my_custom_SN_info.txt -o`
 - Download only the last 10 days of data: `./download.py 2020lse -l 10 -o`
 - Download control light curves: `./download.py 2020lse -c -o`
 - Specify radius and number of control light curves: `./download.py 2020lse -c --radius 34 --num_controls 16 -o`
-- Change the center location of the control light curve circle pattern: `./download.py 2020lse -c --closebright 10:41:02.290,-27:05:00.52 -o`
+- Change the center location of the control light curve circle pattern: `./download.py 2020lse -c --center_coords 10:41:02.290,-27:05:00.52 -o`
 - Specify control light curve coordinates `./download.py 2020lse -c --ctrl_coords /path/to/control_coordinates_table.txt -o`
 
 ### `convert_to_atclean.py`
@@ -533,6 +532,49 @@ Arguments will override default config file settings if specified.
 - Generate default plots of SN 2019vxm and its control light curves: `./plotloop.py 2019vxm -o` 
 - Generate default plots of SN 2019vxm without its control light curves: `./plotloop.py 2019vxm -o --num_controls 0`
 - Generate defaults plots of SN 2019vxm and its control light curves, as well as plots of the true uncertainties estimation, the uncertainty cut, the chi-square cut, the control light curve cut, and the bad day cut: `./plotloop.py 2019vxm -o -e -u -x -c -g`
+
+### `zip.py`
+
+Zip multiple processed light curve files for one or more supernovae (SNe) into one or more .zip archives.
+
+This script is intended to package all relevant files for a given list of supernovae, using the input and output directories specified in `config.ini`. It can output either individual zip files per SN or a single bulk archive.
+
+#### Arguments
+
+- First provide TNS name(s) of the object(s) to zip.
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+- `-b`, `--bulk`: Store multiple SN folders within one zip file.
+    - Type: bool
+    - Default: `False`
+    - Usage: `-b` or `--bulk`
+
+#### Example commands
+- Zip a single SN: `./zip.py SN2020abc`
+- Zip multiple SNe individually: `./zip.py SN2020abc SN2021xyz`
+- Zip multiple SNe into one batch file: `./zip.py SN2020abc SN2021xyz --bulk`
+
+### `unzip.py`
+
+Unzip previously packaged light curve files and restore them into the appropriate input or output directories based on file naming conventions.
+
+This script complements `zip.py` by placing each file in the correct location depending on whether it is a raw (input) or processed (output) light curve.
+
+Only files with the following extensions are included in the zip archives: `.txt, .pdf, .jpg, .png, .md, .ipynb, .py, .json, .ini`
+
+#### Arguments
+
+- First paste in the file paths of each zip file (generated by `zip.py`) to unzip.
+- `--config_file`: Specifies the file name of the .ini file with settings for this script.
+    - Type: str
+    - Default: `config.ini`
+    - Usage: `--config_file config.ini`
+
+#### Example commands
+- Unzip a single archive: `./unzip.py /path/to/SN2020abc.zip`
+- Unzip multiple archives: `./unzip.py /path/to/SN2020abc.zip /path/to/SN2021xyz.zip`
 
 ### `step1_generate_sim_tables.py`
 

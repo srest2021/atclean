@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
-from typing import Dict, Any, List, Optional, Self, Set, Tuple, Type
+from typing import Callable, Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, bisect
 from astropy import units as u
 from astropy.coordinates import Angle
@@ -25,14 +25,20 @@ from utils import (
     ControlLightCurveCut,
     Coordinates,
     Cut,
+    FomLimits,
     PresetColumnNames,
+    StatParams,
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
-    format_float,
-    get_filename,
+    flux2mag,
+    format_float_string,
+    get_filepath,
     get_tns_coords_from_json,
+    get_tns_data,
     get_tns_mjd0_from_json,
+    mag2flux,
+    nan_if_none,
     new_row,
     query_atlas,
     query_tns,
@@ -45,10 +51,10 @@ class Supernova:
     def __init__(
         self,
         colnames: PresetColumnNames,
-        tnsname: str = None,
-        ra: str = None,
-        dec: str = None,
-        mjd0: float = None,
+        tnsname: Optional[str] = None,
+        ra: Optional[str] = None,
+        dec: Optional[str] = None,
+        mjd0: Optional[float] = None,
         filt: str = "o",
     ):
         self.colnames = deepcopy(colnames)
@@ -85,21 +91,31 @@ class Supernova:
 
         return lims
 
-    def get_tns_data(self, api_key, tns_id, bot_name):
-        if self.coords.is_incomplete() or self.mjd0 is None:
-            print(f"\nQuerying TNS for {self.tnsname} data...")
-            json_data = query_tns(self.tnsname, api_key, tns_id, bot_name)
-            if json_data is None:
-                print(f"Skipping...")
-                return
-
+    def get_tns_data(
+        self,
+        tns_api_key: str,
+        tns_id: str,
+        tns_bot_name: str,
+        use_disc_date_buffer: bool = True,
+    ):
+        if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
+            mjd0, coords = get_tns_data(
+                self.tnsname,
+                tns_api_key,
+                tns_id,
+                tns_bot_name,
+                use_disc_date_buffer=use_disc_date_buffer,
+            )
             if self.coords.is_incomplete():
-                self.coords = get_tns_coords_from_json(json_data)
-
-            if self.mjd0 is None:
-                self.mjd0 = get_tns_mjd0_from_json(json_data)
-
-            print("Success")
+                self.coords = coords
+                print(f"Setting coordinates to TNS coordinates: {self.coords}")
+            if self.mjd0 is None or np.isnan(self.mjd0):
+                self.mjd0 = mjd0
+                print(
+                    f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
+                )
+        else:
+            print("Coordinates and MJD0 both present; skipping TNS query...")
 
     def verify_mjds(self, verbose=False):
         """Sort SN and control light curves by MJD"""
@@ -251,7 +267,7 @@ class Supernova:
             stdev_flux = self.lcs[control_index].get_stdev_flux(indices=clean_ix)
             if stdev_flux is None:
                 print(
-                    f'WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.params["temp_x2_max_value"]}...'
+                    f"WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.temp_x2_max_value}..."
                 )
                 stdev_flux = self.lcs[control_index].get_stdev_flux(
                     indices=dflux_clean_ix
@@ -260,9 +276,7 @@ class Supernova:
                     print(
                         "WARNING: Could not get flux std dev using clean indices; retrying with all indices..."
                     )
-                    stdev_flux = self.lcs[control_index].get_stdev_flux(
-                        control_index=control_index
-                    )
+                    stdev_flux = self.lcs[control_index].get_stdev_flux()
 
             sigma_extra = get_sigma_extra(median_dflux, stdev_flux)
 
@@ -402,6 +416,9 @@ class Supernova:
         )
 
     def apply_badday_cut(self, cut: BadDayCut, previous_flags, flux2mag_sigmalimit=3.0):
+        if cut.flag is None:
+            raise RuntimeError(f"Bad day cut flag cannot be None")
+
         avg_sn = AveragedSupernova(
             self.colnames,
             tnsname=self.tnsname,
@@ -414,7 +431,7 @@ class Supernova:
 
         for control_index in self.lc_indices:
             avg_sn.set_avg_lc(
-                self.lcs[control_index].average(
+                self.lcs[control_index].create_averaged_lc(
                     cut,
                     previous_flags,
                     mjdbinsize=cut.mjd_bin_size,
@@ -445,16 +462,21 @@ class Supernova:
             self.lcs[control_index].remove_flag(flag)
 
     def load(self, input_dir, control_index=0, cleaned=False):
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+
         self.lcs[control_index] = LightCurve(
             self.colnames, control_index=control_index, filt=self.filt
         )
         self.lcs[control_index].load_lc(input_dir, self.tnsname, cleaned=cleaned)
 
     def load_all(self, input_dir, num_controls=0, cleaned=False):
+        print(f"\nLoading SN light curve and {num_controls} control light curves...")
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+
         self.lcs = {}
         self.num_controls = 0
-
-        print(f"\nLoading SN light curve and {num_controls} control light curves...")
 
         # load SN light curve
         self.load(input_dir, cleaned=cleaned)
@@ -565,6 +587,8 @@ class Supernova:
         print(
             f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...'
         )
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
         for control_index in self.lc_indices:
             self.lcs[control_index].drop_extra_columns()
             self.lcs[control_index].save_lc(
@@ -580,9 +604,9 @@ class AveragedSupernova(Supernova):
     def __init__(
         self,
         colnames: PresetColumnNames,
-        tnsname: str = None,
-        ra: str = None,
-        dec: str = None,
+        tnsname: Optional[str] = None,
+        ra: Optional[str] = None,
+        dec: Optional[str] = None,
         mjd0: float | None = None,
         mjdbinsize: float = 1.0,
         filt: str = "o",
@@ -649,6 +673,11 @@ class AveragedSupernova(Supernova):
 
         return self.lcs[control_index].ix_masked(self.colnames.mask, maskval=flag)
 
+    def get_mjd_ranges(self) -> List[List[float]]:
+        if self._mjd_ranges is None:
+            raise RuntimeError("MJD ranges not found")
+        return self._mjd_ranges
+
     def set_mjd_ranges(self, mjd_ranges: List[List[float]]):
         validate_mjd_ranges(mjd_ranges, var_name="mjd_ranges")
 
@@ -685,12 +714,14 @@ class AveragedSupernova(Supernova):
             self.set_pre_MJD0_ix(control_index=control_index)
 
     def load_all(self, input_dir: str, num_controls: int = 0):
-        self.lcs = {}
-        self.num_controls = 0
-
         print(
             f"\nLoading averaged SN light curve and {num_controls} averaged control light curves..."
         )
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+
+        self.lcs = {}
+        self.num_controls = 0
 
         # load averaged SN light curve
         self.load(input_dir)
@@ -746,23 +777,24 @@ class LightCurve(pdastrostatsclass):
         self.filt = filt
 
         self.colnames = colnames
-        self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
+        if self.colnames is not None:
+            self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
 
-    def get_preMJD0_indices(self, mjd0: float):
+    def get_preMJD0_indices(self, mjd0: float) -> List[int]:
         return self.ix_inrange(
             colnames=self.colnames.mjd, uplim=mjd0, exclude_uplim=True
         )
 
-    def get_postMJD0_indices(self, mjd0: float):
+    def get_postMJD0_indices(self, mjd0: float) -> List[int]:
         return self.ix_inrange(colnames=self.colnames.mjd, lowlim=mjd0)
 
-    def get_flags(self):
+    def get_flags(self) -> int:
         return np.bitwise_or.reduce(self.t[self.colnames.mask])
 
-    def get_good_indices(self, flag: Optional[int] = None):
+    def get_good_indices(self, flag: Optional[int] = None) -> List[int]:
         # if flag is 0, return all indices
         if flag == 0:
             return self.getindices()
@@ -776,7 +808,7 @@ class LightCurve(pdastrostatsclass):
             flag = self.get_flags()
         return self.ix_unmasked(self.colnames.mask, maskval=flag)
 
-    def get_bad_indices(self, flag: Optional[int] = None):
+    def get_bad_indices(self, flag: Optional[int] = None) -> List[int]:
         # if flag is 0, return no indices
         if flag == 0:
             return []
@@ -796,9 +828,9 @@ class LightCurve(pdastrostatsclass):
         flag: Optional[int] = None,
         use_all: bool = False,
         mjd0: Optional[float] = None,
-    ):
+    ) -> tuple[float | None, float | None]:
         if self.t.empty or len(self.t) < 2:
-            return [None, None]
+            return None, None
 
         if indices is None or len(indices) < 2:
             if use_all:
@@ -814,11 +846,13 @@ class LightCurve(pdastrostatsclass):
         flux_max = self.t.loc[indices, self.colnames.flux].max()
         offset = 0.05 * abs(flux_max - flux_min)
 
-        return [flux_min - offset, flux_max + offset]
+        return flux_min - offset, flux_max + offset
 
-    def get_xlims(self, mjd0: Optional[float] = None, colname_attr: str = "mjd"):
+    def get_xlims(
+        self, mjd0: Optional[float] = None, colname_attr: str = "mjd"
+    ) -> tuple[float | None, float | None]:
         if self.t.empty or len(self.t) < 2:
-            return [None, None]
+            return None, None
 
         if colname_attr and not hasattr(self.colnames, colname_attr):
             raise AttributeError(f"Invalid colname_attr: '{colname_attr}'")
@@ -835,9 +869,9 @@ class LightCurve(pdastrostatsclass):
                 )
             end = mjd0
 
-        return [first_mjd, end]
+        return first_mjd, end
 
-    def can_plot(self, ix: List[int], columns: List[str] = None):
+    def can_plot(self, ix: List[int], columns: Optional[List[str]] = None) -> bool:
         if columns is None:
             columns = [self.colnames.mjd, self.colnames.flux, self.colnames.dflux_new]
 
@@ -857,7 +891,7 @@ class LightCurve(pdastrostatsclass):
                 print(
                     f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
                 )
-            self.t.drop(AorB(dflux_zero_ix, flux_nan_ix), inplace=True)
+            self.t.drop(index=AorB(dflux_zero_ix, flux_nan_ix), inplace=True)
 
     def calculate_fdf_column(self, verbose=False):
         # replace infs with NaNs
@@ -878,7 +912,10 @@ class LightCurve(pdastrostatsclass):
         return np.nanmedian(self.t.loc[indices, self.colnames.dflux])
 
     def get_mean(
-        self, colname: str, indices: List[int] = None, round_result: bool = False
+        self,
+        colname: str,
+        indices: Optional[List[int]] = None,
+        round_result: bool = False,
     ) -> float:
         if indices is None:
             indices = self.getindices()
@@ -892,6 +929,7 @@ class LightCurve(pdastrostatsclass):
             print("WARNING: Could not converge on mean; taking median instead...")
             res = np.median(self.t.loc[indices, colname])
 
+        res = float(res)
         if round_result:
             return round(res, 2)
         return res
@@ -945,15 +983,52 @@ class LightCurve(pdastrostatsclass):
         if len(self.t) < 1:
             return
         elif len(self.t) == 1:
-            self.t.loc[0, self.colnames.mask] = (
-                int(self.t.loc[0, self.colnames.mask]) | flags_to_copy
+            self.t.at[0, self.colnames.mask] = (
+                int(self.t.at[0, self.colnames.mask]) | flags_to_copy
             )
         else:
             self.t[self.colnames.mask] = np.bitwise_or(
                 self.t[self.colnames.mask], flags_to_copy
             )
 
-    def average(
+    def get_zpt(self):
+        if self.t is None or len(self.t) < 1:
+            raise RuntimeError("Cannot get zeropoint because table is empty")
+        if not self.colnames.has("zpt"):
+            raise RuntimeError(
+                "Cannot get zeropoint because zeropoint column name has not been specified in config file"
+            )
+        if self.colnames.zpt not in self.t.columns:
+            raise RuntimeError(
+                f"Cannot get zeropoint because zeropoint column '{self.colnames.zpt}' does not exist"
+            )
+
+        if self.t[self.colnames.zpt].nunique(dropna=False) == 1:
+            return self.t.at[0, self.colnames.zpt]
+        raise RuntimeError(
+            f"Cannot get zeropoint because values in zeropoint column '{self.colnames.zpt}' are not all the same"
+        )
+
+    def _get_average_flux(self, indices=None) -> StatParams:
+        self.calcaverage_sigmacutloop(
+            self.colnames.flux,
+            noisecol=self.colnames.dflux_new,
+            indices=indices,
+            Nsigma=3.0,
+            median_firstiteration=True,
+        )
+        return StatParams(self.statparams)
+
+    def _get_average_mjd(self, indices=None) -> float:
+        self.calcaverage_sigmacutloop(
+            self.colnames.mjd,
+            indices=indices,
+            Nsigma=0,
+            median_firstiteration=False,
+        )
+        return StatParams(self.statparams).mean
+
+    def create_averaged_lc(
         self, cut: BadDayCut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
@@ -1002,155 +1077,115 @@ class LightCurve(pdastrostatsclass):
                 "Nexcluded": len(range_ix) - len(range_good_ix),
                 self.colnames.mask: 0,
             }
-            avglc_index = avg_lc.newrow(new_row)
+            cur_index = avg_lc.newrow(new_row)
 
             # if no measurements present, flag or skip over day
             if len(range_ix) < 1:
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
                 mjd += mjdbinsize
                 continue
 
             # if no good measurements, average values anyway and flag
             if len(range_good_ix) < 1:
-                # average flux
-                self.calcaverage_sigmacutloop(
-                    self.colnames.flux,
-                    noisecol=self.colnames.dflux_new,
-                    indices=range_ix,
-                    Nsigma=3.0,
-                    median_firstiteration=True,
-                )
-                fluxstatparams = deepcopy(self.statparams)
-
-                # get average mjd
-                self.calcaverage_sigmacutloop(
-                    self.colnames.mjd,
-                    indices=range_ix,
-                    Nsigma=0,
-                    median_firstiteration=False,
-                )
-                avg_mjd = self.statparams["mean"]
+                flux_statparams = self._get_average_flux(indices=range_ix)
+                avg_mjd = self._get_average_mjd(indices=range_ix)
 
                 # add row and flag
                 row = {
                     self.colnames.mjd: avg_mjd,
-                    self.colnames.flux: (
-                        fluxstatparams["mean"]
-                        if not fluxstatparams["mean"] is None
-                        else np.nan
-                    ),
-                    self.colnames.dflux: (
-                        fluxstatparams["mean_err"]
-                        if not fluxstatparams["mean_err"] is None
-                        else np.nan
-                    ),
-                    "stdev": (
-                        fluxstatparams["stdev"]
-                        if not fluxstatparams["stdev"] is None
-                        else np.nan
-                    ),
-                    "x2": (
-                        fluxstatparams["X2norm"]
-                        if not fluxstatparams["X2norm"] is None
-                        else np.nan
-                    ),
-                    "Nclip": (
-                        fluxstatparams["Nclip"]
-                        if not fluxstatparams["Nclip"] is None
-                        else np.nan
-                    ),
-                    "Ngood": (
-                        fluxstatparams["Ngood"]
-                        if not fluxstatparams["Ngood"] is None
-                        else np.nan
-                    ),
+                    self.colnames.flux: flux_statparams.mean,
+                    self.colnames.dflux: flux_statparams.mean_err,
+                    "stdev": flux_statparams.stdev,
+                    "x2": flux_statparams.X2norm,
+                    "Nclip": flux_statparams.Nclip,
+                    "Ngood": flux_statparams.Ngood,
                     self.colnames.mask: 0,
                 }
-                avg_lc.add2row(avglc_index, row)
-                self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                avg_lc.add2row(cur_index, row)
+                self.update_mask_column(cut.flag, indices=range_ix, remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
 
                 mjd += mjdbinsize
                 continue
 
             # average good measurements
-            self.calcaverage_sigmacutloop(
-                self.colnames.flux,
-                noisecol=self.colnames.dflux_new,
-                indices=range_good_ix,
-                Nsigma=3.0,
-                median_firstiteration=True,
-            )
-            fluxstatparams = deepcopy(self.statparams)
+            flux_statparams = self._get_average_flux(indices=range_good_ix)
 
-            if fluxstatparams["mean"] is None or len(fluxstatparams["ix_good"]) < 1:
-                self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+            if np.isnan(flux_statparams.mean) or len(flux_statparams.ix_good) < 1:
+                self.update_mask_column(cut.flag, indices=range_ix, remove_old=False)
+                avg_lc.update_mask_column(
+                    cut.flag, indices=[cur_index], remove_old=False
+                )
                 mjd += mjdbinsize
                 continue
 
             # get average mjd
-            # TODO: SHOULD NOISECOL HERE BE DUJY OR NONE?
-            self.calcaverage_sigmacutloop(
-                self.colnames.mjd,
-                noisecol=self.colnames.dflux_new,
-                indices=fluxstatparams["ix_good"],
-                Nsigma=0,
-                median_firstiteration=False,
-            )
-            avg_mjd = self.statparams["mean"]
+            avg_mjd = self._get_average_mjd(indices=flux_statparams.ix_good)
 
             # add row to averaged light curve
             row = {
                 self.colnames.mjd: avg_mjd,
-                self.colnames.flux: fluxstatparams["mean"],
-                self.colnames.dflux: fluxstatparams["mean_err"],
-                "stdev": fluxstatparams["stdev"],
-                "x2": fluxstatparams["X2norm"],
-                "Nclip": fluxstatparams["Nclip"],
-                "Ngood": fluxstatparams["Ngood"],
+                self.colnames.flux: flux_statparams.mean,
+                self.colnames.dflux: flux_statparams.mean_err,
+                "stdev": flux_statparams.stdev,
+                "x2": flux_statparams.x2,
+                "Nclip": flux_statparams.Nclip,
+                "Ngood": flux_statparams.Ngood,
                 self.colnames.mask: 0,
             }
-            avg_lc.add2row(avglc_index, row)
+            avg_lc.add2row(cur_index, row)
 
             # flag clipped measurements in lc
-            if len(fluxstatparams["ix_clip"]) > 0:
+            if len(flux_statparams.ix_clip) > 0:
                 self.update_mask_column(
                     cut.ixclip_flag,
-                    fluxstatparams["ix_clip"],
+                    indices=flux_statparams.ix_clip,
                     remove_old=False,
                 )
 
             # if small number within this bin, flag measurements
             if len(range_good_ix) < 3:
-                self.update_mask_column(cut.smallnum_flag, range_ix, remove_old=False)
+                self.update_mask_column(
+                    cut.smallnum_flag, indices=range_ix, remove_old=False
+                )
                 avg_lc.update_mask_column(
-                    cut.smallnum_flag, [avglc_index], remove_old=False
+                    cut.smallnum_flag, indices=[cur_index], remove_old=False
                 )
             # else check sigmacut bounds and flag
             else:
                 is_bad = False
-                if fluxstatparams["Ngood"] < cut.Ngood_min:
+                if flux_statparams.Ngood < cut.Ngood_min:
                     is_bad = True
-                if fluxstatparams["Nclip"] > cut.Nclip_max:
+                if flux_statparams.Nclip > cut.Nclip_max:
                     is_bad = True
-                if (
-                    not (fluxstatparams["X2norm"] is None)
-                    and fluxstatparams["X2norm"] > cut.x2_max
-                ):
+                if flux_statparams.x2 is not None and flux_statparams.x2 > cut.x2_max:
                     is_bad = True
                 if is_bad:
-                    self.update_mask_column(cut.flag, range_ix, remove_old=False)
-                    avg_lc.update_mask_column(cut.flag, [avglc_index], remove_old=False)
+                    self.update_mask_column(
+                        cut.flag, indices=range_ix, remove_old=False
+                    )
+                    avg_lc.update_mask_column(
+                        cut.flag, indices=[cur_index], remove_old=False
+                    )
 
             mjd += mjdbinsize
+
+        zpt, zptcol = 23.9, None
+        if self.colnames.zpt is not None:
+            zpt, zptcol = None, self.colnames.zpt
+            avg_lc.t[self.colnames.zpt] = self.t[self.colnames.zpt]
 
         avg_lc.flux2mag(
             self.colnames.flux,
             self.colnames.dflux,
             self.colnames.mag,
             self.colnames.dmag,
-            zpt=23.9,
+            zpt=zpt,
+            zptcol=zptcol,
             upperlim_Nsigma=flux2mag_sigmalimit,
         )
 
@@ -1190,13 +1225,13 @@ class LightCurve(pdastrostatsclass):
             self.remove_flag(flag)
 
         if len(indices) > 1:
-            flag_arr = np.full(self.t.loc[indices, self.colnames.mask].shape, flag)
+            flag_arr = np.full(self.t.loc[indices, [self.colnames.mask]].shape, flag)
             self.t.loc[indices, self.colnames.mask] = np.bitwise_or(
-                self.t.loc[indices, self.colnames.mask].astype(int), flag_arr
+                self.t.loc[indices, [self.colnames.mask]].astype(int), flag_arr
             )
         elif len(indices) == 1:
             self.t.loc[indices, self.colnames.mask] = (
-                int(self.t.loc[indices[0], self.colnames.mask]) | flag
+                int(self.t.at[indices[0], self.colnames.mask]) | flag
             )
 
     def _clear_flux_offset_column(self):
@@ -1209,7 +1244,9 @@ class LightCurve(pdastrostatsclass):
         print("Setting current flux offset to 0...")
         self.t[self.colnames.fluxoffset] = 0
 
-    def _get_region_mean(self, region_ix: List[int], maskval: int = None) -> float:
+    def _get_region_mean(
+        self, region_ix: List[int], maskval: Optional[int] = None
+    ) -> float:
         indices = region_ix
         if not maskval is None and self.colnames.mask in self.t.columns:
             indices = self.ix_unmasked(
@@ -1230,7 +1267,7 @@ class LightCurve(pdastrostatsclass):
         ix1: List[int],
         ix2: List[int],
         num_measurements: int = 40,
-        maskval: int = None,
+        maskval: Optional[int] = None,
     ) -> int:
         """Calculate the mean difference between two sets of measurements."""
         mean1 = self._get_region_mean(ix1[-num_measurements:], maskval=maskval)
@@ -1253,7 +1290,7 @@ class LightCurve(pdastrostatsclass):
         self,
         mjd0: float,
         region_ix_dict: Dict,
-        maskval: int = None,
+        maskval: Optional[int] = None,
         num_measurements: int = 40,
     ) -> Dict:
         if mjd0 > 57600:
@@ -1294,14 +1331,14 @@ class LightCurve(pdastrostatsclass):
 
     def _manual_template_correction(
         self,
-        region1_offset: int = None,
-        region2_offset: int = None,
-        region3_offset: int = None,
+        region1_offset: Optional[int] = None,
+        region2_offset: Optional[int] = None,
+        region3_offset: Optional[int] = None,
     ):
         self._clear_flux_offset_column()
 
         region_ix_dict = self._get_region_indices()
-        offset_dict: Dict[str : Optional[int]] = {
+        offset_dict: Dict[str, Optional[int]] = {
             "1": region1_offset,
             "2": region2_offset,
             "3": region3_offset,
@@ -1310,7 +1347,7 @@ class LightCurve(pdastrostatsclass):
         return self._apply_offsets(region_ix_dict, offset_dict)
 
     def _auto_template_correction(
-        self, mjd0: float, maskval: int = None, num_measurements: int = 40
+        self, mjd0: float, maskval: Optional[int] = None, num_measurements: int = 40
     ):
         self._clear_flux_offset_column()
 
@@ -1325,7 +1362,7 @@ class LightCurve(pdastrostatsclass):
     def apply_template_correction(
         self,
         mjd0: float,
-        maskval: int = None,
+        maskval: Optional[int] = None,
         region1_offset: Optional[int] = None,
         region2_offset: Optional[int] = None,
         region3_offset: Optional[int] = None,
@@ -1383,7 +1420,7 @@ class LightCurve(pdastrostatsclass):
                 )
             self.t.drop(columns=dropcols, inplace=True)
 
-    def check_column_names(self, required_column_names):
+    def check_column_names(self, required_column_names: List[str]):
         if self.t is None:
             return
 
@@ -1391,32 +1428,47 @@ class LightCurve(pdastrostatsclass):
             if not column_name in self.t.columns:
                 raise RuntimeError(f"Missing required column: {column_name}")
 
-    def load_lc(self, input_dir, tnsname, cleaned=False):
-        filename = get_filename(
+    def load_lc(self, input_dir: str, tnsname: str, cleaned=False):
+        filename = get_filepath(
             input_dir, tnsname, self.filt, self.control_index, cleaned=cleaned
         )
-        self.load_lc_by_filename(filename)
+        self.load_lc_by_filepath(filename)
 
-    def load_lc_by_filename(self, filename):
+    def load_lc_by_filepath(self, filepath: str):
         self.load_spacesep(
-            filename, delim_whitespace=True, hexcols=[self.colnames.mask]
+            filepath,
+            delim_whitespace=True,
+            hexcols=[self.colnames.mask] if self.colnames is not None else None,
         )
-        self.check_column_names(
-            required_column_names=self.colnames.get_required_column_names()
-        )
+        if self.colnames is not None:
+            self.check_column_names(
+                required_column_names=self.colnames.get_required_column_names()
+            )
 
-    def save_lc(self, output_dir, tnsname, indices=None, overwrite=False, cleaned=True):
-        filename = get_filename(
+    def save_lc(
+        self,
+        output_dir: str,
+        tnsname: str,
+        indices: Optional[List[int]] = None,
+        overwrite: bool = False,
+        cleaned: bool = True,
+    ):
+        filename = get_filepath(
             output_dir, tnsname, self.filt, self.control_index, cleaned=cleaned
         )
-        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
-    def save_lc_by_filename(self, filename, indices=None, overwrite=False):
+    def save_lc_by_filepath(
+        self,
+        filepath: str,
+        indices: Optional[List[int]] = None,
+        overwrite: bool = False,
+    ):
         self.write(
-            filename=filename,
+            filename=filepath,
             indices=indices,
             overwrite=overwrite,
-            hexcols=[self.colnames.mask],
+            hexcols=[self.colnames.mask] if self.colnames is not None else None,
         )
 
     def __str__(self):
@@ -1468,7 +1520,7 @@ class AveragedLightCurve(LightCurve):
     def has_valid_mjd_ix(self):
         return self._valid_mjd_ix is not None and len(self._valid_mjd_ix) > 0
 
-    def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]) -> List[int]:
+    def set_valid_mjd_ix(self, mjd_ranges: List[List[float]]):
         def in_range(value, mjd_ranges):
             return any(r[0] <= value <= r[1] for r in mjd_ranges)
 
@@ -1499,10 +1551,10 @@ class AveragedLightCurve(LightCurve):
             np.ceil(self.t[self.colnames.mjdbin].iloc[-1]),
         )
 
-    def get_xlims(self, mjd0: float = None, colname_attr: str = "mjdbin"):
+    def get_xlims(self, mjd0: Optional[float] = None, colname_attr: str = "mjdbin"):
         return super().get_xlims(mjd0=mjd0, colname_attr=colname_attr)
 
-    def load_lc_by_filename(self, filename):
+    def load_lc_by_filepath(self, filename):
         self.load_spacesep(filename, delim_whitespace=True, hexcols=["Mask"])
         self.check_column_names(
             required_column_names=self.colnames.get_required_column_names(
@@ -1511,16 +1563,16 @@ class AveragedLightCurve(LightCurve):
         )
 
     def load_lc(self, input_dir, tnsname):
-        filename = get_filename(
+        filename = get_filepath(
             input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
-        self.load_lc_by_filename(filename)
+        self.load_lc_by_filepath(filename)
 
     def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
-        filename = get_filename(
+        filename = get_filepath(
             output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
-        self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
 
 class LimCutsTable:
@@ -1621,7 +1673,11 @@ class LimCutsTable:
 # will contain measurements from both filters (o-band and c-band)
 class FullLightCurve:
     def __init__(
-        self, control_index=0, ra: str = None, dec: str = None, mjd0: float = None
+        self,
+        control_index=0,
+        ra: Optional[str] = None,
+        dec: Optional[str] = None,
+        mjd0: Optional[float] = None,
     ):
         self.t = None
         self.mjd0 = mjd0
@@ -1629,31 +1685,44 @@ class FullLightCurve:
         self.control_index = control_index
         self.filts = None
 
-    def get_tns_data(self, tnsname, api_key, tns_id, bot_name):
+    def get_tns_data(
+        self,
+        tnsname: str,
+        tns_api_key: str,
+        tns_id: str,
+        tns_bot_name: str,
+        use_disc_date_buffer: bool = True,
+    ):
         if self.coords.is_incomplete() or self.mjd0 is None or np.isnan(self.mjd0):
-            print("Querying TNS for RA, Dec, and discovery date...")
-            json_data = query_tns(tnsname, api_key, tns_id, bot_name)
-            if json_data is None:
-                print(f"Skipping...")
-                return
-
-            if self.coords.is_empty():
-                self.coords = get_tns_coords_from_json(json_data)
+            mjd0, coords = get_tns_data(
+                tnsname,
+                tns_api_key,
+                tns_id,
+                tns_bot_name,
+                use_disc_date_buffer=use_disc_date_buffer,
+            )
+            if self.coords.is_incomplete():
+                self.coords = coords
                 print(f"Setting coordinates to TNS coordinates: {self.coords}")
-
             if self.mjd0 is None or np.isnan(self.mjd0):
-                self.mjd0 = get_tns_mjd0_from_json(json_data)
+                self.mjd0 = mjd0
                 print(
-                    f"Setting MJD0 to TNS discovery date minus {DISC_DATE_BUFFER}: {self.mjd0}"
+                    f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
+        else:
+            print("Coordinates and MJD0 both present; skipping TNS query...")
 
     # download the full light curve from ATLAS
-    def download(self, headers, lookbacktime=None, max_mjd=None):
+    def download(
+        self,
+        headers,
+        lookbacktime: Optional[float] = None,
+        max_mjd: Optional[float] = None,
+    ):
         if lookbacktime:
             min_mjd = float(Time.now().mjd - lookbacktime)
         else:
             min_mjd = 50000.0
-
         if not max_mjd:
             max_mjd = float(Time.now().mjd)
 
@@ -1682,6 +1751,9 @@ class FullLightCurve:
         self.t = result
 
     def get_filt_lens(self):
+        if self.t is None:
+            raise RuntimeError("Table (self.t) cannot be None")
+
         total_len = len(self.t)
         filt_lens = {
             "o": len(np.where(self.t["F"] == "o")[0]),
@@ -1712,14 +1784,14 @@ class FullLightCurve:
             lc.t = lc.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
         for filt in ["o", "c"]:
-            filename = get_filename(
+            filepath = get_filepath(
                 input_dir, tnsname, filt=filt, control_index=self.control_index
             )
             indices = lc.ix_equal(colnames=["F"], val=filt)
             print(
-                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filename}..."
+                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
             )
-            lc.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+            lc.save_lc_by_filepath(filepath, indices=indices, overwrite=overwrite)
 
     def __str__(self):
         return f"Full light curve at {self.coords}: control ID = {self.control_index}, MJD0 = {self.mjd0}"
@@ -1730,7 +1802,7 @@ ADD SIMULATIONS AND APPLY ROLLING SUM TO AVERAGED LIGHT CURVE
 """
 
 
-class Simulation(ABC):
+class Simulation:
     def __init__(self, model_name=None, **kwargs):
         """
         Initialize the Simulation object.
@@ -1739,12 +1811,21 @@ class Simulation(ABC):
         self.brightness = None
 
     @abstractmethod
-    def get_sim_flux(self, mjds, brightness, **kwargs):
+    def get_sim_flux(
+        self,
+        mjds,
+        brightness: float,
+        brightness_to_flux_fn: Callable = mag2flux,
+        flux_to_brightness_fn: Callable = flux2mag,
+        **kwargs,
+    ):
         """
         Compute the simulated flux for the given MJDs and peak apparent magnitude.
 
         :param mjds: List or array of MJDs into which we inject the Simulation.
         :param brightness: Desired brightness (e.g., peak apparent magnitude or flux) of the simulation.
+        :param brightness_to_flux_fn: Function to convert brightness to flux.
+        :param flux_to_brightness_fn: Function to convert flux to brightness.
         :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
 
         :return: An array of simulated flux values corresponding to the input MJDs.
@@ -1752,14 +1833,17 @@ class Simulation(ABC):
         pass
 
     def __str__(self):
-        return f'Simulation with model name "{self.model_name}": brightness = {format_float(self.brightness)}'
+        res = f'Simulation with model name "{self.model_name}"'
+        if self.brightness is not None:
+            res += f": brightness = {format_float_string(self.brightness)}"
+        return res
 
 
 class SimDetecSupernova(AveragedSupernova):
     def __init__(
         self,
         colnames: PresetColumnNames,
-        tnsname: str = None,
+        tnsname: Optional[str] = None,
         mjdbinsize: float = 1.0,
         mjd0: float | None = None,
         filt: str = "o",
@@ -1778,14 +1862,14 @@ class SimDetecSupernova(AveragedSupernova):
         )
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
-    def get_all_fom(self, sigma_kern: float):
+    def get_all_fom(self, sigma_kern: float) -> pd.Series:
         self.apply_rolling_sums(
             sigma_kern,
-            valid_ix=self.has_valid_mjd_ix(),
+            valid_mjd_ix=self.has_valid_mjd_ix(),
             pre_mjd0_ix=self.has_pre_mjd0_ix(),
         )
 
-        fom_list = []
+        fom_list: List[pd.Series] = []
         for control_index in self.control_lc_indices:
             fom = self.lcs[control_index].t.loc[
                 self.lcs[control_index].valid_mjd_ix, self.colnames.snrsumnorm
@@ -1797,7 +1881,7 @@ class SimDetecSupernova(AveragedSupernova):
             return pd.concat(fom_list, ignore_index=True)
         return pd.Series(dtype=float)
 
-    def get_all_fom_dict(self, sigma_kerns: List[float]):
+    def get_all_fom_dict(self, sigma_kerns: List[float]) -> Dict[float, pd.Series]:
         print(f"Getting all control FOM for MJD ranges {self._mjd_ranges}...")
         if self._mjd_ranges is None:
             raise RuntimeError(f"Valid MJD ranges cannot be None")
@@ -1810,11 +1894,12 @@ class SimDetecSupernova(AveragedSupernova):
     def get_prelim_fom_limit_ranges(
         self,
         sigma_kerns: List[float],
-    ):
+    ) -> tuple[Dict[float, pd.Series], FomLimits]:
         print(
             f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}..."
         )
-        res = {sigma_kern: [0.0] for sigma_kern in sigma_kerns}
+        res = FomLimits()
+        res.set_blank(sigma_kerns)
 
         if self._mjd_ranges is None:
             raise RuntimeError(
@@ -1825,19 +1910,37 @@ class SimDetecSupernova(AveragedSupernova):
 
         for sigma_kern in sigma_kerns:
             max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
-            res[sigma_kern].append(max_fom)
+            res.add(sigma_kern, max_fom)
 
         print(f"Valid FOM limit ranges: {res}")
         return all_fom_dict, res
 
-    def get_n_falsepos(
+    def scan_sn_for_detections(self, sigma_kerns: List[float], fom_limits: FomLimits):
+        print("Scanning for detections in SN light curve...")
+        print("-" * 50)
+        for sigma_kern in sigma_kerns:
+            fom_limit = fom_limits.get(sigma_kern)
+            count, mjds = self.get_num_detections(
+                sigma_kern, fom_limit, control_index=0, verbose=False
+            )
+            print(
+                f"Sigma kernel: {format_float_string(sigma_kern)} days"
+                f"\n\tNumber of positives above detection limit {format_float_string(fom_limit)} FOM: {count}"
+            )
+            if mjds:
+                print(f"\tMJDs of positives: {', '.join(f'{mjd:.2f}' for mjd in mjds)}")
+            else:
+                print("\tNo positives detected.")
+            print("-" * 50)
+
+    def get_num_detections(
         self,
         sigma_kern: float,
         fom_limit: float,
         control_index: int = 0,
         verbose: bool = False,
-    ):
-        return self.lcs[control_index].get_n_falsepos(
+    ) -> tuple[int, List]:
+        return self.lcs[control_index].get_num_detections(
             sigma_kern,
             fom_limit,
             self.mjd0,
@@ -1848,22 +1951,22 @@ class SimDetecSupernova(AveragedSupernova):
     def apply_rolling_sums(
         self,
         sigma_kern: float,
-        valid_ix: bool = False,
+        valid_mjd_ix: bool = False,
         pre_mjd0_ix: bool = False,
     ):
-        if valid_ix and not self.has_valid_mjd_ix():
+        if valid_mjd_ix and not self.has_valid_mjd_ix():
             raise RuntimeError(
-                "Valid MJD indices missing; set valid_ix=False or call self.set_valid_mjd_ix()"
+                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
             )
         if pre_mjd0_ix and not self.has_pre_mjd0_ix():
             raise RuntimeError(
                 "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_MJD0_ix()"
             )
 
-        msg = f"Applying rolling sum of sigma_kern={format_float(sigma_kern)} to all light curves"
+        msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
         out = []
         sn_indices = self.lcs[0].getindices()
-        if valid_ix:
+        if valid_mjd_ix:
             out.append("using only MJDs in included MJD ranges for all light curves")
             sn_indices = AandB(sn_indices, self.lcs[0].valid_mjd_ix)
         if pre_mjd0_ix:
@@ -1881,7 +1984,7 @@ class SimDetecSupernova(AveragedSupernova):
             self.lcs[control_index].apply_rolling_sum(
                 sigma_kern,
                 flag=self.flag,
-                indices=self.lcs[control_index].valid_mjd_ix if valid_ix else None,
+                indices=self.lcs[control_index].valid_mjd_ix if valid_mjd_ix else None,
             )
 
     def remove_rolling_sums(self):
@@ -1932,14 +2035,14 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         self.cur_sigma_kern = None
 
-    def get_n_falsepos(
+    def get_num_detections(
         self,
         sigma_kern: float,
         fom_limit: float,
         mjd0: float,
         flag=0x800000,
         verbose=False,
-    ):
+    ) -> tuple[int, List]:
         if self._pre_mjd0_ix is None:
             self.set_pre_MJD0_ix(mjd0)
 
@@ -1967,7 +2070,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             print(
                 f"sigma_kern {sigma_kern}, FOM limit {fom_limit:0.2f}, control index {self.control_index}: {count} trigger(s) at MJDs {mjds}"
             )
-        return count
+        return count, mjds
 
     def remove_columns(self, colnames: List[str]):
         dropcols = []
@@ -2000,7 +2103,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
         )
 
-    def get_new_gaussian_sigma(self, sigma_kern: float):
+    def _get_new_gaussian_sigma(self, sigma_kern: float):
         """
         new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
         for TESS/other lcs:
@@ -2039,7 +2142,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             / self.t.loc[good_ix, self.colnames.dflux]
         )
 
-        new_gaussian_sigma = self.get_new_gaussian_sigma(sigma_kern)
+        new_gaussian_sigma = self._get_new_gaussian_sigma(sigma_kern)
         windowsize = int(6 * new_gaussian_sigma)
         halfwindowsize = int(windowsize * 0.5) + 1
         if verbose:
@@ -2075,18 +2178,18 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     def add_sim_flux(
         self,
-        good_ix: List[int],
         sim_flux,
-        cur_sigma_kern: float = None,
+        cur_sigma_kern: Optional[float] = None,
+        indices: Optional[List[int]] = None,
         verbose: bool = False,
         remove_old: bool = True,
     ):
         """
         Add simulated flux to the light curve ("uJysim" column) and add "SNRsim" and "SNRsimsum" columns.
 
-        :param good_ix: Unmasked/unflagged indices of the light curve.
-        :param sim_flux: Array of simulated flux to add to the light curve
+        :param sim_flux: Array of simulated flux to add to the light curve.
         :param cur_sigma_kern: The current kernel size of the rolling sum.
+        :param indices: Indices of the light curve (e.g., unmasked/unflagged indices) to use when calculating the resulting FOM.
         :param remove_old: Remove any old simulations before adding the simulated flux.
         """
         if cur_sigma_kern is None:
@@ -2096,19 +2199,23 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
+        if indices is None:
+            indices = self.getindices()
+
         if remove_old:
             self.remove_simulations()
-            self.t.loc[good_ix, self.colnames.fluxsim] = self.t.loc[
-                good_ix, self.colnames.flux
+            self.t.loc[indices, self.colnames.fluxsim] = self.t.loc[
+                indices, self.colnames.flux
             ]
-        self.t.loc[good_ix, self.colnames.fluxsim] += sim_flux
+
+        self.t.loc[indices, self.colnames.fluxsim] += sim_flux
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         self.t[self.colnames.snrsim] = 0.0
         # include only simulated flux in the SNR
-        self.t.loc[good_ix, self.colnames.snrsim] = (
-            self.t.loc[good_ix, self.colnames.fluxsim]
-            / self.t.loc[good_ix, self.colnames.dflux]
+        self.t.loc[indices, self.colnames.snrsim] = (
+            self.t.loc[indices, self.colnames.fluxsim]
+            / self.t.loc[indices, self.colnames.dflux]
         )
 
         new_gaussian_sigma = round(cur_sigma_kern / self.mjdbinsize)
@@ -2131,11 +2238,11 @@ class SimDetecLightCurve(AveragedLightCurve):
         SNRsimsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        self.t[self.colnames.snrsimsum] = list(SNRsimsum.loc[dataindices])
+        self.t[self.colnames.snrsimsum] = list(SNRsimsum.iloc[dataindices])
 
     # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices
-    def get_max_fom(self, indices: List[int] = None):
+    def get_max_fom(self, indices: Optional[List[int]] = None):
         if indices is None:
             indices = self.getindices()
 

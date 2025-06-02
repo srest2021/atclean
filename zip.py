@@ -80,9 +80,12 @@ def get_files_from(dirname) -> Dict[str, str]:
 
 
 def get_allowed_files_from(dirname) -> List[str]:
-    return filter(
-        lambda x: is_file_allowed(x) and not os.path.isdir(os.path.join(dirname, x)),
-        os.listdir(dirname),
+    return list(
+        filter(
+            lambda x: is_file_allowed(x)
+            and not os.path.isdir(os.path.join(dirname, x)),
+            os.listdir(dirname),
+        )
     )
 
 
@@ -113,9 +116,7 @@ def zip_sne_in_bulk(
     print("Success")
 
 
-def zip_single_sn(
-    tnsname: List[str], input_dir: str, output_dir: str, out_filename: str
-):
+def zip_single_sn(tnsname: str, input_dir: str, output_dir: str, out_filename: str):
     print(f"\nZipping {tnsname} into {out_filename}...")
     in_dirnames = get_in_dirnames(tnsname, input_dir, output_dir)
 
