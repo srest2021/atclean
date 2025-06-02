@@ -211,7 +211,7 @@ class Plot:
             ax.set_xticklabels([])
 
         if isinstance(ylabel, bool) and ylabel:
-            ax.set_ylabel(r"Flux ($\mu$Jy)")
+            ax.set_ylabel(r"Flux")
         elif isinstance(ylabel, str):
             ax.set_ylabel(ylabel)
 
@@ -441,7 +441,7 @@ class Plot:
             open=True,
         )
 
-        fig.supylabel(r"Flux ($\mu$Jy)")
+        fig.supylabel(r"Flux")
 
         ax1.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
         ax2.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
@@ -830,7 +830,7 @@ class Plot:
             ax.minorticks_on()
             ax.tick_params(direction="in", which="both")
             ax.set_xlabel("MJD")
-            ax.set_ylabel(r"Flux ($\mu$Jy)")
+            ax.set_ylabel(r"Flux")
             if custom_lims is not None and custom_lims.get_ylims() is not None:
                 ax.set_ylim(custom_lims.get_ylims())
 
@@ -1143,7 +1143,7 @@ class Plot:
 
             idx += 1
 
-        fig.supylabel(r"Flux (µJy)")
+        fig.supylabel(r"Flux")
 
         if save:
             self.save_plot(filename, bbox_inches="tight")
@@ -1733,7 +1733,7 @@ class Plot:
             )
             ax.spines["left"].set_color(self.color_scheme["select_control_flux"])
             ax.axhline(linewidth=1.5, color="k")
-            ax.set_ylabel(r"Flux (µJy)", color=self.color_scheme["select_control_flux"])
+            ax.set_ylabel(r"Flux", color=self.color_scheme["select_control_flux"])
             ax.text(
                 0.97,
                 0.05,
