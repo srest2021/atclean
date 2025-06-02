@@ -80,8 +80,7 @@ def validate_kwarg_range(rng) -> bool:
 
 
 def get_brightness_values_from_dir(directory: str, pattern: re.Pattern):
-    brightnesses = extract_from_subdir(directory, pattern, 1, convert_function=float)
-    res = list(brightnesses)
+    res = extract_from_subdir(directory, pattern, 1, convert_function=float)
     res.sort()
     return res
 

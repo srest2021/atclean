@@ -244,9 +244,9 @@ def extract_from_subdir(
             extracted_values.add(convert_function(value))
 
     if not extracted_values:
-        raise RuntimeError(f"Could not find {group_name} from the files in {directory}")
+        print(f"WARNING: Could not find {group_name} from the files in {directory}")
 
-    return extracted_values
+    return list(extracted_values)
 
 
 def has_match(directory: str, pattern: re.Pattern):
@@ -269,24 +269,24 @@ def find_all_filts(directory: str, tnsname: str) -> List[str]:
         r"\.lc\.txt$"  # ends with '.lc.txt'
     )
     subdir = os.path.join(directory, tnsname)
-    return list(extract_from_subdir(subdir, pattern, "filt"))
+    return extract_from_subdir(subdir, pattern, "filt")
 
 
-def find_all_control_indices(directory: str, tnsname: str, filt=None):
+def find_all_control_indices(directory: str, tnsname: str, filt=None) -> List:
     if filt is None:
         filt_pattern = r".*"
     else:
         filt_pattern = re.escape(filt)
 
     pattern = re.compile(
-        rf"^{re.escape(tnsname)}_i(?P<index>\d{{3}})"  # captures control index
+        rf"^{re.escape(tnsname)}_i(?P<control_index>\d{{3}})"  # captures control index
         rf"\.{filt_pattern}"  # match specific filt if provided
         r"(?:\.\d+\.\d+days)?"  # optional mjdbinsize
         r"(?:\.clean)?"  # optional 'clean'
         r"\.lc\.txt$"  # ends with '.lc.txt'
     )
     subdir = os.path.join(directory, tnsname, "controls")
-    return extract_from_subdir(subdir, pattern, "index", convert_function=int)
+    return extract_from_subdir(subdir, pattern, "control_index", convert_function=int)
 
 
 def is_sn_in_subdir(directory: str, tnsname: str) -> bool:
@@ -981,6 +981,11 @@ class Coordinates:
     def _is_angle_missing(self, angle: BaseAngle) -> bool:
         return angle.angle is None
 
+    def is_complete(self) -> bool:
+        return not self._is_angle_missing(self.ra) and not self._is_angle_missing(
+            self.dec
+        )
+
     def is_empty(self) -> bool:
         # both RA and Dec missing
         return self._is_angle_missing(self.ra) and self._is_angle_missing(self.dec)
@@ -1046,8 +1051,8 @@ class SnInfoTable:
         except Exception:
             print(f"No existing SN info table at that path; creating blank table...")
             self.t = pd.DataFrame(
-                columns=["tnsname", "ra", "dec", "mjd0"]
-            )  # , 'closebright_ra', 'closebright_dec'])
+                columns=["tnsname", "ra", "dec", "mjd0", "center_ra", "center_dec"]
+            )
 
     def get_row(self, tnsname) -> tuple[int, pd.Series] | tuple[int, None]:
         if self.t.empty:
@@ -1076,15 +1081,23 @@ class SnInfoTable:
             return True
         return False
 
-    def get_info(self, tnsname) -> tuple[Coordinates, float | None]:
+    def get_info(self, tnsname) -> tuple[Coordinates, Coordinates, float | None]:
         _, row = self.get_row(tnsname)
         if row is None:
             return None, None, None
 
-        # coords = Coordinates(row['ra'], row['dec'])
+        assert "ra" in row
+        assert "dec" in row
         ra = None if self.is_nan(row["ra"]) else row["ra"]
         dec = None if self.is_nan(row["dec"]) else row["dec"]
 
+        center_ra, center_dec = None, None
+        if "center_ra" in row and not self.is_nan(row["center_ra"]):
+            center_ra = row["center_ra"]
+        if "center_dec" in row and not self.is_nan(row["center_dec"]):
+            center_dec = row["center_dec"]
+
+        assert "mjd0" in row
         if self.is_nan(row["mjd0"]):
             mjd0 = None
         else:
@@ -1092,7 +1105,7 @@ class SnInfoTable:
                 raise RuntimeError(f"Invalid MJD0: {row['mjd0']}")
             mjd0 = float(row["mjd0"])
 
-        return Coordinates(ra, dec), mjd0
+        return Coordinates(ra, dec), Coordinates(center_ra, center_dec), mjd0
 
     def update_row_at_index(
         self,
@@ -1299,10 +1312,10 @@ def get_mjd0_from_tns(
 def get_tns_data(
     tnsname: str, tns_api_key, tns_id, tns_bot_name, use_disc_date_buffer: bool = True
 ) -> tuple[float, Coordinates]:
-    print(f"\nQuerying TNS for {tnsname} data...")
+    print(f"Querying TNS for {tnsname} RA, Dec, and MJD0...")
     json_data = query_tns(tnsname, tns_api_key, tns_id, tns_bot_name)
     if json_data is None:
-        print(f"Skipping...")
+        print(f"No data returned; skipping...")
         return
 
     coords = get_tns_coords_from_json(json_data)

@@ -89,7 +89,7 @@ This script allows the user to download a single SN or a batch of SNe, as well a
 We additionally allow the user to change the center location of the control light curve circle pattern. By default, we use the SN location. However, this location can be changed via the `--closebright` argument. 
 
 We allow the user to either specify certain RA and Dec coordinates, or to query the TNS API and automatically retrieve and save the coordinates. 
-- To manually specify RA, Dec, and MJD0 for a single SN, use the `--coords` and `--mjd0` arguments. 
+- To manually specify RA, Dec, and MJD0 for a single SN, use the `--sn_coords` and `--mjd0` arguments. 
 - To manually specify RA, Dec, and MJD0 for one or more SNe, you must provide a SN info file in the output directory. 
     - The file must be space-separated and include at least the following columns: `tnsname`, `ra`, `dec`, and `mjd0`. Any blank or unknown fields should be denoted by `NaN`. 
     - If TNS credentials are provided, the script will query TNS for any blank or unknown fields and update the SN info file with the missing information.
@@ -133,10 +133,10 @@ Arguments will override default config file settings if specified.
     - Type: float
     - Default: `None`
     - Usage: `--max_mjd 59500.0`
-- `--coords`: comma-separated RA and Dec of the SN light curve to download.
+- `--sn_coords`: comma-separated RA and Dec of the SN light curve to download.
     - Type: str
     - Default: `None` (i.e., reference the SN info file or query TNS)
-    - Usage: `--coords 10.684,41.269`
+    - Usage: `--sn_coords 10.684,41.269`
 - `--mjd0`: The start date of the SN in MJD.
     - Type: float
     - Default: `None` (i.e., reference the SN info file or query TNS)
@@ -174,7 +174,7 @@ Arguments will override default config file settings if specified.
 #### Example commands
 - Download a single SN: `./download.py 2020lse -o`
 - Download a batch of SNe: `./download.py 2020lse 2019vxm 2023ixf -o`
-- Specify coordinates and MJD0: `./download.py 2020lse --coords 10:41:02.190,-27:05:00.42 --mjd0 58985.264 -o`
+- Specify SN coordinates and MJD0: `./download.py 2020lse --sn_coords 10:41:02.190,-27:05:00.42 --mjd0 58985.264 -o`
 - Specify SN info table: `./download.py 2020lse 2019vxm 2023ixf --sninfo_file my_custom_SN_info.txt -o`
 - Download only the last 10 days of data: `./download.py 2020lse -l 10 -o`
 - Download control light curves: `./download.py 2020lse -c -o`

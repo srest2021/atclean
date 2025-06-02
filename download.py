@@ -100,12 +100,10 @@ class ControlCoordinatesTable:
         # set self.center_coords later
 
         print(
-            f"Setting circle pattern of {self.num_controls} control light curves with radius of {self.radius} from center"
+            f'Setting circle pattern of {self.num_controls} control light curves around SN location with radius of {self.radius}" from center'
         )
 
     def ready_for_construction(self):
-        self.reset_table()
-
         assert self.num_controls is not None
         assert self.radius is not None
         assert self.sn_coords is not None
@@ -273,6 +271,7 @@ class ControlCoordinatesTable:
         sn_coords: Coordinates,
     ):
         self.sn_coords = sn_coords
+        self.reset_table()
 
         # add row for SN position
         if self._closebright:
@@ -316,10 +315,19 @@ class ControlCoordinatesTable:
 
         df = self.t if include_sn else self.t.iloc[1:]
         for _, row in df.iterrows():
-            yield row["control_index"], Coordinates(ra=row["ra"], ra=row["dec"])
+            yield row["control_index"], Coordinates(ra=row["ra"], dec=row["dec"])
 
     def get_filepath(self, directory, tnsname):
         return os.path.join(directory, tnsname, f"{tnsname}_control_coords_table.txt")
+
+    def get_formatters(self):
+        def format_int_or_nan(x):
+            if pd.isna(x):
+                return "NaN"
+            return f"{int(x)}"
+
+        int_cols = [col for col in self.t.columns if col.startswith("n_detec")]
+        return {col: format_int_or_nan for col in int_cols}
 
     def save(
         self,
@@ -342,14 +350,20 @@ class ControlCoordinatesTable:
             raise RuntimeError(
                 "Cannot save ControlCoordinatesTable: table (self.t) is None"
             )
+
         if overwrite or not os.path.exists(filepath):
-            self.t.to_string(filepath, index=False)
+            with pd.option_context("display.float_format", "{:,.14f}".format):
+                self.t.to_string(
+                    filepath,
+                    index=False,
+                    formatters=self.get_formatters(),
+                )
 
     def __str__(self):
         if self.t is None:
             return "ControlCoordinatesTable is empty (no data loaded)"
         with pd.option_context("display.float_format", "{:,.8f}".format):
-            return self.t.to_string()
+            return self.t.to_string(formatters=self.get_formatters())
 
 
 class ControlCoordinatesTableFactory:
@@ -369,7 +383,7 @@ class ControlCoordinatesTableFactory:
         if not download_controls and (
             control_coords_table_filepath is not None
             or num_controls != 0
-            or center_coords is not None
+            or (center_coords is not None and center_coords.is_complete())
         ):
             raise ValueError(
                 "If not downloading control light curves, none of the following should be provided: "
@@ -382,7 +396,11 @@ class ControlCoordinatesTableFactory:
                     "If downloading control light curves in circle pattern, both radius (`radius`) and number of controls to download (`num_controls`) must be provided"
                 )
 
-            if center_coords is not None and sn_min_dist is None:
+            if (
+                center_coords is not None
+                and center_coords.is_complete()
+                and sn_min_dist is None
+            ):
                 raise ValueError(
                     "If centering circle pattern around a different location, both coordinates of the new center (`center_coords`) and minimum distance from SN location (`sn_min_dist`) must be provided"
                 )
@@ -407,9 +425,14 @@ class ControlCoordinatesTableFactory:
 
         control_coords_table = ControlCoordinatesTable()
 
+        print()
         if control_coords_table_filepath:
             control_coords_table.init_read_from_file(control_coords_table_filepath)
-        elif center_coords is not None and sn_min_dist is not None:
+        elif (
+            center_coords is not None
+            and center_coords.is_complete()
+            and sn_min_dist is not None
+        ):
             control_coords_table.init_closebright(
                 center_coords, num_controls, sn_min_dist
             )
@@ -441,11 +464,11 @@ def parse_arg_coords(arg_coords: Optional[str]) -> Optional[Coordinates]:
         return None
     if len(parsed_coords) > 2:
         raise RuntimeError(
-            "Too many coordinates in --coords argument! Please provide comma-separated RA and Dec onlyy."
+            "Too many coordinates in argument! Please provide comma-separated RA and Dec onlyy."
         )
     if len(parsed_coords) < 2:
         raise RuntimeError(
-            "Too few coordinates in --coords argument! Please provide comma-separated RA and Dec."
+            "Too few coordinates in argument! Please provide comma-separated RA and Dec."
         )
 
     return Coordinates(parsed_coords[0], parsed_coords[1])
@@ -457,25 +480,37 @@ def resolve_sn_coords_and_mjd0(
     creds: Optional[Credentials] = None,
     arg_mjd0: Optional[float] = None,
     arg_sn_coords: Optional[Coordinates] = None,
+    arg_center_coords: Optional[Coordinates] = None,
     use_disc_date_buffer: bool = True,
 ) -> tuple[float, Coordinates]:
-    print("\nResolving SN RA, Dec, and MJD0 from command line, SnInfoTable, or TNS API")
-    sn_coords, mjd0 = None, None
+    print("\n--- Resolving SN coordinates, center coordinates, and MJD0 ---")
+    sn_coords, center_coords, mjd0 = None, None, None
 
     # first, try SN info table
     if sninfo is not None:
-        sn_coords, mjd0 = sninfo.get_info(tnsname)
+        sn_coords, center_coords, mjd0 = sninfo.get_info(tnsname)
+        print(
+            f"From SnInfoTable:\n"
+            f"  SN coordinates: {sn_coords}\n"
+            f"  Center coordinates: {center_coords}\n"
+            f"  MJD0: {mjd0} MJD"
+        )
 
     # next, overwrite defaults with command line args
     if arg_sn_coords is not None:
         sn_coords = arg_sn_coords
-        print(f"Setting coordinates to --coords argument: {sn_coords}")
+        print(f"Overriding SnInfoTable SN coordinates with --sn_coords: {sn_coords}")
+    if arg_center_coords is not None:
+        center_coords = arg_center_coords
+        print(
+            f"Overriding SnInfoTable center coordinates with --center_coords: {center_coords}"
+        )
     if arg_mjd0 is not None:
         mjd0 = arg_mjd0
-        print(f"Setting MJD0 to --mjd0 argument: {mjd0} MJD")
+        print(f"Overriding SnInfoTable MJD0 with --mjd0: {mjd0} MJD")
 
     # now try querying TNS for missing info
-    if sn_coords.is_incomplete() or mjd0 is None or np.isnan(mjd0):
+    if sn_coords is None or sn_coords.is_incomplete() or mjd0 is None or np.isnan(mjd0):
         if creds is None:
             raise ValueError(
                 "Cannot find coordinates or MJD0 in command line or SnInfoTable, but TNS credentials not provided"
@@ -490,18 +525,18 @@ def resolve_sn_coords_and_mjd0(
             use_disc_date_buffer=use_disc_date_buffer,
         )
 
-        if sn_coords.is_incomplete():
+        if sn_coords is None or sn_coords.is_incomplete():
             sn_coords = tns_sn_coords
-            print(f"Setting coordinates to TNS coordinates: {sn_coords}")
+            print(f"Using SN coordinates from TNS API: {sn_coords}")
 
         if mjd0 is None or np.isnan(mjd0):
             mjd0 = tns_mjd0
             print(
-                f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {mjd0}"
+                f"Using MJD0 from TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {mjd0}"
             )
 
     # make sure nothing is missing
-    if sn_coords.is_incomplete():
+    if sn_coords is None or sn_coords.is_incomplete():
         raise RuntimeError(
             "Could not resolve SN coordinates from command line, SnInfoTable, or TNS"
         )
@@ -510,7 +545,7 @@ def resolve_sn_coords_and_mjd0(
             "Could not resolve SN MJD0 from command line, SnInfoTable, or TNS discovery date"
         )
 
-    return mjd0, sn_coords
+    return sn_coords, center_coords, mjd0
 
 
 class AtlasLightCurveDownloader:
@@ -562,21 +597,21 @@ class AtlasLightCurveDownloader:
 
     def update_and_save_control_coords_table(
         self,
+        control_coords_table: ControlCoordinatesTable,
         tnsname: str,
         control_index: int,
         total_len: int,
         filt_lens: Dict[str, int],
-        overwrite: bool = False,
     ) -> ControlCoordinatesTable:
         """
-        Update and save the constructed ControlCoordinatesTable
+        Update and save the current ControlCoordinatesTable,
         so that if it crashes later, we can just load it again.
         """
         control_coords_table.update_filt_lens(control_index, total_len, filt_lens)
-        control_coords_table.save(self.atclean_input_dir, tnsname, overwrite=overwrite)
+        control_coords_table.save(self.atclean_input_dir, tnsname, overwrite=True)
         return control_coords_table
 
-    def download_sn_lc(
+    def download_and_save_sn_lc(
         self,
         tnsname: str,
         sn_coords: Coordinates,
@@ -593,19 +628,30 @@ class AtlasLightCurveDownloader:
                 # load previously saved ControlCoordinatesTable
                 control_coords_table = ControlCoordinatesTable()
                 control_coords_table.load(input_dir, tnsname)
+
+            print(
+                "Control light curve coordinates table loaded: \n",
+                control_coords_table,
+                "\n--- Download: SN light curve ---",
+                "\nSkipped",
+            )
+
             return control_coords_table
 
         control_coords_table.construct(tnsname, sn_coords)
+        print()
 
+        print("\n--- Download: SN light curve ---")
         total_len, filt_lens = self.download_lc(
             0, sn_coords, lookbacktime=lookbacktime, max_mjd=max_mjd
         )
+        self.save_downloaded_lc(tnsname, 0, overwrite=overwrite)
 
         return self.update_and_save_control_coords_table(
-            tnsname, 0, total_len, filt_lens, overwrite=overwrite
+            control_coords_table, tnsname, 0, total_len, filt_lens
         )
 
-    def download_control_lcs(
+    def download_and_save_control_lcs(
         self,
         tnsname: str,
         control_coords_table: ControlCoordinatesTable,
@@ -618,24 +664,25 @@ class AtlasLightCurveDownloader:
         )
 
         for control_index, coords in control_coords_table.iterator():
-            print(f"\nControl light curve {control_index}")
+            print(f"\n--- Download: Control light curve {control_index} ---")
             if not overwrite and control_index in existing_control_indices:
                 print(
                     f"Overwrite set to {overwrite} and light curve already exists; skipping download..."
                 )
-                total_len, filt_lens = self.load_existing_lc(tnsname)
+                total_len, filt_lens = self.load_existing_lc(tnsname, control_index)
             else:
                 total_len, filt_lens = self.download_lc(
                     control_index, coords, lookbacktime=lookbacktime, max_mjd=max_mjd
                 )
+                self.save_downloaded_lc(tnsname, control_index, overwrite=overwrite)
 
             control_coords_table = self.update_and_save_control_coords_table(
-                tnsname, control_index, total_len, filt_lens, overwrite=overwrite
+                control_coords_table, tnsname, control_index, total_len, filt_lens
             )
 
         return control_coords_table
 
-    def download(
+    def download_and_save(
         self,
         tnsname: str,
         sn_coords: Coordinates,
@@ -644,7 +691,7 @@ class AtlasLightCurveDownloader:
         max_mjd: Optional[float] = None,
         overwrite: bool = False,
     ) -> ControlCoordinatesTable:
-        control_coords_table = self.download_sn_lc(
+        control_coords_table = self.download_and_save_sn_lc(
             tnsname,
             sn_coords,
             control_coords_table,
@@ -652,8 +699,9 @@ class AtlasLightCurveDownloader:
             max_mjd=max_mjd,
             overwrite=overwrite,
         )
+        assert control_coords_table is not None and control_coords_table.t is not None
 
-        control_coords_table = self.download_control_lcs(
+        control_coords_table = self.download_and_save_control_lcs(
             tnsname,
             control_coords_table,
             lookbacktime=lookbacktime,
@@ -769,13 +817,11 @@ if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
-    colnames = load_preset_column_names_from_config("atlas", config)
+    # colnames = load_preset_column_names_from_config("atlas", config)
 
     # set up directories
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
-    make_dir_if_not_exists(input_dir)
-    make_dir_if_not_exists(output_dir)
 
     # set up Credentials
     creds = Credentials(
@@ -801,10 +847,12 @@ if __name__ == "__main__":
     # parse control light curve args
     num_controls = (
         args.num_controls
-        if args.num_controls
+        if args.num_controls is not None
         else int(config["download"]["num_controls"])
     )
-    radius = args.radius if args.radius else float(config["download"]["radius"])
+    radius = (
+        args.radius if args.radius is not None else float(config["download"]["radius"])
+    )
     sn_min_dist = float(config["download"]["sn_min_dist"])
 
     downloader = AtlasLightCurveDownloader(
@@ -812,31 +860,37 @@ if __name__ == "__main__":
     )
 
     for tnsname in args.tnsnames:
-        # construct new ControlCoordinatesTable
-        control_coords_table = ControlCoordinatesTableFactory.new(
-            args.download_controls,
-            num_controls=num_controls,
-            radius=radius,
-            center_coords=args.center_coords,
-            sn_min_dist=sn_min_dist,
-        )
+        print(f"\n--- Downloading ATLAS light curves for {tnsname} ---")
 
-        # get RA, Dec, and MJD0 from command line, SnInfoTable, or TNS API
-        mjd0, sn_coords = resolve_sn_coords_and_mjd0(
+        make_dir_if_not_exists(os.path.join(input_dir, tnsname))
+        make_dir_if_not_exists(os.path.join(output_dir, tnsname))
+
+        # get SN location RA and Dec, center location RA and Dec, and MJD0 from command line, SnInfoTable, or TNS API
+        sn_coords, center_coords, mjd0 = resolve_sn_coords_and_mjd0(
             tnsname,
             sninfo=sninfo,
             creds=creds,
             arg_mjd0=args.mjd0,
             arg_sn_coords=args.sn_coords,
+            arg_center_coords=args.center_coords,
         )
-
         # update SnInfoTable with resolved RA, Dec, and MJD0
         sninfo.update_row(
             tnsname, coords=sn_coords, mjd0=mjd0, overwrite=args.overwrite
         )
+        sninfo.save()
+
+        # construct new ControlCoordinatesTable
+        control_coords_table = ControlCoordinatesTableFactory.new(
+            args.download_controls,
+            num_controls=num_controls,
+            radius=radius,
+            center_coords=center_coords,
+            sn_min_dist=sn_min_dist,
+        )
 
         # download SN and control light curves
-        control_coords_table = downloader.download(
+        control_coords_table = downloader.download_and_save(
             tnsname,
             sn_coords,
             control_coords_table,
@@ -844,5 +898,3 @@ if __name__ == "__main__":
             max_mjd=args.max_mjd,
             overwrite=args.overwrite,
         )
-
-    sninfo.save()

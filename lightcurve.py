@@ -112,7 +112,7 @@ class Supernova:
             if self.mjd0 is None or np.isnan(self.mjd0):
                 self.mjd0 = mjd0
                 print(
-                    f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
+                    f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
         else:
             print("Coordinates and MJD0 both present; skipping TNS query...")
@@ -777,7 +777,8 @@ class LightCurve(pdastrostatsclass):
         self.filt = filt
 
         self.colnames = colnames
-        self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
+        if self.colnames is not None:
+            self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
 
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
@@ -1435,11 +1436,14 @@ class LightCurve(pdastrostatsclass):
 
     def load_lc_by_filepath(self, filepath: str):
         self.load_spacesep(
-            filepath, delim_whitespace=True, hexcols=[self.colnames.mask]
+            filepath,
+            delim_whitespace=True,
+            hexcols=[self.colnames.mask] if self.colnames is not None else None,
         )
-        self.check_column_names(
-            required_column_names=self.colnames.get_required_column_names()
-        )
+        if self.colnames is not None:
+            self.check_column_names(
+                required_column_names=self.colnames.get_required_column_names()
+            )
 
     def save_lc(
         self,
@@ -1464,7 +1468,7 @@ class LightCurve(pdastrostatsclass):
             filename=filepath,
             indices=indices,
             overwrite=overwrite,
-            hexcols=[self.colnames.mask],
+            hexcols=[self.colnames.mask] if self.colnames is not None else None,
         )
 
     def __str__(self):
@@ -1703,7 +1707,7 @@ class FullLightCurve:
             if self.mjd0 is None or np.isnan(self.mjd0):
                 self.mjd0 = mjd0
                 print(
-                    f"Setting MJD0 to TNS discovery date{f' minus {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
+                    f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
         else:
             print("Coordinates and MJD0 both present; skipping TNS query...")
