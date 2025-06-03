@@ -15,7 +15,7 @@ import argparse
 import sys
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Optional
 from download import ControlCoordinatesTable, load_config, make_dir_if_not_exists
 from lightcurve import LightCurve
 from utils import (
@@ -24,7 +24,8 @@ from utils import (
     PresetColumnNames,
     SnInfoTable,
     get_allowed_presets,
-    get_filename,
+    get_filepath,
+    load_preset_column_names_from_config,
 )
 
 
@@ -106,7 +107,7 @@ class ConvertLightCurve(LightCurve):
         return coords_from_t
 
     def _save_single_df(self, input_dir, overwrite=False):
-        filename = get_filename(
+        filename = get_filepath(
             input_dir,
             self.obj_name,
             filt=self.colnames.preset,
@@ -115,11 +116,11 @@ class ConvertLightCurve(LightCurve):
         print(
             f"Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
         )
-        self.save_lc_by_filename(filename, overwrite=overwrite)
+        self.save_lc_by_filepath(filename, overwrite=overwrite)
 
     def _save_dfs_by_filter(self, input_dir, filts, overwrite=False):
         for filt in filts:
-            filename = get_filename(
+            filename = get_filepath(
                 input_dir,
                 self.obj_name,
                 filt=filt,
@@ -129,7 +130,7 @@ class ConvertLightCurve(LightCurve):
             print(
                 f"Saving converted light curve (control index {self.control_index}) with filter {filt}..."
             )
-            self.save_lc_by_filename(filename, indices=indices, overwrite=overwrite)
+            self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
     def get_filts(self) -> List[str]:
         if self.colnames.filt is None:  # if no filter column, set filter to preset
@@ -193,7 +194,7 @@ class ConvertLoop:
         colnames: PresetColumnNames,
         input_dir: str,
         output_dir: str,
-        sninfo_filename: str = None,
+        sninfo_filename: Optional[str] = None,
     ):
         self.colnames: PresetColumnNames = colnames
         self.input_dir: str = input_dir
@@ -312,6 +313,7 @@ class ConvertLoop:
             print()
             ctrl_coords.save(
                 self.input_dir,
+                obj_name,
                 filename=f"{obj_name}_converted_control_coords.txt",
                 overwrite=overwrite,
             )
@@ -377,16 +379,7 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
     print("Success")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
-    print("Success")
+    colnames = load_preset_column_names_from_config(args.preset, config)
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]

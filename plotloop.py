@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from clean import parse_config_cuts
 from download import (
@@ -25,6 +25,7 @@ from utils import (
     get_allowed_presets,
     get_mjd0_from_tns,
     load_config,
+    load_preset_column_names_from_config,
     make_dir_if_not_exists,
 )
 from plot import PlotLimits, PlotPdf
@@ -37,14 +38,14 @@ class PlotLoop:
         input_dir: str,
         output_dir: str,
         credentials: Credentials,
-        sninfo_filename: str = None,
+        sninfo_filename: Optional[str] = None,
         overwrite: bool = False,
     ):
         self.colnames = colnames
-        self.sn: Supernova = None
-        self.avg_sn: AveragedSupernova = None
-        self.cut_list: CutList = None
-        self.p: PlotPdf = None
+        self.sn: Optional[Supernova] = None
+        self.avg_sn: Optional[AveragedSupernova] = None
+        self.cut_list: Optional[CutList] = None
+        self.p: Optional[PlotPdf] = None
 
         self.credentials: Credentials = credentials
         self.input_dir: str = input_dir
@@ -202,9 +203,9 @@ class PlotLoop:
         cut_list: CutList,
         num_controls: int = 0,
         mjd0=None,
-        filters: List[str] = None,
+        filters: Optional[List[str]] = None,
         plot_uncert_est: bool = False,
-        lims: PlotLimits | None = None,
+        lims: Optional[PlotLimits] = None,
     ):
         self.cut_list = cut_list
 
@@ -370,15 +371,7 @@ if __name__ == "__main__":
         raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
     print(f"\nList of transients to plot: {args.tnsnames}")
 
-    allowed_presets = get_allowed_presets(config)
-    if args.preset is None or args.preset not in allowed_presets:
-        raise RuntimeError(
-            f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
-        )
-    print(f"\nLoading '{args.preset}' preset column names from config.ini...")
-    colnames = PresetColumnNames(config, args.preset)
-    print(colnames.__str__())
-    print("Success")
+    colnames = load_preset_column_names_from_config(args.preset, config)
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
