@@ -773,7 +773,7 @@ class SimTable(pdastrostatsclass):
     def save_sim_table(self, model_name, tables_dir, verbose=False):
         filename = self.get_sim_filename(model_name, tables_dir)
         if verbose:
-            print(f"Saving SimTable {filename}...")
+            print(f"💾 Saving SimTable {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
 
     def load_sim_table(self, model_name, tables_dir):
@@ -862,10 +862,10 @@ class SimTables:
                 combination.update(row)
                 self.d[brightness].add_row(combination)
 
-        print("Success")
+        print("✅ Success")
 
     def save_all(self, tables_dir: str):
-        print(f"\nSaving SimTables in directory: {tables_dir}")
+        print(f"\n💾 Saving SimTables in directory: {tables_dir}")
 
         if self.brightness_param is None:
             raise RuntimeError("Cannot save SimTables: missing brightness parameter")
@@ -879,7 +879,7 @@ class SimTables:
 
         for brightness in self.brightness_param.values:
             self.d[brightness].save_sim_table(self.model_name, tables_dir)
-        print("Success")
+        print("✅ Success")
 
     def load_all(self, tables_dir: str, brightness_param: Param):
         print(f"\nLoading SimTables in directory: {tables_dir}")
@@ -891,7 +891,7 @@ class SimTables:
         for brightness in self.brightness_param.values:
             self.d[brightness] = SimTable(brightness)
             self.d[brightness].load_sim_table(self.model_name, tables_dir)
-        print("Success")
+        print("✅ Success")
 
 
 def get_sim_tables_output_dir(output_dir: str, tnsname: str):

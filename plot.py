@@ -116,7 +116,7 @@ class Plot:
         filename = f"{self.output_dir}/{filename}.png"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
-        print(f"Saving plot: {filename}")
+        print(f"💾 Saving plot: {filename}")
         plt.savefig(filename, dpi=200, **kwargs)
 
     def get_lims(
@@ -1880,7 +1880,7 @@ class PlotPdf(Plot):
         self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
-        print("\nSaving PDF of plots...\n")
+        print("\n💾 Saving PDF of plots...\n")
         self.pdf.close()
 
     def plot_SN(

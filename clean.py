@@ -55,7 +55,7 @@ class OutputReadMe:
         self.tnsname: str = tnsname
         self.cut_list: CutList = cut_list
         self.begin(timestamp, num_controls=num_controls)
-        print("Success")
+        print("✅ Success")
 
     def begin(self, timestamp: datetime, num_controls: int = 0):
         badday_cut = self.cut_list.get(BadDayCut.name())
@@ -200,7 +200,7 @@ class OutputReadMe:
         )
         self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
-          f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
+            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
         )
         self.f.write(
             f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
@@ -228,7 +228,7 @@ class UncertEstTable:
                 f"\nLoading true uncertainties estimation table at {self.filename}..."
             )
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("Success")
+            print("✅ Success")
         except:
             print(
                 f"No existing true uncertainties estimation table; creating blank table..."
@@ -269,9 +269,9 @@ class UncertEstTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\nSaving true uncertainties estimation table at {self.filename}...")
+        print(f"\n💾 Saving true uncertainties estimation table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("Success")
+        print("✅ Success")
 
 
 class ChiSquareCutTable:
@@ -284,7 +284,7 @@ class ChiSquareCutTable:
         try:
             print(f"\nLoading chi-square cut table at {self.filename}...")
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("Success")
+            print("✅ Success")
         except:
             print(f"No existing chi-square cut table; creating blank table...")
             self.t = pd.DataFrame(
@@ -322,9 +322,9 @@ class ChiSquareCutTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\nSaving chi-square cut table at {self.filename}...")
+        print(f"\n💾 Saving chi-square cut table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("Success")
+        print("✅ Success")
 
 
 class CleanLoop:
@@ -418,7 +418,7 @@ class CleanLoop:
             print(f'{"Applying" if apply else "Skipping"} procedure...')
             if apply:
                 self.sn.add_noise_to_dflux(final_sigma_extra)
-                print("Success")
+                print("✅ Success")
                 print(
                     'The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column'
                 )
@@ -460,7 +460,7 @@ class CleanLoop:
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -508,14 +508,14 @@ class CleanLoop:
 
         limcuts = LimCutsTable(lc_temp, cut.snr_bound, indices=ix)
         limcuts.calculate_table(cut.min_cut, cut.max_cut, cut.cut_step)
-        print("Success")
+        print("✅ Success")
 
         data = limcuts.calculate_row(cut.max_value)
         print(
             f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss...'
         )
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -561,7 +561,7 @@ class CleanLoop:
             questionable_percent_cut,
             percent_cut,
         ) = self.sn.apply_controls_cut(cut, previous_flags)
-        print("Success")
+        print("✅ Success")
 
         print(
             f"Percent of data above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
@@ -614,7 +614,7 @@ class CleanLoop:
         self.avg_sn, percent_cut = self.sn.apply_badday_cut(
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
@@ -637,7 +637,7 @@ class CleanLoop:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -793,7 +793,7 @@ class CleanLoop:
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
-                    print("Success")
+                    print("✅ Success")
             else:
                 print(f"\nSetting MJD0 to {mjd0}")
 

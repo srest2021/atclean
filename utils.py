@@ -885,7 +885,7 @@ def load_preset_column_names_from_config(
     colnames = PresetColumnNames(config, preset)
     if verbose:
         print(colnames.__str__())
-        print("Success")
+        print("✅ Success")
     return colnames
 
 
@@ -1181,7 +1181,7 @@ class SnInfoTable:
             self.add_new_row(tnsname, coords, mjd0)
 
     def save(self):
-        print(f"\nSaving SN info table at {self.filename}...")
+        print(f"\n💾 Saving SN info table at {self.filename}...")
         self.t["ra"] = self.t["ra"].astype(str)
         self.t["dec"] = self.t["dec"].astype(str)
         self.t.to_string(self.filename, index=False)

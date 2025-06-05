@@ -114,7 +114,7 @@ class ConvertLightCurve(LightCurve):
             control_index=self.control_index,
         )
         print(
-            f"Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
+            f"💾 Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
         )
         self.save_lc_by_filepath(filename, overwrite=overwrite)
 
@@ -128,7 +128,7 @@ class ConvertLightCurve(LightCurve):
             )
             indices = self.ix_equal(colnames=[self.colnames.filt], val=filt)
             print(
-                f"Saving converted light curve (control index {self.control_index}) with filter {filt}..."
+                f"💾 Saving converted light curve (control index {self.control_index}) with filter {filt}..."
             )
             self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
@@ -377,7 +377,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
-    print("Success")
+    print("✅ Success")
 
     colnames = load_preset_column_names_from_config(args.preset, config)
 

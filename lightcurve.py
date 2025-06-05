@@ -184,7 +184,7 @@ class Supernova:
 
             self.lcs[control_index].t.reset_index(drop=True, inplace=True)
 
-        print("Success")
+        print("✅ Success")
 
     def prep_for_cleaning(self, verbose=False):
         if verbose:
@@ -199,7 +199,7 @@ class Supernova:
             self.lcs[control_index].remove_invalid_rows()
             # calculate flux/dflux column
             self.lcs[control_index].calculate_fdf_column()
-        print("Success")
+        print("✅ Success")
 
         # make sure SN and control lc MJDs match up exactly
         self.verify_mjds(verbose=verbose)
@@ -490,7 +490,7 @@ class Supernova:
             )
 
         if num_controls > 0:
-            # keep iterating over control indices until we successfully load num_controls light curves
+            # keep iterating over control indices until we ✅ Successfully load num_controls light curves
             control_index = 1
             while self.num_controls < num_controls:
                 try:
@@ -504,7 +504,7 @@ class Supernova:
                 control_index += 1
 
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.control_lc_indices})"
+            f"✅ Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.control_lc_indices})"
         )
 
         # check for dflux_new column if cleaned
@@ -594,7 +594,7 @@ class Supernova:
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
             )
-        print("Success")
+        print("✅ Success")
 
     def __str__(self):
         return f"SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -749,7 +749,7 @@ class AveragedSupernova(Supernova):
                 control_index += 1
 
         print(
-            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
+            f"✅ Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
         )
 
     def save_all(self, output_dir: str, overwrite: bool = False):
@@ -761,7 +761,7 @@ class AveragedSupernova(Supernova):
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
-        print("Success")
+        print("✅ Success")
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -1789,7 +1789,7 @@ class FullLightCurve:
             )
             indices = lc.ix_equal(colnames=["F"], val=filt)
             print(
-                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
+                f"💾 Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
             )
             lc.save_lc_by_filepath(filepath, indices=indices, overwrite=overwrite)
 

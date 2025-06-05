@@ -64,7 +64,7 @@ class ControlCoordinatesTable:
         filename = self.get_filepath(directory, tnsname)
         print(f"Loading control coordinates table at {filename}...")
         self.load(filename)
-        print("Success")
+        print("✅ Success")
         print(self.__str__())
 
         self._set_num_controls_from_t()
@@ -72,7 +72,7 @@ class ControlCoordinatesTable:
     def init_read_from_file(self, filepath: str):
         print(f"Loading control coordinates table at {filepath}...")
         self._read(filepath)
-        print("Success")
+        print("✅ Success")
         print(self.__str__())
 
         self._set_num_controls_from_t()
@@ -343,7 +343,7 @@ class ControlCoordinatesTable:
         else:
             filepath = f"{directory}/{tnsname}/{filename}"
 
-        print(f"Saving control coordinates table at {filepath}...")
+        print(f"💾 Saving control coordinates table at {filepath}...")
         if self.t is None:
             raise RuntimeError(
                 "Cannot save ControlCoordinatesTable: table (self.t) is None"
