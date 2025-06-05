@@ -530,7 +530,7 @@ def resolve_sn_coords_and_mjd0(
         if mjd0 is None or np.isnan(mjd0):
             mjd0 = tns_mjd0
             print(
-                f"Using MJD0 from TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {mjd0}"
+                f"Using MJD0 from TNS discovery date{f' - buffer of {DISC_DATE_BUFFER} MJD' if use_disc_date_buffer else ''}: {mjd0} MJD"
             )
 
     # make sure nothing is missing

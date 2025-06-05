@@ -2131,7 +2131,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         if indices is None:
             indices = self.getindices()
         if len(indices) < 1:
-            raise RuntimeError("not enough measurements to apply simulated gaussian")
+            raise RuntimeError("Not enough measurements to apply simulated gaussian")
         good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
 
         self.remove_rolling_sum()
