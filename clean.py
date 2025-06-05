@@ -271,7 +271,6 @@ class UncertEstTable:
     def save(self):
         print(f"\n💾 Saving true uncertainties estimation table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("✅ Success")
 
 
 class ChiSquareCutTable:
@@ -324,7 +323,6 @@ class ChiSquareCutTable:
     def save(self):
         print(f"\n💾 Saving chi-square cut table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("✅ Success")
 
 
 class CleanLoop:
@@ -367,7 +365,7 @@ class CleanLoop:
         num_measurements=40,
         plot: bool = False,
     ):
-        print(f"\nApplying ATLAS template change correction:")
+        print(f"\n⚙️ Applying ATLAS template change correction:")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -392,7 +390,7 @@ class CleanLoop:
     def check_uncert_est(
         self, cut: UncertaintyEstimation, apply_function: Callable, plot: bool = False
     ):
-        print(f"\nChecking true uncertainties estimation:")
+        print(f"\n⚙️ Checking true uncertainties estimation:")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -456,7 +454,7 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\nApplying uncertainty cut ({cut}):")
+        print(f"\n⚙️ Applying uncertainty cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         percent_cut = self.sn.apply_cut(cut)
@@ -478,7 +476,7 @@ class CleanLoop:
         if cut is None:
             return None
 
-        print(f"\nApplying chi-square cut ({cut}):")
+        print(f"\n⚙️ Applying chi-square cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         if self.sn.colnames.chisquare is None:
@@ -549,7 +547,7 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\nApplying control light curve cut ({cut}):")
+        print(f"\n⚙️ Applying control light curve cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -606,7 +604,7 @@ class CleanLoop:
             return
 
         print(
-            f"\nApplying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
+            f"\n⚙️ Applying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
         )
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
@@ -632,7 +630,7 @@ class CleanLoop:
             )
 
     def apply_custom_cut(self, cut: CustomCut, plot: bool = False):
-        print(f"\nApplying custom cut ({cut})...")
+        print(f"\n⚙️ Applying custom cut ({cut})...")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -661,7 +659,7 @@ class CleanLoop:
         apply_template_correction: bool = False,
         plot: bool = False,
     ):
-        print(f"\n\tFILTER: {filt}")
+        print(f"\n-- Cleaning filter: '{filt}' --")
 
         # load the SN and control light curves
         self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
@@ -775,7 +773,7 @@ class CleanLoop:
 
         for obj_index in range(len(tnsnames)):
             tnsname = tnsnames[obj_index]
-            print(f"\n\tCLEANING LIGHT CURVES FOR: SN {tnsname}")
+            print(f"\n--- Cleaning light curves for {tnsname} ---")
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
             self.f = OutputReadMe(
@@ -791,14 +789,13 @@ class CleanLoop:
             ):
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    print(f"Setting MJD0 to {mjd0}")
+                    print(f"\nSetting MJD0 to TNS discovery date: {mjd0} MJD")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
-                    print("✅ Success")
             else:
-                print(f"\nSetting MJD0 to {mjd0}")
+                print(f"\nSetting MJD0: {mjd0} MJD")
 
             if filts is None:
-                print("Searching for filters in input directory...")
+                print("\nSearching for filters in input directory...")
                 filts = find_all_filts(self.input_dir, tnsname)
                 print(f"Filters found: {filts}")
 

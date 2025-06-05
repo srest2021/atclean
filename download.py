@@ -896,3 +896,5 @@ if __name__ == "__main__":
             max_mjd=args.max_mjd,
             overwrite=args.overwrite,
         )
+
+        print(f"\n✅ Successfully downloaded {tnsname} SN and control light curves")

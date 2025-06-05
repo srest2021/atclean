@@ -192,7 +192,7 @@ class PlotLoop:
         # save the plots
         if not self.overwrite and os.path.exists(self.p.filename):
             print(
-                f"WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
+                f"⚠️ WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
             )
         else:
             self.p.save_pdf()

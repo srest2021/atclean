@@ -651,7 +651,6 @@ class SimDetecTables:
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
                 table.save_detec_table(self.model_name, self.filt, detec_tables_dir)
-        print("✅ Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir: str):
         """
