@@ -1047,7 +1047,7 @@ class SnInfoTable:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
-            print("Success")
+            print("✅ Success")
         except Exception:
             print(f"No existing SN info table at that path; creating blank table...")
             self.t = pd.DataFrame(
@@ -1185,7 +1185,7 @@ class SnInfoTable:
         self.t["ra"] = self.t["ra"].astype(str)
         self.t["dec"] = self.t["dec"].astype(str)
         self.t.to_string(self.filename, index=False)
-        print("Success")
+        print("✅ Success")
 
     def __str__(self):
         return self.t.to_string()
@@ -1292,7 +1292,7 @@ def get_mjd0_from_tns(
         if not isinstance(mjd0, (int, float)):
             raise RuntimeError(f"Invalid MJD0: {mjd0}")
         else:
-            print("Success")
+            print("✅ Success")
             return mjd0, None
     else:
         # get MJD0 from TNS
@@ -1320,7 +1320,7 @@ def get_tns_data(
 
     coords = get_tns_coords_from_json(json_data)
     mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
-    print("Success")
+    print("✅ Success")
     return mjd0, coords
 
 
