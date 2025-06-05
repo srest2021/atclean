@@ -192,7 +192,7 @@ class PlotLoop:
         # save the plots
         if not self.overwrite and os.path.exists(self.p.filename):
             print(
-                f"WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
+                f"⚠️ WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
             )
         else:
             self.p.save_pdf()
@@ -223,7 +223,7 @@ class PlotLoop:
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
-                    print("Success")
+                    print("✅ Success")
             else:
                 print(f"\nSetting MJD0 to {mjd0}")
 

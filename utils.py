@@ -232,7 +232,7 @@ def extract_from_subdir(
     convert_function: Callable = lambda x: x,
 ):
     if not os.path.isdir(directory):
-        print(f"WARNING: Cannot search because the path does not exist: {directory}")
+        print(f"⚠️ WARNING: Cannot search because the path does not exist: {directory}")
         return []
 
     extracted_values = set()
@@ -244,7 +244,7 @@ def extract_from_subdir(
             extracted_values.add(convert_function(value))
 
     if not extracted_values:
-        print(f"WARNING: Could not find {group_name} from the files in {directory}")
+        print(f"⚠️ WARNING: Could not find {group_name} from the files in {directory}")
 
     return list(extracted_values)
 
@@ -527,7 +527,7 @@ class FomLimits:
         Overwrite any current sigma_kerns and FOM limits with new ones.
         """
         if self._values:
-            print("WARNING: Overwriting current FOM limits with new ones")
+            print("⚠️ WARNING: Overwriting current FOM limits with new ones")
         self._values = self.validate(sigma_kerns, values)
 
     def set_blank(self, sigma_kerns: List[float]):
@@ -879,13 +879,13 @@ def load_preset_column_names_from_config(
 
     if filt is not None and filt in allowed_presets and filt != preset:
         print(
-            f"WARNING: filter '{filt}' identified as preset in config file, but does not match preset {preset}"
+            f"⚠️ WARNING: filter '{filt}' identified as preset in config file, but does not match preset {preset}"
         )
 
     colnames = PresetColumnNames(config, preset)
     if verbose:
+        print("✅ Success")
         print(colnames.__str__())
-        print("Success")
     return colnames
 
 
@@ -1027,7 +1027,7 @@ class Coordinates:
             output.append(f"Dec {self.get_Dec_str()}")
 
         if len(output) < 1:
-            return f"WARNING: Coordinates are empty and cannot be printed."
+            return f"⚠️ WARNING: Coordinates are empty and cannot be printed."
         return ", ".join(output)
 
 
@@ -1047,7 +1047,7 @@ class SnInfoTable:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
-            print("Success")
+            print("✅ Success")
         except Exception:
             print(f"No existing SN info table at that path; creating blank table...")
             self.t = pd.DataFrame(
@@ -1062,7 +1062,7 @@ class SnInfoTable:
         matching_ix = self.t.index[self.t["tnsname"].eq(tnsname)]
         if len(matching_ix) >= 2:
             print(
-                f"WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows..."
+                f"⚠️ WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows..."
             )
             self.t.drop(index=matching_ix[1:], inplace=True)
             first_ix = self.t.index[self.t["tnsname"].eq(tnsname)][0]
@@ -1181,11 +1181,10 @@ class SnInfoTable:
             self.add_new_row(tnsname, coords, mjd0)
 
     def save(self):
-        print(f"\nSaving SN info table at {self.filename}...")
+        print(f"\n💾 Saving SN info table at {self.filename}...")
         self.t["ra"] = self.t["ra"].astype(str)
         self.t["dec"] = self.t["dec"].astype(str)
         self.t.to_string(self.filename, index=False)
-        print("Success")
 
     def __str__(self):
         return self.t.to_string()
@@ -1229,7 +1228,7 @@ def get_filepath(
 def query_tns(tnsname, api_key, tns_id, bot_name):
     if tns_id is None or bot_name is None:
         print(
-            "WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
+            "⚠️ WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
         )
         return None
 
@@ -1292,7 +1291,7 @@ def get_mjd0_from_tns(
         if not isinstance(mjd0, (int, float)):
             raise RuntimeError(f"Invalid MJD0: {mjd0}")
         else:
-            print("Success")
+            print("✅ Success")
             return mjd0, None
     else:
         # get MJD0 from TNS
@@ -1306,6 +1305,7 @@ def get_mjd0_from_tns(
         )
         mjd0 = get_tns_mjd0_from_json(json_data)
         coords = get_tns_coords_from_json(json_data)
+        print("✅ Success")
         return mjd0, coords
 
 
@@ -1320,7 +1320,7 @@ def get_tns_data(
 
     coords = get_tns_coords_from_json(json_data)
     mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
-    print("Success")
+    print("✅ Success")
     return mjd0, coords
 
 
@@ -1390,7 +1390,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
 
     with requests.Session() as s:
         if result_url is None:
-            print("WARNING: Empty light curve (no data within this MJD range).")
+            print("⚠️ WARNING: Empty light curve (no data within this MJD range).")
             dfresult = pd.DataFrame(
                 columns=[
                     "MJD",
@@ -1447,7 +1447,7 @@ def get_config_custom_cuts(config: ConfigParser) -> List:
         if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
             if not required_keys.issubset(config[key].keys()):
                 print(
-                    f"WARNING: Custom cut {key} missing required fields (required fields: {required_keys}); skipping..."
+                    f"⚠️ WARNING: Custom cut {key} missing required fields (required fields: {required_keys}); skipping..."
                 )
             else:
                 custom_cuts.append(config[key])
@@ -1684,7 +1684,7 @@ class CutList:
     def add(self, cut: Cut):
         if cut.name() in self.list:
             print(
-                f"WARNING: cut by the name {cut.name()} already exists; overwriting..."
+                f"⚠️ WARNING: cut by the name {cut.name()} already exists; overwriting..."
             )
         self.list[cut.name()] = cut
 

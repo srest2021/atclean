@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
+import os
 from typing import Callable, Dict, Any, List, Optional, Self, Set, Tuple, Type
 import re, json, requests, time, sys, io, bisect
 from astropy import units as u
@@ -127,7 +128,7 @@ class Supernova:
             return
 
         if verbose:
-            print("\nMaking sure SN and control light curve MJDs match up exactly:")
+            print("\nMaking sure SN and control light curve MJDs match up exactly...")
 
         sn_sorted_mjd = self.lcs[0].t[self.colnames.mjd].to_numpy()
 
@@ -184,7 +185,7 @@ class Supernova:
 
             self.lcs[control_index].t.reset_index(drop=True, inplace=True)
 
-        print("Success")
+        print("✅ Success")
 
     def prep_for_cleaning(self, verbose=False):
         if verbose:
@@ -199,7 +200,7 @@ class Supernova:
             self.lcs[control_index].remove_invalid_rows()
             # calculate flux/dflux column
             self.lcs[control_index].calculate_fdf_column()
-        print("Success")
+        print("✅ Success")
 
         # make sure SN and control lc MJDs match up exactly
         self.verify_mjds(verbose=verbose)
@@ -267,14 +268,14 @@ class Supernova:
             stdev_flux = self.lcs[control_index].get_stdev_flux(indices=clean_ix)
             if stdev_flux is None:
                 print(
-                    f"WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.temp_x2_max_value}..."
+                    f"⚠️ WARNING: Could not get flux std dev using clean indices; retrying without preliminary chi-square cut of {cut.temp_x2_max_value}..."
                 )
                 stdev_flux = self.lcs[control_index].get_stdev_flux(
                     indices=dflux_clean_ix
                 )
                 if stdev_flux is None:
                     print(
-                        "WARNING: Could not get flux std dev using clean indices; retrying with all indices..."
+                        "⚠️ WARNING: Could not get flux std dev using clean indices; retrying with all indices..."
                     )
                     stdev_flux = self.lcs[control_index].get_stdev_flux()
 
@@ -490,7 +491,7 @@ class Supernova:
             )
 
         if num_controls > 0:
-            # keep iterating over control indices until we successfully load num_controls light curves
+            # keep iterating over control indices until we ✅ Successfully load num_controls light curves
             control_index = 1
             while self.num_controls < num_controls:
                 try:
@@ -504,7 +505,7 @@ class Supernova:
                 control_index += 1
 
         print(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.control_lc_indices})"
+            f"✅ Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.control_lc_indices})"
         )
 
         # check for dflux_new column if cleaned
@@ -543,7 +544,7 @@ class Supernova:
             )
         if index not in self.lc_indices or index not in self.control_lc_indices:
             print(
-                f"WARNING: Cannot remove control index {index} because it has already been removed"
+                f"⚠️ WARNING: Cannot remove control index {index} because it has already been removed"
             )
             return
         if index == 0:
@@ -561,7 +562,7 @@ class Supernova:
             )
         if index in self.lc_indices or index in self.control_lc_indices:
             print(
-                f"WARNING: Cannot add control index {index} because it has already been added"
+                f"⚠️ WARNING: Cannot add control index {index} because it has already been added"
             )
             return
 
@@ -585,7 +586,9 @@ class Supernova:
 
     def save_all(self, output_dir, overwrite=False, cleaned=True):
         print(
-            f'\nDropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves...'
+            f"\n💾 Dropping extra columns "
+            f'and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves'
+            f'{"" if overwrite else " (only if file does not already exist)"}...'
         )
         if self.tnsname is None:
             raise RuntimeError("TNS name (self.tnsname) cannot be None")
@@ -594,7 +597,7 @@ class Supernova:
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
             )
-        print("Success")
+        print("✅ Success")
 
     def __str__(self):
         return f"SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -749,19 +752,21 @@ class AveragedSupernova(Supernova):
                 control_index += 1
 
         print(
-            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
+            f"✅ Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
         )
 
     def save_all(self, output_dir: str, overwrite: bool = False):
         print(
-            f"\nDropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves..."
+            f"\n💾 Dropping extra columns "
+            f"and saving averaged SN light curve and {self.num_controls} averaged control light curves"
+            f'{"" if overwrite else " (only if file does not already exist)"}...'
         )
         for control_index in self.lc_indices:
             self.lcs[control_index].drop_extra_columns()
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
-        print("Success")
+        print("✅ Success")
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -926,7 +931,7 @@ class LightCurve(pdastrostatsclass):
         res = self.statparams["mean"]
 
         if res is None:
-            print("WARNING: Could not converge on mean; taking median instead...")
+            print("⚠️ WARNING: Could not converge on mean; taking median instead...")
             res = np.median(self.t.loc[indices, colname])
 
         res = float(res)
@@ -1098,7 +1103,7 @@ class LightCurve(pdastrostatsclass):
                     self.colnames.flux: flux_statparams.mean,
                     self.colnames.dflux: flux_statparams.mean_err,
                     "stdev": flux_statparams.stdev,
-                    "x2": flux_statparams.X2norm,
+                    "x2": flux_statparams.x2,
                     "Nclip": flux_statparams.Nclip,
                     "Ngood": flux_statparams.Ngood,
                     self.colnames.mask: 0,
@@ -1464,12 +1469,17 @@ class LightCurve(pdastrostatsclass):
         indices: Optional[List[int]] = None,
         overwrite: bool = False,
     ):
-        self.write(
-            filename=filepath,
-            indices=indices,
-            overwrite=overwrite,
-            hexcols=[self.colnames.mask] if self.colnames is not None else None,
-        )
+        if overwrite or not os.path.exists(filepath):
+            self.write(
+                filename=filepath,
+                indices=indices,
+                overwrite=overwrite,
+                hexcols=[self.colnames.mask] if self.colnames is not None else None,
+            )
+        else:
+            print(
+                f"File '{filepath}' already exists; skipping saving (set --overwrite to overwrite existing files)"
+            )
 
     def __str__(self):
         return self.t.to_string()
@@ -1540,7 +1550,7 @@ class AveragedLightCurve(LightCurve):
 
         if len(self._pre_mjd0_ix) < 1:
             print(
-                f"WARNING: No pre-MJD0 indices found in light curve (control index {self.control_index})"
+                f"⚠️ WARNING: No pre-MJD0 indices found in light curve (control index {self.control_index})"
             )
 
     def get_min_and_max_mjd(self):
@@ -1789,7 +1799,7 @@ class FullLightCurve:
             )
             indices = lc.ix_equal(colnames=["F"], val=filt)
             print(
-                f"Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
+                f"💾 Saving downloaded light curve with filter {filt} (length {len(indices)}) at {filepath}..."
             )
             lc.save_lc_by_filepath(filepath, indices=indices, overwrite=overwrite)
 
@@ -2131,7 +2141,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         if indices is None:
             indices = self.getindices()
         if len(indices) < 1:
-            raise RuntimeError("not enough measurements to apply simulated gaussian")
+            raise RuntimeError("Not enough measurements to apply simulated gaussian")
         good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
 
         self.remove_rolling_sum()

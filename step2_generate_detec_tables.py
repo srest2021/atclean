@@ -357,7 +357,7 @@ class Model(Simulation):
 
         if verbose:
             print(self.t[["MJD", "m", "uJy"]].head().to_string())
-            print("Success")
+            print("✅ Success")
 
     def get_sim_flux(
         self,
@@ -645,13 +645,12 @@ class SimDetecTables:
         )
 
     def save_all(self, detec_tables_dir: str):
-        print(f"\nSaving SimDetecTables in directory: {detec_tables_dir}")
+        print(f"\n💾 Saving SimDetecTables in directory: {detec_tables_dir}")
         self._check_tables_exist()
         make_dir_if_not_exists(detec_tables_dir)
         for sigma_kern in self.d.keys():
             for table in self.d[sigma_kern].values():
                 table.save_detec_table(self.model_name, self.filt, detec_tables_dir)
-        print("Success")
 
     def load_all_from_sim_tables(self, sim_tables_dir: str):
         """
@@ -673,7 +672,7 @@ class SimDetecTables:
                 self.d[sigma_kern][brightness].load_from_sim_table(
                     self.model_name, sim_tables_dir
                 )
-        print("Success")
+        print("✅ Success")
 
     def load_all(self, detec_tables_dir: str):
         """
@@ -693,7 +692,7 @@ class SimDetecTables:
                 self.d[sigma_kern][brightness].load_detec_table(
                     self.model_name, self.filt, detec_tables_dir
                 )
-        print("Success")
+        print("✅ Success")
 
     def iterator(self):
         """
@@ -1128,7 +1127,7 @@ class InjectionLoop(ABC):
                 self.tables.save_detec_table(
                     sigma_kern, peak_appmag, self.detec_tables_dir
                 )
-                print("\tSuccess")
+                print("\t✅ Success")
         print("\nFinished generating all SimDetecTables")
 
 

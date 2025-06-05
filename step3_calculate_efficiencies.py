@@ -113,7 +113,7 @@ class ContaminationTable:
                 )
 
             self.is_prelim = True
-            print("Success")
+            print("✅ Success")
         except Exception as e:
             self.t = None
             self.is_prelim = False
@@ -287,7 +287,7 @@ class ContaminationTable:
 
         make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
-        print(f"Saving contamination table as {filename}...")
+        print(f"💾 Saving contamination table as {filename}...")
         self.t.to_string(filename, index=False)
 
     def __str__(self):
@@ -450,7 +450,7 @@ class EfficiencyTable(pdastrostatsclass):
                     i + 1, l, prefix="Progress:", suffix="Complete", length=50
                 )
 
-        print("Success")
+        print("✅ Success")
         print(self.__str__())
 
     def get_subset(
@@ -529,7 +529,7 @@ class EfficiencyTable(pdastrostatsclass):
     def save(self, detec_tables_dir: str, model_name: str):
         make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/efficiencies_{model_name}.txt"
-        print(f"Saving efficiency table as {filename}...")
+        print(f"💾 Saving efficiency table as {filename}...")
         self.write(filename=filename, overwrite=True, index=False)
 
     def __str__(self):
@@ -722,7 +722,7 @@ class MagnitudeThresholdTable:
                 percents,
             )
             self.all.loc[i] = row
-        print("Success")
+        print("✅ Success")
 
     def _calculate_best(
         self,
@@ -780,7 +780,7 @@ class MagnitudeThresholdTable:
                 ]
             self.best = new_row(self.best, row)
 
-        print("Success")
+        print("✅ Success")
 
     def calculate(
         self,
@@ -816,14 +816,14 @@ class MagnitudeThresholdTable:
             filename_all = (
                 f"{detec_tables_dir}/all_magnitude_thresholds_{model_name}.txt"
             )
-            print(f"Saving table of all magnitude thresholds as {filename_all}...")
+            print(f"💾 Saving table of all magnitude thresholds as {filename_all}...")
             self.all.to_string(filename_all, index=False)
 
         if self.best is not None and not self.best.empty:
             filename_best = (
                 f"{detec_tables_dir}/best_magnitude_thresholds_{model_name}.txt"
             )
-            print(f"Saving table of best magnitude thresholds as {filename_best}...")
+            print(f"💾 Saving table of best magnitude thresholds as {filename_best}...")
             self.best.to_string(filename_best, index=False)
 
 

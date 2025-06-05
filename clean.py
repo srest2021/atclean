@@ -55,7 +55,7 @@ class OutputReadMe:
         self.tnsname: str = tnsname
         self.cut_list: CutList = cut_list
         self.begin(timestamp, num_controls=num_controls)
-        print("Success")
+        print("✅ Success")
 
     def begin(self, timestamp: datetime, num_controls: int = 0):
         badday_cut = self.cut_list.get(BadDayCut.name())
@@ -200,7 +200,7 @@ class OutputReadMe:
         )
         self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
-          f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
+            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
         )
         self.f.write(
             f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
@@ -228,7 +228,7 @@ class UncertEstTable:
                 f"\nLoading true uncertainties estimation table at {self.filename}..."
             )
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("Success")
+            print("✅ Success")
         except:
             print(
                 f"No existing true uncertainties estimation table; creating blank table..."
@@ -269,9 +269,8 @@ class UncertEstTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\nSaving true uncertainties estimation table at {self.filename}...")
+        print(f"\n💾 Saving true uncertainties estimation table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("Success")
 
 
 class ChiSquareCutTable:
@@ -284,7 +283,7 @@ class ChiSquareCutTable:
         try:
             print(f"\nLoading chi-square cut table at {self.filename}...")
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("Success")
+            print("✅ Success")
         except:
             print(f"No existing chi-square cut table; creating blank table...")
             self.t = pd.DataFrame(
@@ -322,9 +321,8 @@ class ChiSquareCutTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\nSaving chi-square cut table at {self.filename}...")
+        print(f"\n💾 Saving chi-square cut table at {self.filename}...")
         self.t.to_string(self.filename)
-        print("Success")
 
 
 class CleanLoop:
@@ -367,7 +365,7 @@ class CleanLoop:
         num_measurements=40,
         plot: bool = False,
     ):
-        print(f"\nApplying ATLAS template change correction:")
+        print(f"\n⚙️ Applying ATLAS template change correction:")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -392,7 +390,7 @@ class CleanLoop:
     def check_uncert_est(
         self, cut: UncertaintyEstimation, apply_function: Callable, plot: bool = False
     ):
-        print(f"\nChecking true uncertainties estimation:")
+        print(f"\n⚙️ Checking true uncertainties estimation:")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -418,7 +416,7 @@ class CleanLoop:
             print(f'{"Applying" if apply else "Skipping"} procedure...')
             if apply:
                 self.sn.add_noise_to_dflux(final_sigma_extra)
-                print("Success")
+                print("✅ Success")
                 print(
                     'The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column'
                 )
@@ -456,11 +454,11 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\nApplying uncertainty cut ({cut}):")
+        print(f"\n⚙️ Applying uncertainty cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -478,7 +476,7 @@ class CleanLoop:
         if cut is None:
             return None
 
-        print(f"\nApplying chi-square cut ({cut}):")
+        print(f"\n⚙️ Applying chi-square cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         if self.sn.colnames.chisquare is None:
@@ -508,14 +506,14 @@ class CleanLoop:
 
         limcuts = LimCutsTable(lc_temp, cut.snr_bound, indices=ix)
         limcuts.calculate_table(cut.min_cut, cut.max_cut, cut.cut_step)
-        print("Success")
+        print("✅ Success")
 
         data = limcuts.calculate_row(cut.max_value)
         print(
             f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss...'
         )
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -549,7 +547,7 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\nApplying control light curve cut ({cut}):")
+        print(f"\n⚙️ Applying control light curve cut ({cut}):")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -561,7 +559,7 @@ class CleanLoop:
             questionable_percent_cut,
             percent_cut,
         ) = self.sn.apply_controls_cut(cut, previous_flags)
-        print("Success")
+        print("✅ Success")
 
         print(
             f"Percent of data above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
@@ -606,7 +604,7 @@ class CleanLoop:
             return
 
         print(
-            f"\nApplying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
+            f"\n⚙️ Applying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
         )
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
@@ -614,7 +612,7 @@ class CleanLoop:
         self.avg_sn, percent_cut = self.sn.apply_badday_cut(
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
@@ -632,12 +630,12 @@ class CleanLoop:
             )
 
     def apply_custom_cut(self, cut: CustomCut, plot: bool = False):
-        print(f"\nApplying custom cut ({cut})...")
+        print(f"\n⚙️ Applying custom cut ({cut})...")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
         percent_cut = self.sn.apply_cut(cut)
-        print("Success")
+        print("✅ Success")
         print(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
@@ -661,7 +659,7 @@ class CleanLoop:
         apply_template_correction: bool = False,
         plot: bool = False,
     ):
-        print(f"\n\tFILTER: {filt}")
+        print(f"\n-- Cleaning filter: '{filt}' --")
 
         # load the SN and control light curves
         self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
@@ -775,7 +773,7 @@ class CleanLoop:
 
         for obj_index in range(len(tnsnames)):
             tnsname = tnsnames[obj_index]
-            print(f"\n\tCLEANING LIGHT CURVES FOR: SN {tnsname}")
+            print(f"\n--- Cleaning light curves for {tnsname} ---")
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
             self.f = OutputReadMe(
@@ -791,14 +789,13 @@ class CleanLoop:
             ):
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    print(f"Setting MJD0 to {mjd0}")
+                    print(f"\nSetting MJD0 to TNS discovery date: {mjd0} MJD")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
-                    print("Success")
             else:
-                print(f"\nSetting MJD0 to {mjd0}")
+                print(f"\nSetting MJD0: {mjd0} MJD")
 
             if filts is None:
-                print("Searching for filters in input directory...")
+                print("\nSearching for filters in input directory...")
                 filts = find_all_filts(self.input_dir, tnsname)
                 print(f"Filters found: {filts}")
 
