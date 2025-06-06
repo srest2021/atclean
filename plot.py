@@ -239,7 +239,7 @@ class Plot:
         y_colname = getattr(obj.colnames, y_colname_attr)
         if not obj.can_plot(indices, columns=[y_colname]):
             print(
-                f"⚠️ WARNING: Light curve (control index #{obj.control_index}) '{y_colname_attr}' column cannot be plotted with indices of length {len(indices)}; skipping..."
+                f"⚠️ WARNING: Light curve (control index #{obj.control_index}) '{y_colname_attr}' column cannot be plotted for indices of length {len(indices)}; skipping..."
             )
             return
 
@@ -1880,7 +1880,7 @@ class PlotPdf(Plot):
         self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
-        print("\n💾 Saving PDF of plots...\n")
+        print("\n💾 Saving PDF of plots...")
         self.pdf.close()
 
     def plot_SN(
