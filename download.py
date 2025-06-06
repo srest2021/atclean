@@ -836,7 +836,10 @@ if __name__ == "__main__":
     config = load_config(args.config_file)
 
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
-    print(f"\nUsing flux to magnitude sigma limit of {flux2mag_sigmalimit:f}")
+    print(
+        f"\nUsing flux to magnitude sigma limit of {flux2mag_sigmalimit:f} "
+        "(i.e., calculated magnitudes will be upper limits when calculated magnitude errors are NaN)"
+    )
 
     # set up directories
     input_dir = config["dir"]["atclean_input"]
