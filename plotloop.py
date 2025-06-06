@@ -223,7 +223,6 @@ class PlotLoop:
                 if not coords is None:
                     print(f"Setting MJD0 to {mjd0}")
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
-                    print("✅ Success")
             else:
                 print(f"\nSetting MJD0 to {mjd0}")
 

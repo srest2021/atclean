@@ -110,6 +110,8 @@ def zip_sne_in_bulk(
     zf = new_zipfile(out_filename)
     for i in range(0, len(tnsnames)):
         print(f"\nZipping {tnsnames[i]} into {out_filename}...")
+        check_that_out_zipfile_does_not_exist(out_filename)
+
         in_dirnames = get_in_dirnames(tnsnames[i], input_dir, output_dir)
         zf = zip_directory(zf, in_dirnames)
     zf.close()
@@ -118,12 +120,21 @@ def zip_sne_in_bulk(
 
 def zip_single_sn(tnsname: str, input_dir: str, output_dir: str, out_filename: str):
     print(f"\nZipping {tnsname} into {out_filename}...")
+    check_that_out_zipfile_does_not_exist(out_filename)
+
     in_dirnames = get_in_dirnames(tnsname, input_dir, output_dir)
 
     zf = new_zipfile(out_filename)
     zf = zip_directory(zf, in_dirnames)
     zf.close()
     print("✅ Success")
+
+
+def check_that_out_zipfile_does_not_exist(out_filename: str):
+    if os.path.exists(out_filename):
+        raise ValueError(
+            f"Error: zip file '{out_filename}' already exists. Please delete or rename it first."
+        )
 
 
 if __name__ == "__main__":

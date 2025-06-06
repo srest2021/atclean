@@ -491,7 +491,7 @@ class Supernova:
             )
 
         if num_controls > 0:
-            # keep iterating over control indices until we ✅ Successfully load num_controls light curves
+            # keep iterating over control indices until we successfully load num_controls light curves
             control_index = 1
             while self.num_controls < num_controls:
                 try:
@@ -597,7 +597,6 @@ class Supernova:
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
             )
-        print("✅ Success")
 
     def __str__(self):
         return f"SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -766,7 +765,6 @@ class AveragedSupernova(Supernova):
             self.lcs[control_index].save_lc(
                 output_dir, self.tnsname, overwrite=overwrite
             )
-        print("✅ Success")
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -1776,6 +1774,9 @@ class FullLightCurve(pdastrostatsclass):
             self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
         # convert flux to magnitude
+        print(
+            "Converting flux to magnitude (and overwriting original ATLAS 'm' and 'dm' columns)..."
+        )
         self.flux2mag(
             "uJy", "duJy", "m", "dm", zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit
         )

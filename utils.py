@@ -1371,7 +1371,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
             if resp.status_code == 200:
                 if not (resp.json()["finishtimestamp"] is None):
                     result_url = resp.json()["result_url"]
-                    print(f"Task is complete with results available at {result_url}")
+                    print(f"✅ Task is complete with results available at {result_url}")
                     break
                 elif resp.json()["starttimestamp"]:
                     if not taskstarted_printed:
