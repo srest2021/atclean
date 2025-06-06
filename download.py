@@ -23,6 +23,7 @@ from astropy.coordinates import Angle, SkyCoord
 from lightcurve import FullLightCurve, LightCurve
 from utils import (
     DISC_DATE_BUFFER,
+    AorB,
     Coordinates,
     Credentials,
     SnInfoTable,
@@ -383,9 +384,9 @@ class ControlCoordinatesTableFactory:
             or num_controls != 0
             or (center_coords is not None and center_coords.is_complete())
         ):
-            raise ValueError(
-                "If not downloading control light curves, none of the following should be provided: "
-                "File path to table of control light curve coordinates (`control_coords_table_filepath`), nonzero number of control light curves to download (`num_controls`), or center coordinates of the circle pattern (`center_coords`)"
+            print(
+                "\n⚠️ WARNING: If not downloading control light curves, none of the following should be provided: "
+                f"File path to table of control light curve coordinates (`control_coords_table_filepath`), nonzero number of control light curves to download (`num_controls`), or center coordinates of the circle pattern (`center_coords`)"
             )
 
         if download_controls:
@@ -490,7 +491,7 @@ def resolve_sn_coords_and_mjd0(
         print(
             f"From SnInfoTable:\n"
             f"  SN coordinates: {sn_coords}\n"
-            f"  Center coordinates: {center_coords}\n"
+            f"  Custom center coordinates: {center_coords}\n"
             f"  MJD0: {mjd0} MJD"
         )
 
@@ -570,6 +571,7 @@ class AtlasLightCurveDownloader:
         coords: Coordinates,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
+        flux2mag_sigmalimit: float = 3.0,
     ) -> tuple[int, Dict[str, int]]:
         self.lcs[control_index] = FullLightCurve(
             control_index, ra=coords.get_RA_str(), dec=coords.get_Dec_str()
@@ -577,6 +579,11 @@ class AtlasLightCurveDownloader:
         self.lcs[control_index].download(
             self.headers, lookbacktime=lookbacktime, max_mjd=max_mjd
         )
+        # self.lcs[control_index].t = pd.read_table(
+        #     "/Users/sofiarest/Desktop/Supernovae/data_refactor/atclean_input/2021qvo/2021qvo.o.lc.txt",
+        #     sep="\s+",
+        # )
+        self.lcs[control_index].postprocess(flux2mag_sigmalimit=flux2mag_sigmalimit)
         return self.lcs[control_index].get_filt_lens()
 
     def load_existing_lc(
@@ -616,6 +623,7 @@ class AtlasLightCurveDownloader:
         control_coords_table: ControlCoordinatesTable,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
+        flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ) -> ControlCoordinatesTable:
         if not overwrite and is_sn_in_subdir(self.atclean_input_dir, tnsname):
@@ -641,7 +649,11 @@ class AtlasLightCurveDownloader:
 
         print("\n--- Download: SN light curve ---")
         total_len, filt_lens = self.download_lc(
-            0, sn_coords, lookbacktime=lookbacktime, max_mjd=max_mjd
+            0,
+            sn_coords,
+            lookbacktime=lookbacktime,
+            max_mjd=max_mjd,
+            flux2mag_sigmalimit=flux2mag_sigmalimit,
         )
         self.save_downloaded_lc(tnsname, 0, overwrite=overwrite)
 
@@ -655,6 +667,7 @@ class AtlasLightCurveDownloader:
         control_coords_table: ControlCoordinatesTable,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
+        flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ) -> ControlCoordinatesTable:
         existing_control_indices = find_all_control_indices(
@@ -670,7 +683,11 @@ class AtlasLightCurveDownloader:
                 total_len, filt_lens = self.load_existing_lc(tnsname, control_index)
             else:
                 total_len, filt_lens = self.download_lc(
-                    control_index, coords, lookbacktime=lookbacktime, max_mjd=max_mjd
+                    control_index,
+                    coords,
+                    lookbacktime=lookbacktime,
+                    max_mjd=max_mjd,
+                    flux2mag_sigmalimit=flux2mag_sigmalimit,
                 )
                 self.save_downloaded_lc(tnsname, control_index, overwrite=overwrite)
 
@@ -687,6 +704,7 @@ class AtlasLightCurveDownloader:
         control_coords_table: ControlCoordinatesTable,
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
+        flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ) -> ControlCoordinatesTable:
         control_coords_table = self.download_and_save_sn_lc(
@@ -695,6 +713,7 @@ class AtlasLightCurveDownloader:
             control_coords_table,
             lookbacktime=lookbacktime,
             max_mjd=max_mjd,
+            flux2mag_sigmalimit=flux2mag_sigmalimit,
             overwrite=overwrite,
         )
         assert control_coords_table is not None and control_coords_table.t is not None
@@ -704,6 +723,7 @@ class AtlasLightCurveDownloader:
             control_coords_table,
             lookbacktime=lookbacktime,
             max_mjd=max_mjd,
+            flux2mag_sigmalimit=flux2mag_sigmalimit,
             overwrite=overwrite,
         )
 
@@ -815,7 +835,8 @@ if __name__ == "__main__":
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
-    # colnames = load_preset_column_names_from_config("atlas", config)
+    flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
+    print(f"\nUsing flux to magnitude sigma limit of {flux2mag_sigmalimit:f}")
 
     # set up directories
     input_dir = config["dir"]["atclean_input"]
@@ -842,7 +863,7 @@ if __name__ == "__main__":
     if len(args.tnsnames) > 1 and (args.sn_coords is not None or args.mjd0 is not None):
         raise ValueError("Cannot apply coordinates and MJD0 to more than one TNS name")
 
-    # parse control light curve args
+    # parse args
     num_controls = (
         args.num_controls
         if args.num_controls is not None
@@ -894,6 +915,7 @@ if __name__ == "__main__":
             control_coords_table,
             lookbacktime=args.lookbacktime,
             max_mjd=args.max_mjd,
+            flux2mag_sigmalimit=flux2mag_sigmalimit,
             overwrite=args.overwrite,
         )
 

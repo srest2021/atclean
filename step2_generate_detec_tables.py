@@ -419,13 +419,13 @@ class SimDetecTable(SimTable):
     def validate_model_name_col(self):
         if self.t.empty:
             print(
-                "WARNING: Could not validate 'model_name' column because the SimDetecTable is empty"
+                "⚠️ WARNING: Could not validate 'model_name' column because the SimDetecTable is empty"
             )
             return
 
         if not "model_name" in self.t.columns:
             print(
-                "WARNING: Could not validate 'model_name' column because the SimDetecTable column does not exist"
+                "⚠️ WARNING: Could not validate 'model_name' column because the SimDetecTable column does not exist"
             )
             return
 
@@ -1001,7 +1001,7 @@ class InjectionLoop(ABC):
         lc = deepcopy(self._sn.lcs[control_index])
         if not lc.colnames.snrsumnorm in lc.t.columns:
             print(
-                "WARNING: Rolling sum not applied to light curve prior to injecting simulation"
+                "⚠️ WARNING: Rolling sum not applied to light curve prior to injecting simulation"
             )
 
         good_ix = lc.get_good_indices(flag=self._sn.flag)

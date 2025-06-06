@@ -1681,7 +1681,7 @@ class LimCutsTable:
 
 
 # will contain measurements from both filters (o-band and c-band)
-class FullLightCurve:
+class FullLightCurve(pdastrostatsclass):
     def __init__(
         self,
         control_index=0,
@@ -1689,6 +1689,8 @@ class FullLightCurve:
         dec: Optional[str] = None,
         mjd0: Optional[float] = None,
     ):
+        pdastrostatsclass.__init__(self)
+
         self.t = None
         self.mjd0 = mjd0
         self.coords = Coordinates(ra, dec)
@@ -1759,6 +1761,27 @@ class FullLightCurve:
                 time.sleep(20)
                 continue
         self.t = result
+
+    def postprocess(self, flux2mag_sigmalimit=3.0):
+        # sort by mjd
+        self.t = self.t.sort_values(by=["MJD"], ignore_index=True)
+
+        # remove rows with duJy=0 or uJy=nan
+        dflux_zero_ix = self.ix_inrange(colnames="duJy", lowlim=0, uplim=0)
+        flux_nan_ix = self.ix_is_null(colnames="uJy")
+        print(
+            f'Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with "duJy"==0 or "uJy"==NaN...'
+        )
+        if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
+            self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
+
+        # convert flux to magnitude
+        self.flux2mag(
+            "uJy", "duJy", "m", "dm", zpt=23.9, upperlim_Nsigma=flux2mag_sigmalimit
+        )
+        # drop extra SNR column
+        if "__tmp_SN" in self.t.columns:
+            self.t.drop(columns=["__tmp_SN"], inplace=True)
 
     def get_filt_lens(self):
         if self.t is None:

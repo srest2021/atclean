@@ -667,7 +667,7 @@ class MagnitudeThresholdTable:
                 )
             except MultipleRootsFound as ex:
                 print(
-                    f"WARNING: Multiple roots found for sigma_kern={sigma_kern}, "
+                    f"⚠️ WARNING: Multiple roots found for sigma_kern={sigma_kern}, "
                     f"{select_param_name}={select_param_value}, fom_limit={fom_limit}, "
                     f"percent={p}. Roots: {ex.roots}"
                 )
