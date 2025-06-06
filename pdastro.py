@@ -1097,7 +1097,8 @@ class pdastroclass:
         upperlim_Nsigma=None,
     ):
 
-        indices = self.getindices(indices)
+        if indices is None:
+            indices = self.getindices(indices)
         if len(indices) == 0:
             return 0
 
@@ -1120,13 +1121,13 @@ class pdastroclass:
 
             # get the indices for which the S/N>=upperlim_Nsigma
             indices_mag = self.ix_inrange(
-                ["__tmp_SN"], upperlim_Nsigma, indices=indices_validSN
+                ["__tmp_SN"], lowlim=upperlim_Nsigma, indices=indices_validSN
             )
             # all the other indices can only be used for upper limits
             indices_ul = AnotB(indices_validSN, indices_mag)
             # get the indices for which the S/N is negative
             indices_ul_negative = self.ix_inrange(
-                ["__tmp_SN"], None, 0.0, indices=indices_ul
+                ["__tmp_SN"], uplim=0.0, indices=indices_ul
             )
             # self.t = self.t.drop(columns=['__tmp_SN'])
 

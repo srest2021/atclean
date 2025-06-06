@@ -481,7 +481,7 @@ class CleanLoop:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         if self.sn.colnames.chisquare is None:
             print(
-                "WARNING: No chi-square column name provided in config file; skipping..."
+                "⚠️ WARNING: No chi-square column name provided in config file; skipping..."
             )
             return None
 
@@ -910,7 +910,7 @@ def parse_config_cuts(args, config, colnames):
                 print(f"- Custom cut {i}: {custom_cut.name()}")
             except Exception as e:
                 print(
-                    f"WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
+                    f"⚠️ WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
                 )
 
     duplicate_flags = cut_list.get_flag_duplicates()

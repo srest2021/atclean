@@ -436,18 +436,18 @@ class Params:
 
         if param.is_time_param:
             if self.time_param is not None:
-                print("WARNING: Time parameter already set")
+                print("⚠️ WARNING: Time parameter already set")
             self.time_param = param
 
         elif param.is_brightness_param:
             if self.brightness_param is not None:
-                print("WARNING: Brightness parameter already set")
+                print("⚠️ WARNING: Brightness parameter already set")
             self.brightness_param = param
 
         else:
             if self.has(param.name):
                 print(
-                    f"WARNING: Param {param.name} already exists in list; overwriting..."
+                    f"⚠️ WARNING: Param {param.name} already exists in list; overwriting..."
                 )
             self.other[param.name] = param
 
