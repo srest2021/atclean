@@ -109,7 +109,7 @@ def zip_sne_in_bulk(
 ):
     zf = new_zipfile(out_filename)
     for i in range(0, len(tnsnames)):
-        print(f"\nZipping {tnsnames[i]} into {out_filename}...")
+        print(f"\n📦 Zipping {tnsnames[i]} into {out_filename}...")
         check_that_out_zipfile_does_not_exist(out_filename)
 
         in_dirnames = get_in_dirnames(tnsnames[i], input_dir, output_dir)
@@ -119,7 +119,7 @@ def zip_sne_in_bulk(
 
 
 def zip_single_sn(tnsname: str, input_dir: str, output_dir: str, out_filename: str):
-    print(f"\nZipping {tnsname} into {out_filename}...")
+    print(f"\n📦 Zipping {tnsname} into {out_filename}...")
     check_that_out_zipfile_does_not_exist(out_filename)
 
     in_dirnames = get_in_dirnames(tnsname, input_dir, output_dir)
@@ -150,8 +150,8 @@ if __name__ == "__main__":
 
     input_dir = config["dir"]["atclean_input"]
     output_dir = config["dir"]["output"]
-    print(f"ATClean input directory: {input_dir}")
-    print(f"Output directory: {output_dir}")
+    print(f"📁 ATClean input directory: {input_dir}")
+    print(f"📁 Output directory: {output_dir}")
 
     if bulk:
         out_filename = f"{output_dir}/lcs.zip"
