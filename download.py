@@ -579,11 +579,7 @@ class AtlasLightCurveDownloader:
         self.lcs[control_index].download(
             self.headers, lookbacktime=lookbacktime, max_mjd=max_mjd
         )
-        # self.lcs[control_index].t = pd.read_table(
-        #     "/Users/sofiarest/Desktop/Supernovae/data_refactor/atclean_input/2021qvo/2021qvo.o.lc.txt",
-        #     sep="\s+",
-        # )
-        self.lcs[control_index].postprocess(flux2mag_sigmalimit=flux2mag_sigmalimit)
+        self.lcs[control_index].preprocess(flux2mag_sigmalimit=flux2mag_sigmalimit)
         return self.lcs[control_index].get_filt_lens()
 
     def load_existing_lc(

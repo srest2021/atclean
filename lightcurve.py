@@ -1760,7 +1760,7 @@ class FullLightCurve(pdastrostatsclass):
                 continue
         self.t = result
 
-    def postprocess(self, flux2mag_sigmalimit=3.0):
+    def preprocess(self, flux2mag_sigmalimit=3.0):
         # sort by mjd
         self.t = self.t.sort_values(by=["MJD"], ignore_index=True)
 
