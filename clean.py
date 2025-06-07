@@ -21,6 +21,7 @@ from utils import (
     ChiSquareCut,
     ControlLightCurveCut,
     CustomCut,
+    CustomLogger,
     UncertaintyCut,
     UncertaintyEstimation,
     find_all_filts,
@@ -44,18 +45,21 @@ from utils import (
 
 class OutputReadMe:
     def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         timestamp = datetime.now()
         filename = (
             f"{output_dir}/{tnsname}/README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
         )
-        print(
-            f"\nOpening README.md file for outputting cut information at {filename}..."
+        self.logger.loading(
+            f"Opening README.md file for outputting cut information at {filename}",
+            newline=True,
         )
         self.f = open(filename, "w+")
         self.tnsname: str = tnsname
         self.cut_list: CutList = cut_list
         self.begin(timestamp, num_controls=num_controls)
-        print("✅ Success")
+        self.logger.success()
 
     def begin(self, timestamp: datetime, num_controls: int = 0):
         badday_cut = self.cut_list.get(BadDayCut.name())
@@ -218,20 +222,23 @@ class OutputReadMe:
 
 class UncertEstTable:
     def __init__(self, directory, filename=None):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         if filename is None:
             self.filename = f"{directory}/uncert_est_info.txt"
         else:
             self.filename = f"{directory}/{filename}"
 
         try:
-            print(
-                f"\nLoading true uncertainties estimation table at {self.filename}..."
+            self.logger.loading(
+                f"Loading true uncertainties estimation table at {self.filename}",
+                newline=True,
             )
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("✅ Success")
+            self.logger.success()
         except:
-            print(
-                f"No existing true uncertainties estimation table; creating blank table..."
+            self.logger.body(
+                f"No existing true uncertainties estimation table; creating blank table"
             )
             self.t = pd.DataFrame(
                 columns=[
@@ -269,23 +276,30 @@ class UncertEstTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\n💾 Saving true uncertainties estimation table at {self.filename}...")
+        self.logger.saving(
+            f"Saving true uncertainties estimation table at {self.filename}",
+            newline=True,
+        )
         self.t.to_string(self.filename)
 
 
 class ChiSquareCutTable:
     def __init__(self, directory, filename=None):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         if filename is None:
             self.filename = f"{directory}/x2_cut_info.txt"
         else:
             self.filename = f"{directory}/{filename}"
 
         try:
-            print(f"\nLoading chi-square cut table at {self.filename}...")
+            self.logger.loading(
+                f"Loading chi-square cut table at {self.filename}", newline=True
+            )
             self.t = pd.read_table(self.filename, sep="\s+")
-            print("✅ Success")
+            self.logger.success()
         except:
-            print(f"No existing chi-square cut table; creating blank table...")
+            self.logger.body(f"No existing chi-square cut table; creating blank table")
             self.t = pd.DataFrame(
                 columns=[
                     "tnsname",
@@ -321,7 +335,9 @@ class ChiSquareCutTable:
             self.t = new_row(self.t, row)
 
     def save(self):
-        print(f"\n💾 Saving chi-square cut table at {self.filename}...")
+        self.logger.saving(
+            f"Saving chi-square cut table at {self.filename}", newline=True
+        )
         self.t.to_string(self.filename)
 
 
@@ -336,6 +352,8 @@ class CleanLoop:
         flux2mag_sigmalimit: float = 3.0,
         overwrite: bool = False,
     ):
+        self.logger = CustomLogger()
+
         self.colnames = colnames
         self.sn: Optional[Supernova] = None
         self.avg_sn: Optional[AveragedSupernova] = None
@@ -365,7 +383,7 @@ class CleanLoop:
         num_measurements=40,
         plot: bool = False,
     ):
-        print(f"\n⚙️ Applying ATLAS template change correction:")
+        self.logger.step(f"Applying ATLAS template change correction")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -390,7 +408,7 @@ class CleanLoop:
     def check_uncert_est(
         self, cut: UncertaintyEstimation, apply_function: Callable, plot: bool = False
     ):
-        print(f"\n⚙️ Checking true uncertainties estimation:")
+        self.logger.step(f"Checking true uncertainties estimation")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -402,22 +420,24 @@ class CleanLoop:
         percent_greater = 100 * (
             (sigma_typical_new - sigma_typical_old) / sigma_typical_old
         )
-        print(
+        self.logger.body(
             f"We can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature"
         )
-        print(
+        self.logger.body(
             f"New typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty"
         )
 
         apply = apply_function()
-        print(f"Apply true uncertainties estimation: {apply}")
+        self.logger.info(f"Apply true uncertainties estimation: {apply}")
         if percent_greater >= 10:
-            print("True uncertainties estimation recommended")
-            print(f'{"Applying" if apply else "Skipping"} procedure...')
+            self.logger.body("True uncertainties estimation recommended")
+            self.logger.body(
+                f'{"Applying" if apply else "Skipping"} procedure', dots=True
+            )
             if apply:
                 self.sn.add_noise_to_dflux(final_sigma_extra)
-                print("✅ Success")
-                print(
+                self.logger.success()
+                self.logger.body(
                     'The extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column'
                 )
 
@@ -426,7 +446,10 @@ class CleanLoop:
                         raise RuntimeError("Output plots (self.p) cannot be None")
                     self.p.plot_uncert_est(self.sn)
         else:
-            print("True uncertainties estimation not needed; skipping procedure...")
+            self.logger.body(
+                "True uncertainties estimation not needed; skipping procedure",
+                dots=True,
+            )
 
         if self.f is None:
             raise RuntimeError("Output README file (self.f) cannot be None")
@@ -454,12 +477,12 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\n⚙️ Applying uncertainty cut ({cut}):")
+        self.logger.step(f"Applying uncertainty cut ({cut})")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         percent_cut = self.sn.apply_cut(cut)
-        print("✅ Success")
-        print(
+        self.logger.success()
+        self.logger.body(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
 
@@ -476,17 +499,19 @@ class CleanLoop:
         if cut is None:
             return None
 
-        print(f"\n⚙️ Applying chi-square cut ({cut}):")
+        self.logger.step(f"Applying chi-square cut ({cut})")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
         if self.sn.colnames.chisquare is None:
-            print(
-                "⚠️ WARNING: No chi-square column name provided in config file; skipping..."
+            self.logger.warning(
+                "No chi-square column name provided in config file; skipping", dots=True
             )
             return None
 
         if cut.use_pre_mjd0_lc:
-            print("Using pre-MJD0 light curve to determine contamination and loss")
+            self.logger.body(
+                "Using pre-MJD0 light curve to determine contamination and loss"
+            )
             if self.sn.mjd0 is None:
                 raise RuntimeError(
                     "MJD0 cannot be None. Please provide MJD0 throught the SN info table or --mjd0 argument, or set the use_pre_MJD0_lc field in the config file to False."
@@ -496,7 +521,9 @@ class CleanLoop:
             if len(ix) < 1:
                 raise RuntimeError("no pre-MJD0 light curve available")
         else:
-            print("Using control light curves to determine contamination and loss")
+            self.logger.body(
+                "Using control light curves to determine contamination and loss"
+            )
             if self.sn.num_controls < 1:
                 raise RuntimeError(
                     "No control light curves loaded. Use the --num_controls argument to load control light curves, or change the [x2_cut][use_pre_mjd0_lc] field to True."
@@ -506,15 +533,14 @@ class CleanLoop:
 
         limcuts = LimCutsTable(lc_temp, cut.snr_bound, indices=ix)
         limcuts.calculate_table(cut.min_cut, cut.max_cut, cut.cut_step)
-        print("✅ Success")
 
         data = limcuts.calculate_row(cut.max_value)
-        print(
-            f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss...'
+        self.logger.body(
+            f'Applying chi-square cut of {cut.max_value:0.2f} with {data["Pcontamination"]:0.2f}% contamination and {data["Ploss"]:0.2f}% loss'
         )
         percent_cut = self.sn.apply_cut(cut)
-        print("✅ Success")
-        print(
+        self.logger.success()
+        self.logger.body(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
 
@@ -547,7 +573,7 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(f"\n⚙️ Applying control light curve cut ({cut}):")
+        self.logger.step(f"Applying control light curve cut ({cut})")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
@@ -559,24 +585,23 @@ class CleanLoop:
             questionable_percent_cut,
             percent_cut,
         ) = self.sn.apply_controls_cut(cut, previous_flags)
-        print("✅ Success")
 
-        print(
+        self.logger.body(
             f"Percent of data above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
         )
-        print(
+        self.logger.body(
             f"Percent of data above snr_max bound ({hex(cut.snr_flag)}): {stn_percent_cut:0.2f}%"
         )
-        print(
+        self.logger.body(
             f"Percent of data above Nclip_max bound ({hex(cut.Nclip_flag)}): {Nclip_percent_cut:0.2f}%"
         )
-        print(
+        self.logger.body(
             f"Percent of data below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
         )
-        print(
+        self.logger.body(
             f"Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.questionable_flag)}): {questionable_percent_cut:0.2f}%"
         )
-        print(
+        self.logger.body(
             f"Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
 
@@ -603,8 +628,8 @@ class CleanLoop:
         if cut is None:
             return
 
-        print(
-            f"\n⚙️ Applying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut}):"
+        self.logger.step(
+            f"Applying bad day cut (averaging) with MJD bin size of {cut.mjd_bin_size} days ({cut})"
         )
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
@@ -612,8 +637,8 @@ class CleanLoop:
         self.avg_sn, percent_cut = self.sn.apply_badday_cut(
             cut, previous_flags, flux2mag_sigmalimit=self.flux2mag_sigmalimit
         )
-        print("✅ Success")
-        print(
+        self.logger.success()
+        self.logger.body(
             f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
         )
 
@@ -630,13 +655,13 @@ class CleanLoop:
             )
 
     def apply_custom_cut(self, cut: CustomCut, plot: bool = False):
-        print(f"\n⚙️ Applying custom cut ({cut})...")
+        self.logger.step(f"Applying custom cut ({cut})")
         if self.sn is None:
             raise RuntimeError("Supernova (self.sn) cannot be None")
 
         percent_cut = self.sn.apply_cut(cut)
-        print("✅ Success")
-        print(
+        self.logger.success()
+        self.logger.body(
             f"Total percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
         )
 
@@ -659,7 +684,7 @@ class CleanLoop:
         apply_template_correction: bool = False,
         plot: bool = False,
     ):
-        print(f"\n-- Cleaning filter: '{filt}' --")
+        self.logger.subheader(f"Cleaning filter: '{filt}'")
 
         # load the SN and control light curves
         self.sn = Supernova(self.colnames, tnsname=tnsname, mjd0=mjd0, filt=filt)
@@ -773,7 +798,7 @@ class CleanLoop:
 
         for obj_index in range(len(tnsnames)):
             tnsname = tnsnames[obj_index]
-            print(f"\n--- Cleaning light curves for {tnsname} ---")
+            self.logger.header(f"Cleaning light curves for {tnsname}")
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
             self.f = OutputReadMe(
@@ -789,15 +814,19 @@ class CleanLoop:
             ):
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    print(f"\nSetting MJD0 to TNS discovery date: {mjd0} MJD")
+                    self.logger.body(
+                        f"Setting MJD0 to TNS discovery date: {mjd0} MJD", newline=True
+                    )
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
             else:
-                print(f"\nSetting MJD0: {mjd0} MJD")
+                self.logger.body(f"Setting MJD0: {mjd0} MJD", newline=True)
 
             if filts is None:
-                print("\nSearching for filters in input directory...")
+                self.logger.loading(
+                    "Searching for filters in input directory", newline=True
+                )
                 filts = find_all_filts(self.input_dir, tnsname)
-                print(f"Filters found: {filts}")
+                self.logger.success(f"Filters found: {filts}")
 
             for filt in filts:
                 self.f.add_filter_section(filt)
@@ -813,16 +842,18 @@ class CleanLoop:
 
 
 def parse_config_cuts(args, config, colnames):
+    logger = CustomLogger()
+
     cut_list = CutList()
     if args.custom_cuts:
         config_custom_cuts = get_config_custom_cuts(config)
 
-    print(f"\nProcedures to apply:")
+    logger.info(f"Procedures parsed from config:", newline=True)
 
     # always check true uncertainties estimation, but will only apply if args.true_uncert_est
     temp_x2_max_value = float(config["uncert_est"]["temp_x2_max_value"])
-    print(
-        f"- True uncertainties estimation check (using temporary chi-square cut at {temp_x2_max_value})"
+    logger.listitem(
+        f"True uncertainties estimation check (using temporary chi-square cut at {temp_x2_max_value})"
     )
     uncert_est = UncertaintyEstimation(
         temp_x2_max_value,
@@ -837,7 +868,7 @@ def parse_config_cuts(args, config, colnames):
             max_value=float(config["uncert_cut"]["max_value"]),
         )
         cut_list.add(uncert_cut)
-        print(f"- {uncert_cut}")
+        logger.listitem(f"{uncert_cut}")
 
     if args.x2_cut:
         x2_cut = ChiSquareCut(
@@ -851,7 +882,7 @@ def parse_config_cuts(args, config, colnames):
             use_pre_mjd0_lc=parse_config_str(config["x2_cut"]["use_pre_mjd0_lc"]),
         )
         cut_list.add(x2_cut)
-        print(f"- {x2_cut}")
+        logger.listitem(f"{x2_cut}")
 
     if args.controls_cut:
         controls_cut = ControlLightCurveCut(
@@ -869,7 +900,7 @@ def parse_config_cuts(args, config, colnames):
             Ngood_flag=hexstring_to_int(config["controls_cut"]["Ngood_flag"]),
         )
         cut_list.add(controls_cut)
-        print(f"- {controls_cut}")
+        logger.listitem(f"{controls_cut}")
 
     if args.averaging:
         badday_cut = BadDayCut(
@@ -886,7 +917,7 @@ def parse_config_cuts(args, config, colnames):
             smallnum_flag=hexstring_to_int(config["averaging"]["smallnum_flag"]),
         )
         cut_list.add(badday_cut)
-        print(f"- Averaging / {badday_cut}")
+        logger.listitem(f"Averaging / {badday_cut}")
 
     if args.custom_cuts:
         for i in range(len(config_custom_cuts)):
@@ -907,10 +938,10 @@ def parse_config_cuts(args, config, colnames):
                     ),
                 )
                 cut_list.add(custom_cut)
-                print(f"- Custom cut {i}: {custom_cut.name()}")
+                logger.listitem(f"Custom cut {i}: {custom_cut.name()}")
             except Exception as e:
-                print(
-                    f"⚠️ WARNING: Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
+                logger.warning(
+                    f"Could not parse custom cut {i}: {cut_settings}. Error: {str(e)}"
                 )
 
     duplicate_flags = cut_list.get_flag_duplicates()
@@ -1043,6 +1074,8 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
@@ -1050,7 +1083,7 @@ if __name__ == "__main__":
         raise RuntimeError("Please specify at least one TNS name to clean.")
     if len(args.tnsnames) > 1 and not args.mjd0 is None:
         raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
-    print(f"\nList of transients to clean: {args.tnsnames}")
+    logger.info(f"List of transients to clean: {args.tnsnames}", newline=True)
 
     colnames = load_preset_column_names_from_config(args.preset, config)
 
@@ -1059,21 +1092,22 @@ if __name__ == "__main__":
     sninfo_filename = config["dir"]["sninfo_filename"]
     make_dir_if_not_exists(input_dir)
     make_dir_if_not_exists(output_dir)
-    print(f"\nATClean input directory: {input_dir}")
-    print(f"Output directory: {output_dir}")
+    print()
+    logger.info(f"ATClean input directory: {input_dir}")
+    logger.info(f"Output directory: {output_dir}")
 
-    print(f'TNS ID: {config["credentials"]["tns_id"]}')
-    print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
+    logger.secret(f'TNS ID: {config["credentials"]["tns_id"]}')
+    logger.secret(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
 
-    print(f"Overwrite existing files: {args.overwrite}")
-    print(f"Save PDF of diagnostic plots: {args.plot}")
+    logger.info(f"Overwrite existing files: {args.overwrite}")
+    logger.info(f"Save PDF of diagnostic plots: {args.plot}")
     filters = parse_comma_separated_string(args.filters)
     if filters is not None:
-        print(f"Filters to clean: {filters}")
+        logger.info(f"Filters to clean: {filters}")
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
-    print(f"Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}")
+    logger.info(f"Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}")
     if args.mjd0:
-        print(f"MJD0: {args.mjd0}")
+        logger.info(f"MJD0: {args.mjd0}")
 
     # print(f'\nApplyin control light curve cut: {args.controls}')
     num_controls = (
@@ -1081,7 +1115,7 @@ if __name__ == "__main__":
         if not args.num_controls is None
         else int(config["download"]["num_controls"])
     )
-    print(f"Number of control light curves to clean: {num_controls}")
+    logger.info(f"Number of control light curves to clean: {num_controls}")
 
     cut_list = parse_config_cuts(args, config, colnames)
 

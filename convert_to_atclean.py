@@ -21,6 +21,7 @@ from lightcurve import LightCurve
 from utils import (
     AorB,
     Coordinates,
+    CustomLogger,
     PresetColumnNames,
     SnInfoTable,
     get_allowed_presets,
@@ -41,17 +42,20 @@ class ConvertLightCurve(LightCurve):
         control_index: int = 0,
     ):
         LightCurve.__init__(self, colnames, control_index)
+        self.logger = CustomLogger()
         self.obj_name: str = obj_name
 
     def load_raw_t(self, filename: str):
         """Load raw light curve data from file (CSV or whitespace-separated)."""
-        print(
-            f"\nLoading raw light curve (control index {self.control_index}) at {filename}..."
+        self.logger.loading(
+            f"Loading raw light curve (control index {self.control_index}) at {filename}",
+            newline=True,
         )
         if filename.endswith(".csv"):
             self.t = pd.read_csv(filename)
         else:
             self.load_spacesep(filename)
+        self.logger.success()
 
     def move_required_cols_to_front(self):
         """Reorder essential columns to the front (MJD, flux, dflux)."""
@@ -86,24 +90,28 @@ class ConvertLightCurve(LightCurve):
 
     def get_coords(self, arg_ra=None, arg_dec=None) -> Coordinates:
         """Determine coordinates from either command line arguments (only for control_index=0) or file columns."""
-        print("\nSearching for coordinates in command line or light curve...")
+        self.logger.body(
+            "Searching for coordinates in command line or light curve", newline=True
+        )
 
         # try to get coordinates from lc columns
         coords_from_t = self.find_coords_in_t()
         if not coords_from_t.is_empty():
-            print(f"Found coordinates in light curve: {coords_from_t.__str__()}")
+            self.logger.success(
+                f"Found coordinates in light curve: {coords_from_t.__str__()}"
+            )
 
         if self.control_index == 0:
             # try to get coordinates from command line
             coords_from_cmd = Coordinates(arg_ra, arg_dec)
             if not coords_from_cmd.is_empty():
-                print(
+                self.logger.success(
                     f"Using default coordinates from command line instead: {coords_from_cmd.__str__()}"
                 )
                 return coords_from_cmd
 
         if coords_from_t.is_empty():
-            print(f"No coordinates found")
+            self.logger.warning(f"No coordinates found")
         return coords_from_t
 
     def _save_single_df(self, input_dir, overwrite=False):
@@ -113,8 +121,8 @@ class ConvertLightCurve(LightCurve):
             filt=self.colnames.preset,
             control_index=self.control_index,
         )
-        print(
-            f"💾 Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}..."
+        self.logger.saving(
+            f"Saving converted light curve (control index {self.control_index}) with filter {self.colnames.preset}"
         )
         self.save_lc_by_filepath(filename, overwrite=overwrite)
 
@@ -127,8 +135,8 @@ class ConvertLightCurve(LightCurve):
                 control_index=self.control_index,
             )
             indices = self.ix_equal(colnames=[self.colnames.filt], val=filt)
-            print(
-                f"💾 Saving converted light curve (control index {self.control_index}) with filter {filt}..."
+            self.logger.saving(
+                f"Saving converted light curve (control index {self.control_index}) with filter {filt}"
             )
             self.save_lc_by_filepath(filename, indices=indices, overwrite=overwrite)
 
@@ -159,8 +167,8 @@ class ConvertLightCurve(LightCurve):
         dflux_zero_ix = self.ix_equal(colnames=[self.colnames.dflux], val=0)
         flux_nan_ix = self.ix_is_null(colnames=[self.colnames.flux])
         if len(AorB(dflux_zero_ix, flux_nan_ix)) > 0:
-            print(
-                f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN..."
+            self.logger.body(
+                f"Deleting {len(dflux_zero_ix) + len(flux_nan_ix)} rows with duJy=0 or uJy=NaN"
             )
             self.t = self.t.drop(AorB(dflux_zero_ix, flux_nan_ix))
 
@@ -196,6 +204,8 @@ class ConvertLoop:
         output_dir: str,
         sninfo_filename: Optional[str] = None,
     ):
+        self.logger = CustomLogger()
+
         self.colnames: PresetColumnNames = colnames
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
@@ -278,7 +288,7 @@ class ConvertLoop:
             ctrl_coords.num_controls = len(filenames)
 
         all_columns_to_copy = self.colnames.get_all_columns_to_copy()
-        print("\nKeeping these columns: ", all_columns_to_copy)
+        self.logger.info(f"Keeping these columns: {all_columns_to_copy}", newline=True)
 
         for i in range(len(filenames)):
             old_filename = filenames[i]
@@ -375,9 +385,10 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     args = define_args().parse_args()
     config = load_config(args.config_file)
-    print("✅ Success")
 
     colnames = load_preset_column_names_from_config(args.preset, config)
 
@@ -386,7 +397,7 @@ if __name__ == "__main__":
     make_dir_if_not_exists(input_dir)
     make_dir_if_not_exists(output_dir)
 
-    print(f"\nConverting {args.obj_name} to ATClean-readable format")
+    logger.header(f"Converting {args.obj_name} to ATClean-readable format")
 
     convert = ConvertLoop(colnames, input_dir, output_dir)
     convert.loop(

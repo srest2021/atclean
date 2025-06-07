@@ -72,24 +72,6 @@ def add_static_methods(cls):
     """
     default_instance = cls()
 
-    # Make a list of items to avoid modifying dict during iteration
-    for name, method in list(cls.__dict__.items()):
-        if callable(method) and not name.startswith("_") and not name.startswith("s_"):
-
-            def make_static(meth_name):
-                def static_method(*args, **kwargs):
-                    return getattr(default_instance, meth_name)(*args, **kwargs)
-
-                return static_method
-
-            setattr(cls, f"s_{name}", staticmethod(make_static(name)))
-
-    return cls
-
-
-def add_static_methods(cls):
-    default_instance = cls()
-
     for name, method in list(cls.__dict__.items()):
         if callable(method) and not name.startswith("_") and not name.startswith("s_"):
 
@@ -107,51 +89,71 @@ def add_static_methods(cls):
 @add_static_methods
 class CustomLogger:
     def __init__(self, prefix=""):
-        self.prefix = prefix
+        self.prefix = f"[{prefix}] " if prefix else ""
 
-    def _print(self, message: str, newline: bool = False, dots: bool = False):
-        prefix_newline = "\n" if newline else ""
+    def _print(
+        self, message: str, symbol: str = "", newline: bool = False, dots: bool = False
+    ):
+        newline_part = "\n" if newline else ""
         suffix = "..." if dots else ""
 
         # capitalize first letter of message
         if message:
-            message = message[0].upper() + message[1:]
+            message_part = message[0].upper() + message[1:]
 
-        print(f"{prefix_newline}{self.prefix}{message}{suffix}")
+        symbol_part = f"{symbol} " if symbol else ""
+
+        print(f"{newline_part}{symbol_part}{self.prefix}{message_part}{suffix}")
 
     def warning(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"⚠️ WARNING: {message}", newline=newline, dots=dots)
+        self._print(message, symbol="⚠️ WARNING:", newline=newline, dots=dots)
 
-    def success(self, message: str = None, newline: bool = False, dots: bool = False):
-        msg = message if message is not None else "Success"
-        self._print(f"✅ {msg}", newline=newline, dots=dots)
+    def success(
+        self, message: str = "Success", newline: bool = False, dots: bool = False
+    ):
+        self._print(message, symbol="✅", newline=newline, dots=dots)
 
-    def header(self, message: str, newline: bool = False, dots: bool = False):
+    def header(
+        self,
+        message: str,
+        num_dashes: int = 3,
+        newline: bool = True,
+    ):
         prefix_newline = "\n" if newline else ""
-        suffix = "..." if dots else ""
-        # header does not use prefix
-        print(f"{prefix_newline}--- {message} ---{suffix}")
+        dashes = "-" * num_dashes
+        # no prefix for header
+        print(f"{prefix_newline}{dashes} {message} {dashes}")
 
-    def step(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"⚙️ {message}", newline=newline, dots=dots)
+    def subheader(self, message: str, newline: bool = True):
+        self.header(message, num_dashes=2, newline=newline)
+
+    def step(self, message: str, newline: bool = True, dots: bool = False):
+        self._print(message, symbol="⚙️", newline=newline, dots=dots)
 
     def body(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, newline=newline, dots=dots)
 
+    def listitem(self, message: str, symbol="-"):
+        # no prefix for listitem
+        print(f"{symbol} {message}")
+
     def info(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"🔧 {message}", newline=newline, dots=dots)
+        self._print(message, symbol="🔧", newline=newline, dots=dots)
 
     def secret(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"🔒 {message}", newline=newline, dots=dots)
+        self._print(message, symbol="🔒", newline=newline, dots=dots)
 
     def loading(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"🔄 {message}", newline=newline, dots=dots)
+        self._print(message, symbol="🔄", newline=newline, dots=dots)
 
     def saving(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"💾 {message}", newline=newline, dots=dots)
+        self._print(message, symbol="💾", newline=newline, dots=dots)
 
     def api(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(f"🌐 {message}", newline=newline, dots=dots)
+        self._print(message, symbol="🌐", newline=newline, dots=dots)
+
+    def plot(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="📈", newline=newline, dots=dots)
 
 
 # convert flux to magnitude
@@ -351,6 +353,7 @@ def load_config(filename):
         cfg.read(filename)
     except Exception as e:
         raise RuntimeError(f"Could not load config file at {filename}: {str(e)}")
+    CustomLogger.s_success()
     return cfg
 
 
@@ -1046,6 +1049,10 @@ class Credentials:
     def prompt_for_atlas_password(self):
         if self.atlas_password is None:
             self.atlas_password = getpass(prompt="Enter ATLAS password: ")
+
+    def prompt_for_tns_api_key(self):
+        if self.tns_api_key is None:
+            self.tns_api_key = getpass(prompt="Enter TNS API key: ")
 
 
 class BaseAngle(ABC):

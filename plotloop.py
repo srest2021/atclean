@@ -17,6 +17,7 @@ from utils import (
     BadDayCut,
     ChiSquareCut,
     ControlLightCurveCut,
+    CustomLogger,
     CutList,
     PresetColumnNames,
     SnInfoTable,
@@ -41,6 +42,8 @@ class PlotLoop:
         sninfo_filename: Optional[str] = None,
         overwrite: bool = False,
     ):
+        self.logger = CustomLogger()
+
         self.colnames = colnames
         self.sn: Optional[Supernova] = None
         self.avg_sn: Optional[AveragedSupernova] = None
@@ -94,7 +97,7 @@ class PlotLoop:
         plot_uncert_est: bool = False,
         custom_lims: PlotLimits | None = None,
     ):
-        print(f"\n\tFILTER: {filt}")
+        self.logger.subheader(f"Plotting filter: {filt}")
 
         # load the cleaned SN and control light curves
         self.load_sn(tnsname, mjd0, filt, num_controls=num_controls, cleaned=True)
@@ -191,8 +194,9 @@ class PlotLoop:
 
         # save the plots
         if not self.overwrite and os.path.exists(self.p.filename):
-            print(
-                f"⚠️ WARNING: overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving..."
+            self.logger.warning(
+                f"Overwrite set to {self.overwrite} and file already exists at {self.p.filename}; skipping saving",
+                dots=True,
             )
         else:
             self.p.save_pdf()
@@ -211,7 +215,7 @@ class PlotLoop:
 
         for obj_index in range(len(tnsnames)):
             tnsname = tnsnames[obj_index]
-            print(f"\n\tPLOTTING LIGHT CURVES FOR: SN {tnsname}")
+            self.logger.header(f"Plotting light curves for {tnsname}")
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
 
@@ -221,10 +225,10 @@ class PlotLoop:
             if mjd0 is None:
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    print(f"Setting MJD0 to {mjd0}")
+                    self.logger.body(f"Setting MJD0 to {mjd0}", newline=True)
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
             else:
-                print(f"\nSetting MJD0 to {mjd0}")
+                self.logger.body(f"Setting MJD0 to {mjd0}", newline=True)
 
             for filt in filters:
                 self.plot_lcs(
@@ -361,6 +365,8 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
@@ -368,7 +374,7 @@ if __name__ == "__main__":
         raise RuntimeError("Please specify at least one TNS name to plot.")
     if len(args.tnsnames) > 1 and not args.mjd0 is None:
         raise RuntimeError(f"Cannot specify one MJD0 {args.mjd0} for a batch of SNe.")
-    print(f"\nList of transients to plot: {args.tnsnames}")
+    logger.info(f"List of transients to plot: {args.tnsnames}", newline=True)
 
     colnames = load_preset_column_names_from_config(args.preset, config)
 
@@ -377,22 +383,31 @@ if __name__ == "__main__":
     sninfo_filename = config["dir"]["sninfo_filename"]
     make_dir_if_not_exists(input_dir)
     make_dir_if_not_exists(output_dir)
-    print(f"\nATClean input directory: {input_dir}")
-    print(f"Output directory: {output_dir}")
-
-    print(f'TNS ID: {config["credentials"]["tns_id"]}')
-    print(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
-
-    print(f"Overwrite existing files: {args.overwrite}")
-    print(f"Filters: {args.filters}")
+    print()
+    logger.info(f"ATClean input directory: {input_dir}")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Overwrite existing files: {args.overwrite}")
+    logger.info(f"Filters: {args.filters}")
     if args.mjd0:
-        print(f"MJD0: {args.mjd0}")
+        logger.info(f"MJD0: {args.mjd0}")
     num_controls = (
         args.num_controls
         if not args.num_controls is None
         else int(config["download"]["num_controls"])
     )
-    print(f"Number of control light curves to load and plot: {num_controls}")
+    logger.info(f"Number of control light curves to load and plot: {num_controls}")
+
+    creds = Credentials(
+        config["credentials"]["atlas_username"],
+        config["credentials"]["atlas_password"],
+        config["credentials"]["tns_api_key"],
+        config["credentials"]["tns_id"],
+        config["credentials"]["tns_bot_name"],
+    )
+    print()
+    logger.secret(f"TNS ID: {creds.tns_id}")
+    logger.secret(f"TNS bot name: {creds.tns_bot_name}")
+    creds.prompt_for_tns_api_key()
 
     lims = PlotLimits(
         xlower=args.xlim_lower,
@@ -401,23 +416,16 @@ if __name__ == "__main__":
         yupper=args.ylim_upper,
     )
     if not lims.is_empty():
-        print(lims)
+        logger.info(f"{lims}")
 
     cut_list = parse_config_cuts(args, config, colnames)
 
     print()
-    credentials = Credentials(
-        config["credentials"]["atlas_username"],
-        config["credentials"]["atlas_password"],
-        config["credentials"]["tns_api_key"],
-        config["credentials"]["tns_id"],
-        config["credentials"]["tns_bot_name"],
-    )
     plotloop = PlotLoop(
         colnames,
         input_dir,
         output_dir,
-        credentials,
+        creds,
         sninfo_filename=sninfo_filename,
         overwrite=args.overwrite,
     )
