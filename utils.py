@@ -412,6 +412,25 @@ def find_all_filts(directory: str, tnsname: str) -> List[str]:
     return extract_from_subdir(subdir, pattern, "filt")
 
 
+def check_filts_against_preset(
+    preset: str, allowed_presets: List[str], filts: List[str] | str
+):
+    if isinstance(filts, str):
+        filts = [filts]
+
+    for filt in filts:
+        if filt in allowed_presets and filt != preset:
+            ans = (
+                input(
+                    f"WARNING: Filter '{filt}' is already defined in the config file as a preset, but does not match the current preset '{preset}'. Consider removing the filter from the current list of filters to clean, then running a separate command using the preset '{filt}'. \nCONTINUE (not recommended)? (y/n): "
+                )
+                .strip()
+                .lower()
+            )
+            if ans not in ["y", "yes"]:
+                sys.exit(0)
+
+
 def find_all_control_indices(directory: str, tnsname: str, filt=None) -> List:
     if filt is None:
         filt_pattern = r".*"
@@ -992,7 +1011,10 @@ class PresetColumnNames:
 
 
 def load_preset_column_names_from_config(
-    preset: str, config: ConfigParser, filt: str = None, verbose: bool = True
+    preset: str,
+    config: ConfigParser,
+    filts: Optional[List[str]] = None,
+    verbose: bool = True,
 ) -> PresetColumnNames:
     """
     Load a set of preset column names from a configuration file.
@@ -1020,10 +1042,8 @@ def load_preset_column_names_from_config(
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
 
-    if filt is not None and filt in allowed_presets and filt != preset:
-        CustomLogger.s_warning(
-            f"Filter '{filt}' identified as preset in config file, but does not match preset {preset}"
-        )
+    if filts is not None:
+        check_filts_against_preset(preset, allowed_presets, filts)
 
     colnames = PresetColumnNames(config, preset)
     if verbose:
@@ -1940,7 +1960,7 @@ class CutList:
         return mask
 
     def __str__(self):
-        output = ""
+        output = []
         for name in self.list:
-            output += self.list[name].__str__()
-        return output
+            output.append("• " + self.list[name].__str__())
+        return "\n".join(output)

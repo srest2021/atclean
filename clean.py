@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from datetime import datetime
+import time
 from typing import Callable, Dict, List, Optional
 import sys, argparse
 import pandas as pd
@@ -24,6 +25,7 @@ from utils import (
     CustomLogger,
     UncertaintyCut,
     UncertaintyEstimation,
+    check_filts_against_preset,
     find_all_filts,
     format_float_string,
     get_config_custom_cuts,
@@ -828,6 +830,10 @@ class CleanLoop:
                 filts = find_all_filts(self.input_dir, tnsname)
                 self.logger.success(f"Filters found: {filts}")
 
+            # TODO: fix
+            # allowed_presets = get_allowed_presets(config)
+            # check_filts_against_preset(self.colnames.preset, allowed_presets, filts)
+
             for filt in filts:
                 self.f.add_filter_section(filt)
                 self.clean_lcs(
@@ -871,6 +877,14 @@ def parse_config_cuts(args, config, colnames):
         logger.listitem(f"{uncert_cut}")
 
     if args.x2_cut:
+        use_pre_mjd0_lc = parse_config_str(config["x2_cut"]["use_pre_mjd0_lc"])
+        if args.num_controls is not None and args.num_controls < 1:
+            if use_pre_mjd0_lc is False:
+                logger.warning(
+                    "`use_pre_mjd0_lc` set to False in config file, but number of control light curves set to 0; setting `use_pre_mjd0_lc` to True",
+                )
+            use_pre_mjd0_lc = True
+
         x2_cut = ChiSquareCut(
             colnames.chisquare,
             flag=hexstring_to_int(config["x2_cut"]["flag"]),
@@ -879,7 +893,7 @@ def parse_config_cuts(args, config, colnames):
             min_cut=int(config["x2_cut"]["min_cut"]),
             max_cut=int(config["x2_cut"]["max_cut"]),
             cut_step=int(config["x2_cut"]["cut_step"]),
-            use_pre_mjd0_lc=parse_config_str(config["x2_cut"]["use_pre_mjd0_lc"]),
+            use_pre_mjd0_lc=use_pre_mjd0_lc,
         )
         cut_list.add(x2_cut)
         logger.listitem(f"{x2_cut}")
@@ -1095,16 +1109,15 @@ if __name__ == "__main__":
     print()
     logger.info(f"ATClean input directory: {input_dir}")
     logger.info(f"Output directory: {output_dir}")
+
     logger.info(f"Overwrite existing files: {args.overwrite}")
     logger.info(f"Save PDF of diagnostic plots: {args.plot}")
-    # filters = parse_comma_separated_string(args.filters)
     if args.filters is not None:
         logger.info(f"Filters to clean: {args.filters}")
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
     logger.info(f"Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}")
     if args.mjd0:
         logger.info(f"MJD0: {args.mjd0}")
-
     num_controls = (
         args.num_controls
         if not args.num_controls is None

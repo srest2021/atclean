@@ -1182,7 +1182,7 @@ if __name__ == "__main__":
         raise RuntimeError("Model name cannot have spaces.")
 
     colnames = load_preset_column_names_from_config(
-        args.preset, config, filt=args.filter
+        args.preset, config, filts=args.filter
     )
 
     mjd0 = args.mjd0

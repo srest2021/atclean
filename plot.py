@@ -578,7 +578,7 @@ class Plot:
                 open=True,
             )
 
-        good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
+        good_ix = avg_sn.lcs[0].get_good_indices(flag)
         self._plot_lc(
             ax1,
             avg_sn,
