@@ -156,7 +156,7 @@ class Param(ABC):
         Validates and adjusts time parameter values to match the MJDbin format.
         """
         self._log(
-            f"Making sure the time parameter '{self.name}' values match the MJDbin column format..."
+            f"Making sure the time parameter '{self.name}' values match the MJDbin column format"
         )
         if self._values:
             self._values = list(np.floor(self.values) + 0.5)
@@ -166,7 +166,7 @@ class Param(ABC):
         Validates and adjusts brightness values to two decimal places.
         """
         self._log(
-            f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places..."
+            f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places"
         )
         if self._values:
             self._values = [round(v, 2) for v in self.values]
@@ -625,7 +625,7 @@ class Params:
         all_params = self.all_params()
         out = f"Params list (length {len(all_params)}):"
         for param in all_params:
-            out += f"\n- {param}"
+            out += f"\n• {param}"
         return out
 
     def __eq__(self, other):
@@ -673,8 +673,8 @@ def parse_config_param(
     :param_info: Dictionary corresponding to the JSON data under the given parameter in the config file.
     :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
     """
-    logger = CustomLogger("parse_config_param")
-    logger.body(f"Parsing config parameter {name}", newline=True)
+    logger = CustomLogger()
+    logger.subheader(f"Parsing config parameter '{name}'", newline=True)
 
     if info["type"] == "list":
         res = ListParam(
@@ -738,7 +738,7 @@ def parse_config_params(
     """
     Parse the parameters in the config file and generate lists of possible values for each parameter.
     """
-    logger = CustomLogger("parse_config_params")
+    logger = CustomLogger()
 
     params: Params = Params()
     for param_name in model_settings["parameters"]:
@@ -862,8 +862,9 @@ class SimTables:
             )
 
         for brightness in self.brightness_param.values:
-            self.logger.body(
-                f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}"
+            self.logger.step(
+                f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}",
+                newline=False,
             )
             self.d[brightness] = SimTable(brightness)
 
@@ -895,7 +896,6 @@ class SimTables:
 
         for brightness in self.brightness_param.values:
             self.d[brightness].save_sim_table(self.model_name, tables_dir)
-        self.logger.success()
 
     def load_all(self, tables_dir: str, brightness_param: Param):
         self.logger.loading(
@@ -941,22 +941,27 @@ def parse_colname_info(model_settings: Dict, model_name: str):
     return filename, mjd_colname, mag_colname, flux_colname
 
 
+def get_model_settings(model_name: str, step1_config: Dict) -> Dict:
+    if " " in model_name:
+        raise RuntimeError("Model name cannot have spaces.")
+    if model_name not in step1_config:
+        raise RuntimeError(
+            f"Model '{model_name}' not found in simulation config file\n"
+            f"Available models: {', '.join(step1_config.keys())}"
+        )
+    CustomLogger.s_loading(f"Getting settings for model '{model_name}'", newline=True)
+    res = step1_config[model_name]
+    CustomLogger.s_success()
+    return res
+
+
 if __name__ == "__main__":
     logger = CustomLogger()
 
     args = define_args().parse_args()
     config = load_config(args.config_file)
     step1_config = load_json_config(args.step1_config_file)
-
-    if " " in args.model_name:
-        raise RuntimeError("Model name cannot have spaces.")
-    if args.model_name not in step1_config:
-        raise RuntimeError(
-            f"Model '{args.model_name}' not found in simulation config file\n"
-            f"Available models: {', '.join(step1_config.keys())}"
-        )
-    logger.loading(f"Loading settings for model '{args.model_name}'")
-    model_settings = step1_config[args.model_name]
+    model_settings = get_model_settings(args.model_name, step1_config)
 
     logger.header("Parsing model parameters")
     params = parse_config_params(

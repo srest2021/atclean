@@ -1109,7 +1109,6 @@ if __name__ == "__main__":
     if args.mjd0:
         logger.info(f"MJD0: {args.mjd0}")
 
-    # print(f'\nApplyin control light curve cut: {args.controls}')
     num_controls = (
         args.num_controls
         if not args.num_controls is None

@@ -35,6 +35,7 @@ from step1_generate_sim_tables import (
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
+    CustomLogger,
     PresetColumnNames,
     count2mag,
     extract_from_subdir,
@@ -46,6 +47,7 @@ from utils import (
     load_preset_column_names_from_config,
     mag2count,
     mag2flux,
+    print_progress_bar,
 )
 
 
@@ -278,6 +280,8 @@ class Model(Simulation):
         Simulation.__init__(self, model_name=model_name, **kwargs)
         self.t = None
 
+        self.logger = CustomLogger("Model")
+
         self.load(
             filename,
             mjd_colname=mjd_colname,
@@ -304,7 +308,7 @@ class Model(Simulation):
         :param flux_colname: Flux column name in the model file (None if present but no column name; False if not present).
         """
         if verbose:
-            print(f"\nLoading model at {filename}...")
+            self.logger.loading(f"Loading model at {filename}", newline=True)
 
         if mag_colname is False and flux_colname is False:
             raise RuntimeError(
@@ -357,7 +361,7 @@ class Model(Simulation):
 
         if verbose:
             print(self.t[["MJD", "m", "uJy"]].head().to_string())
-            print("✅ Success")
+            self.logger.success()
 
     def get_sim_flux(
         self,
@@ -414,18 +418,19 @@ class SimDetecTable(SimTable):
         :brightness: Brightness (e.g., peak apparent magnitude or flux) for all simulations in this table.
         """
         SimTable.__init__(self, brightness, **kwargs)
+        self.logger = CustomLogger(self.__class__.__name__)
         self.sigma_kern: float = sigma_kern
 
     def validate_model_name_col(self):
         if self.t.empty:
-            print(
-                "⚠️ WARNING: Could not validate 'model_name' column because the SimDetecTable is empty"
+            self.logger.warning(
+                "Could not validate 'model_name' column because the SimDetecTable is empty"
             )
             return
 
         if not "model_name" in self.t.columns:
-            print(
-                "⚠️ WARNING: Could not validate 'model_name' column because the SimDetecTable column does not exist"
+            self.logger.warning(
+                "Could not validate 'model_name' column because the SimDetecTable column does not exist"
             )
             return
 
@@ -579,6 +584,7 @@ class SimDetecTables:
         model_name: str,
         sigma_kerns: List[float],
     ):
+        self.logger = CustomLogger(self.__class__.__name__)
         self.filt: str = filt
         self.model_name: str = model_name
         self.sigma_kerns: List[float] = sigma_kerns
@@ -645,7 +651,9 @@ class SimDetecTables:
         )
 
     def save_all(self, detec_tables_dir: str):
-        print(f"\n💾 Saving SimDetecTables in directory: {detec_tables_dir}")
+        self.logger.saving(
+            f"Saving SimDetecTables in directory: {detec_tables_dir}", newline=True
+        )
         self._check_tables_exist()
         make_dir_if_not_exists(detec_tables_dir)
         for sigma_kern in self.d.keys():
@@ -658,8 +666,9 @@ class SimDetecTables:
 
         :param sim_tables_dir: Directory where the SimTables are located.
         """
-        print(
-            f"\nConstructing SimDetecTables from existing SimTables in directory: {sim_tables_dir}"
+        self.logger.loading(
+            f"Constructing SimDetecTables from existing SimTables in directory: {sim_tables_dir}",
+            newline=True,
         )
 
         if self.brightness_param is None:
@@ -672,7 +681,7 @@ class SimDetecTables:
                 self.d[sigma_kern][brightness].load_from_sim_table(
                     self.model_name, sim_tables_dir
                 )
-        print("✅ Success")
+        self.logger.success()
 
     def load_all(self, detec_tables_dir: str):
         """
@@ -680,7 +689,9 @@ class SimDetecTables:
 
         :param detec_tables_dir: Directory where the SimDetecTables are located.
         """
-        print(f"\nLoading SimDetecTables from directory: {detec_tables_dir}")
+        self.logger.loading(
+            f"Loading SimDetecTables from directory: {detec_tables_dir}", newline=True
+        )
 
         if self.brightness_param is None:
             raise RuntimeError("brightness_param cannot be None")
@@ -692,7 +703,7 @@ class SimDetecTables:
                 self.d[sigma_kern][brightness].load_detec_table(
                     self.model_name, self.filt, detec_tables_dir
                 )
-        print("✅ Success")
+        self.logger.success()
 
     def iterator(self):
         """
@@ -726,10 +737,7 @@ class SimDetecTables:
 class SimulationFactory:
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-
-    def _log(self, msg: str):
-        if self.verbose:
-            print(msg)
+        self.logger = CustomLogger(self.__class__.__name__)
 
     def _parse_colname_val(self, colname: str, row: dict):
         if colname not in row:
@@ -753,19 +761,22 @@ class SimulationFactory:
         flux_colname = self._parse_colname_val("flux_colname", row)
 
         if model_name == GAUSSIAN_MODEL_NAME:
-            self._log("\tConstructing Gaussian simulation")
+            if self.verbose:
+                self.logger.body("Constructing Gaussian simulation")
             return Gaussian()
         elif model_name == ASYMMETRIC_GAUSSIAN_MODEL_NAME:
-            self._log("\tConstructing AsymmetricGaussian simulation")
+            if self.verbose:
+                self.logger.body("Constructing AsymmetricGaussian simulation")
             return AsymmetricGaussian()
         else:
             filename = row["filename"]
             if not isinstance(filename, str) or len(filename) < 1:
                 raise ValueError(f"Invalid filename: {filename}")
 
-            self._log(
-                f"\tConstructing '{model_name}' simulation with MJD column {mjd_colname}, mag column {mag_colname}, flux column {flux_colname}, filename: {filename}"
-            )
+            if self.verbose:
+                self.logger.body(
+                    f"Constructing '{model_name}' simulation with MJD column {mjd_colname}, mag column {mag_colname}, flux column {flux_colname}, filename: {filename}"
+                )
 
             return Model(
                 filename=filename,
@@ -793,6 +804,8 @@ class InjectionLoop(ABC):
         detec_tables_dir: str,
         **kwargs,
     ):
+        self.logger = CustomLogger()
+
         self.sigma_kerns: List[float] = sigma_kerns
         self.model_name = model_name
         self.sim_tables_dir = sim_tables_dir
@@ -804,14 +817,16 @@ class InjectionLoop(ABC):
         self.tables: Optional[SimDetecTables] = None
 
     def get_brightness_param_from_sim_tables(self, param_name: str = "brightness"):
+        self.logger.subheader("Getting brightness parameter from SimTables")
         pattern = re.compile(rf"^sim_{re.escape(self.model_name)}_(\d+\.\d+)\.txt$")
         values = get_brightness_values_from_dir(self.sim_tables_dir, pattern)
         self._brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
-        print(self._brightness_param)
+        self.logger.success("Result: " + self._brightness_param.__str__())
 
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
+        self.logger.subheader("Getting brightness parameter from SimDetecTables")
         if self._sn is None:
             raise RuntimeError(
                 "Supernova (self._sn) must be set before getting brightness parameter from SimDetecTables"
@@ -824,7 +839,7 @@ class InjectionLoop(ABC):
         self._brightness_param = ListParam(
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
-        print(self._brightness_param)
+        self.logger.success("Result: " + self._brightness_param.__str__())
 
     def set_brightness_param(self, values: List[float], param_name="brightness"):
         self._brightness_param = ListParam(
@@ -846,7 +861,7 @@ class InjectionLoop(ABC):
         if mjd_ranges is not None:
             self._sn.set_mjd_ranges(mjd_ranges)
         if skip_control_ix is not None and len(skip_control_ix) > 0:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self.logger.body(f"Skipping control light curve indices: {skip_control_ix}")
             self._sn.remove_lc_indices(skip_control_ix)
 
     def load_sn(
@@ -986,9 +1001,9 @@ class InjectionLoop(ABC):
         :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
         """
         if verbose:
-            print(f"Adding simulation: {sim}")
+            self.logger.body(f"Adding simulation: {sim}")
             if kwargs:
-                print(f"Additional simulation parameters: {kwargs}")
+                self.logger.body(f"Additional simulation parameters: {kwargs}")
         if self._sn is None:
             raise ValueError(
                 "Supernova (self._sn) must be set before injecting a simulation"
@@ -1000,8 +1015,8 @@ class InjectionLoop(ABC):
 
         lc = deepcopy(self._sn.lcs[control_index])
         if not lc.colnames.snrsumnorm in lc.t.columns:
-            print(
-                "⚠️ WARNING: Rolling sum not applied to light curve prior to injecting simulation"
+            self.logger.warning(
+                "Rolling sum not applied to light curve prior to injecting simulation"
             )
 
         good_ix = lc.get_good_indices(flag=self._sn.flag)
@@ -1075,6 +1090,7 @@ class InjectionLoop(ABC):
 
     def loop(
         self,
+        progress_bar: bool = True,
         **kwargs,
     ):
         """
@@ -1097,38 +1113,56 @@ class InjectionLoop(ABC):
 
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
-            print(
-                f"\nUsing rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days..."
-                "\n-----------------------------------------------------"
+            # print(
+            #     f"\nUsing rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days..."
+            #     "\n-----------------------------------------------------"
+            # )
+            self.logger.subheader(
+                f"Using rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days"
             )
             self._sn.apply_rolling_sums(
-                sigma_kern, valid_mjd_ix=True, pre_mjd0_ix=False
+                sigma_kern, valid_mjd_ix=self._sn.has_valid_mjd_ix(), pre_mjd0_ix=False
             )
 
-            sim_factory = SimulationFactory(verbose=True)
+            sim_factory = SimulationFactory()
 
             # loop through each possible peak apparent magnitude
             for peak_appmag in self._brightness_param.values:
                 sim_detec_table = self.tables.get_table(sigma_kern, peak_appmag)
                 sim_detec_table.validate_model_name_col()
-                print(
-                    f"- Commencing {len(sim_detec_table.t)} simulations for peak brightness of {format_float_string(peak_appmag)} app mag (= {format_float_string(mag2flux(peak_appmag))} uJy)..."
+                self.logger.step(
+                    f"Commencing {len(sim_detec_table.t)} simulations for peak brightness of {format_float_string(peak_appmag)} app mag (= {format_float_string(mag2flux(peak_appmag))} uJy)",
+                    newline=False,
                 )
 
                 # load the Simulation object based on the data in the first row
-                # (we assume here that every row adds the same type of model)
+                # (we assume here that every row in a table adds the same type of model)
                 sim = sim_factory.from_table(sim_detec_table, 0)
+                if sim.model_name != self.model_name:
+                    raise ValueError(
+                        f"Model name mismatch: expected {self.model_name}, got {sim.model_name}"
+                    )
 
-                for i in range(len(sim_detec_table.t)):
+                l = len(sim_detec_table.t)
+                if progress_bar:
+                    print_progress_bar(
+                        0, l, prefix="Progress:", suffix="Complete", length=50
+                    )
+                for i in range(l):
                     self.inject_and_record_sim(
                         sim_detec_table, i, sim, sigma_kern, peak_appmag
                     )
+                    if progress_bar:
+                        print_progress_bar(
+                            i + 1, l, prefix="Progress:", suffix="Complete", length=50
+                        )
 
                 self.tables.save_detec_table(
                     sigma_kern, peak_appmag, self.detec_tables_dir
                 )
-                print("\t✅ Success")
-        print("\nFinished generating all SimDetecTables")
+                if not progress_bar:
+                    self.logger.success()
+        self.logger.success("Finished generating all SimDetecTables", newline=True)
 
 
 class AtlasInjectionLoop(InjectionLoop):
@@ -1318,14 +1352,21 @@ def define_args(
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     config = load_config("config.ini")
     args = define_args(config).parse_args()
 
-    print(
-        f"\nGenerating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float_string(args.mjd_bin_size)} days"
+    logger.info(
+        f"Generating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float_string(args.mjd_bin_size)} days",
+        newline=True,
     )
-    print(f"Simulations model name: {args.model_name}")
-    print(f"Weighted Gaussian rolling sum kernel sizes (days): {args.sigma_kerns}")
+    logger.info(f"Simulations model name: {args.model_name}")
+    logger.info(
+        f"Weighted Gaussian rolling sum kernel sizes (days): {args.sigma_kerns}"
+    )
+    if args.mjd_ranges is not None:
+        logger.info(f"Valid MJD ranges: {args.mjd_ranges}")
     if " " in args.model_name:
         raise RuntimeError("Model name cannot have spaces.")
 
@@ -1351,10 +1392,7 @@ if __name__ == "__main__":
         skip_control_ix=args.skip_control_ix,
         flag=hexstring_to_int(config["averaging"]["flag"]),
     )
-    if args.mjd_ranges is not None:
-        print(f"\nValid MJD ranges: {args.mjd_ranges}")
 
-    print()
     injection_loop.get_brightness_param_from_sim_tables()
     injection_loop.load_sim_tables()
     injection_loop.loop()

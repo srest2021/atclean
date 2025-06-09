@@ -108,6 +108,9 @@ class CustomLogger:
     def warning(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, symbol="⚠️ WARNING:", newline=newline, dots=dots)
 
+    def error(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="❌ ERROR:", newline=newline, dots=dots)
+
     def success(
         self, message: str = "Success", newline: bool = False, dots: bool = False
     ):
@@ -133,9 +136,9 @@ class CustomLogger:
     def body(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, newline=newline, dots=dots)
 
-    def listitem(self, message: str, symbol="-"):
+    def listitem(self, message: str, symbol="•", dots: bool = False):
         # no prefix for listitem
-        print(f"{symbol} {message}")
+        print(f'{symbol} {message}{"..." if dots else ""}')
 
     def info(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, symbol="🔧", newline=newline, dots=dots)
@@ -249,12 +252,13 @@ def app2absmag(values: List[float], distance_modulus=29.04, precision=2):
     return [round(v - distance_modulus, precision) for v in values]
 
 
-# load a JSON config file
 def load_json_config(filename: str):
     try:
-        CustomLogger.s_loading(f"Loading JSON config file at {filename}...")
+        CustomLogger.s_loading(f"Loading JSON config file at {filename}", newline=True)
         with open(filename) as cfg:
-            return json.load(cfg)
+            res = json.load(cfg)
+            CustomLogger.s_success()
+            return res
     except Exception as e:
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
 
@@ -971,17 +975,17 @@ class PresetColumnNames:
         """Readable string representation of all column names."""
         skip_colnames = ["mjdbin", "fdf", "mask"]
 
-        lines = ["--- Required Columns ---"]
+        lines = ["-- Required Columns --"]
         for k, v in self.required_columns.items():
             if k in skip_colnames:
                 continue
             lines.append(f"{k}: {v}")
 
-        lines.append("--- Optional Columns ---")
+        lines.append("-- Optional Columns --")
         for k, v in self.optional_columns.items():
             lines.append(f"{k}: {v}")
 
-        lines.append("--- Extra Columns to Copy ---")
+        lines.append("-- Extra Columns to Copy --")
         lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
 
         return "\n".join(lines)
@@ -1186,7 +1190,9 @@ class SnInfoTable:
             self.filename = f"{directory}/{filename}"
 
         try:
-            self.logger.loading(f"Loading SN info table at {self.filename}")
+            self.logger.loading(
+                f"Loading SN info table at {self.filename}", newline=True
+            )
             self.t = pd.read_table(self.filename, sep="\s+")
             if not "tnsname" in self.t.columns:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
@@ -1516,7 +1522,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
                 logger.body(f"Waiting {waittime} seconds")
                 time.sleep(waittime)
             else:
-                logger.body(f"ERROR {resp.status_code}")
+                logger.error(f"{resp.status_code}")
                 logger.body(resp.text)
                 sys.exit()
 
@@ -1545,7 +1551,7 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
                     # print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
                     time.sleep(4)
             else:
-                logger.body(f"ERROR {resp.status_code}")
+                logger.error(f"{resp.status_code}")
                 logger.body(resp.text)
                 sys.exit()
 

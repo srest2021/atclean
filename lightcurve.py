@@ -1943,7 +1943,7 @@ class SimDetecSupernova(AveragedSupernova):
         return pd.Series(dtype=float)
 
     def get_all_fom_dict(self, sigma_kerns: List[float]) -> Dict[float, pd.Series]:
-        print(f"Getting all control FOM for MJD ranges {self._mjd_ranges}...")
+        self.logger.body(f"Getting all control FOM for MJD ranges {self._mjd_ranges}")
         if self._mjd_ranges is None:
             raise RuntimeError(f"Valid MJD ranges cannot be None")
 
@@ -1956,7 +1956,7 @@ class SimDetecSupernova(AveragedSupernova):
         self,
         sigma_kerns: List[float],
     ) -> tuple[Dict[float, pd.Series], FomLimits]:
-        self.logger.body(
+        self.logger.subheader(
             f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}"
         )
         res = FomLimits()
@@ -1973,7 +1973,7 @@ class SimDetecSupernova(AveragedSupernova):
             max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
             res.add(sigma_kern, max_fom)
 
-        self.logger.body(f"Valid FOM limit ranges: {res}")
+        self.logger.success(f"Valid FOM limit ranges: {res}")
         return all_fom_dict, res
 
     def scan_sn_for_detections(self, sigma_kerns: List[float], fom_limits: FomLimits):
@@ -2037,7 +2037,7 @@ class SimDetecSupernova(AveragedSupernova):
             sn_indices = AandB(sn_indices, self.lcs[0].pre_mjd0_ix)
         if out:
             msg += " (" + "; ".join(out) + ")"
-        self.logger.body(msg, dots=True)
+        self.logger.body(msg)
 
         # apply rolling sum to SN lc
         self.lcs[0].apply_rolling_sum(sigma_kern, flag=self.flag, indices=sn_indices)
