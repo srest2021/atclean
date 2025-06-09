@@ -988,7 +988,7 @@ class InjectionLoop(ABC):
         sim: Simulation,
         remove_old: bool = True,
         verbose: bool = False,
-        **kwargs,
+        **params,
     ):
         """
         Add any Simulation object to a copy of a light curve, specifying parameters using keyword arguments.
@@ -998,12 +998,12 @@ class InjectionLoop(ABC):
         :param control_index: The control index of the light curve to add the Simulation to.
         :param sim: The Simulation to add.
         :param remove_old: Remove any old simulations before adding the new simulated flux.
-        :param kwargs: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
+        :param params: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
         """
         if verbose:
             self.logger.body(f"Adding simulation: {sim}")
-            if kwargs:
-                self.logger.body(f"Additional simulation parameters: {kwargs}")
+            if params:
+                self.logger.body(f"Additional simulation parameters: {params}")
         if self._sn is None:
             raise ValueError(
                 "Supernova (self._sn) must be set before injecting a simulation"
@@ -1021,7 +1021,7 @@ class InjectionLoop(ABC):
 
         good_ix = lc.get_good_indices(flag=self._sn.flag)
 
-        sim_flux = self.compute_sim_flux(sim, brightness, lc, indices=good_ix, **kwargs)
+        sim_flux = self.compute_sim_flux(sim, brightness, lc, indices=good_ix, **params)
 
         lc.add_sim_flux(
             sim_flux,
@@ -1113,10 +1113,6 @@ class InjectionLoop(ABC):
 
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
-            # print(
-            #     f"\nUsing rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days..."
-            #     "\n-----------------------------------------------------"
-            # )
             self.logger.subheader(
                 f"Using rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days"
             )
@@ -1189,8 +1185,6 @@ class AtlasInjectionLoop(InjectionLoop):
                 "A peak MJD parameter ('time_peak_mjd') is required to find the max FOM"
             )
         if sigma_sim is None:
-            # # replace with default sigma sim for Charlie's model
-            # sigma_sim = 2.8
             raise ValueError(
                 "A Simulation sigma parameter ('sigma_sim') is required to find the max FOM"
             )
@@ -1228,8 +1222,6 @@ class TessInjectionLoop(InjectionLoop):
                 "A peak MJD parameter ('time_peak_mjd') is required to find the max FOM"
             )
         if sigma_sim is None:
-            # # replace with default sigma sim for Charlie's model
-            # sigma_sim = 2.8
             raise ValueError(
                 "A Simulation sigma parameter ('sigma_sim') is required to find the max FOM"
             )
@@ -1264,6 +1256,22 @@ class TessInjectionLoop(InjectionLoop):
             flux_to_brightness_fn=count2mag_zpt,
             **kwargs,
         )
+
+    def add_simulation_to_lc(
+        self,
+        sigma_kern,
+        brightness,
+        control_index,
+        sim,
+        remove_old=True,
+        verbose=False,
+        **params,
+    ):
+        sim_flux, lc = super().add_simulation_to_lc(
+            sigma_kern, brightness, control_index, sim, remove_old, verbose, **params
+        )
+
+        # TODO: flatten/detrend
 
 
 def mjd_range_type(value):

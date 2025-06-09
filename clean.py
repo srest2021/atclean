@@ -988,9 +988,9 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
     )
     parser.add_argument(
         "--filters",
-        type=str,
+        nargs="+",
         default=None,
-        help="comma-separated list of filters to clean",
+        help="list of filters to clean",
     )
     parser.add_argument(
         "--plot",
@@ -1095,15 +1095,11 @@ if __name__ == "__main__":
     print()
     logger.info(f"ATClean input directory: {input_dir}")
     logger.info(f"Output directory: {output_dir}")
-
-    logger.secret(f'TNS ID: {config["credentials"]["tns_id"]}')
-    logger.secret(f'TNS bot name: {config["credentials"]["tns_bot_name"]}')
-
     logger.info(f"Overwrite existing files: {args.overwrite}")
     logger.info(f"Save PDF of diagnostic plots: {args.plot}")
-    filters = parse_comma_separated_string(args.filters)
-    if filters is not None:
-        logger.info(f"Filters to clean: {filters}")
+    # filters = parse_comma_separated_string(args.filters)
+    if args.filters is not None:
+        logger.info(f"Filters to clean: {args.filters}")
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
     logger.info(f"Sigma limit when converting flux to magnitude: {flux2mag_sigmalimit}")
     if args.mjd0:
@@ -1118,7 +1114,6 @@ if __name__ == "__main__":
 
     cut_list = parse_config_cuts(args, config, colnames)
 
-    print()
     credentials = Credentials(
         config["credentials"]["atlas_username"],
         config["credentials"]["atlas_password"],
@@ -1126,6 +1121,10 @@ if __name__ == "__main__":
         config["credentials"]["tns_id"],
         config["credentials"]["tns_bot_name"],
     )
+    logger.secret(f"TNS ID: {credentials.tns_id}", newline=True)
+    logger.secret(f"TNS bot name: {credentials.tns_bot_name}")
+    credentials.prompt_for_tns_api_key()
+
     clean = CleanLoop(
         colnames,
         input_dir,
@@ -1145,7 +1144,7 @@ if __name__ == "__main__":
         cut_list=cut_list,
         num_controls=num_controls,
         mjd0=args.mjd0,
-        filts=filters,
+        filts=args.filters,
         apply_template_correction=args.template_correction,
         plot=args.plot,
     )

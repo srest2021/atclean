@@ -102,7 +102,7 @@ class Plot:
     def __init__(
         self, output_dir: Optional[str] = None, color_scheme: Optional[Dict] = None
     ):
-        self.logger = CustomLogger(self.__class__.__name__)
+        self.logger = CustomLogger()
 
         self.output_dir = output_dir
 
@@ -1882,7 +1882,7 @@ class Plot:
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
         Plot.__init__(self)
-        self.logger = CustomLogger(self.__class__.__name__)
+        self.logger = CustomLogger()
         self.filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
         self.pdf = PdfPages(self.filename)
 

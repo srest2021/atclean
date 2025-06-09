@@ -418,6 +418,10 @@ class ControlCoordinatesTableFactory:
         center_coords: Optional[Coordinates] = None,
         sn_min_dist: Optional[float] = None,
     ) -> ControlCoordinatesTable:
+        CustomLogger.s_subheader(
+            "Constructing table of control light curve coordinates"
+        )
+
         ControlCoordinatesTableFactory.validate(
             download_controls,
             num_controls=num_controls,
@@ -490,7 +494,7 @@ def resolve_sn_coords_and_mjd0(
 ) -> tuple[float, Coordinates]:
     logger = CustomLogger("resolve_sn_coords_and_mjd0")
 
-    logger.header("Resolving SN coordinates, center coordinates, and MJD0")
+    logger.subheader("Resolving SN coordinates, center coordinates, and MJD0")
     sn_coords, center_coords, mjd0 = None, None, None
 
     # first, try SN info table
@@ -649,7 +653,7 @@ class AtlasLightCurveDownloader:
             self.logger.body(
                 f"Control light curve coordinates table: \n{control_coords_table}"
             )
-            self.logger.header("Download: SN light curve")
+            self.logger.subheader("Download: SN light curve")
             self.logger.body("Skipped")
 
             return control_coords_table
@@ -657,7 +661,7 @@ class AtlasLightCurveDownloader:
         control_coords_table.construct(tnsname, sn_coords)
         print()
 
-        self.logger.header("Download: SN light curve")
+        self.logger.subheader("Download: SN light curve")
         total_len, filt_lens = self.download_lc(
             0,
             sn_coords,
@@ -685,7 +689,7 @@ class AtlasLightCurveDownloader:
         )
 
         for control_index, coords in control_coords_table.iterator():
-            self.logger.header(f"Download: Control light curve {control_index}")
+            self.logger.subheader(f"Download: Control light curve {control_index}")
             if not overwrite and control_index in existing_control_indices:
                 self.logger.warning(
                     f"Overwrite set to {overwrite} and light curve already exists; skipping download",
@@ -874,7 +878,6 @@ if __name__ == "__main__":
     creds.prompt_for_tns_api_key()
 
     # set up SnInfoTable
-    print()
     sninfo_filename = args.sninfo_file or config["dir"]["sninfo_filename"]
     sninfo = SnInfoTable(output_dir, filename=sninfo_filename)
 

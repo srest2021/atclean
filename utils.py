@@ -1830,7 +1830,7 @@ class CutList:
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
-            self.warning(
+            self.logger.warning(
                 f"Cut by the name {cut.name()} already exists; overwriting", dots=True
             )
         self.list[cut.name()] = cut

@@ -855,15 +855,20 @@ class LightCurve(pdastrostatsclass):
         flag: Optional[int] = None,
         use_all: bool = False,
         mjd0: Optional[float] = None,
+        scale_offset: float = 0.05,
     ) -> tuple[float | None, float | None]:
         if self.t.empty or len(self.t) < 2:
             return None, None
 
         if indices is None or len(indices) < 2:
-            if use_all:
+            if flag is not None:
+                indices = self.get_good_indices(flag)
+            elif use_all or not self.colnames.dflux_new in self.t.columns:
                 indices = self.getindices()
             else:
-                indices = self.get_good_indices(flag)
+                # by default, exclude all measurements with dflux > 160 from the flux min & max calculation
+                indices = self.ix_inrange(colnames=self.colnames.dflux_new, uplim=160)
+
         if mjd0 is not None:
             pre_mjd0_ix = self.get_preMJD0_indices(mjd0)
             if len(pre_mjd0_ix) > 0:
@@ -871,7 +876,7 @@ class LightCurve(pdastrostatsclass):
 
         flux_min = self.t.loc[indices, self.colnames.flux].min()
         flux_max = self.t.loc[indices, self.colnames.flux].max()
-        offset = 0.05 * abs(flux_max - flux_min)
+        offset = scale_offset * abs(flux_max - flux_min)
 
         return flux_min - offset, flux_max + offset
 
