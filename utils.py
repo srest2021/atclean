@@ -1062,19 +1062,15 @@ class Credentials:
         self.tns_id = parse_config_str(tns_id)
         self.tns_bot_name = parse_config_str(tns_bot_name)
 
-    def validate_tns_credentials(self):
-        tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
-        not_none_count = sum(param is not None for param in tns_params)
-        if 0 < not_none_count < 3:
-            raise RuntimeError(
-                "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
-            )
-
     def prompt_for_atlas_password(self):
         if self.atlas_password is None:
             self.atlas_password = getpass(prompt="Enter ATLAS password: ")
 
-    def prompt_for_tns_api_key(self):
+    def prompt_for_tns_creds(self):
+        if self.tns_id is None:
+            self.tns_id = getpass(prompt="Enter TNS ID: ")
+        if self.tns_bot_name is None:
+            self.tns_bot_name = getpass(prompt="Enter TNS bot name: ")
         if self.tns_api_key is None:
             self.tns_api_key = getpass(prompt="Enter TNS API key: ")
 
@@ -1477,7 +1473,7 @@ def get_mjd0_from_tns(
     else:
         # get MJD0 from TNS
         logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
-        credentials.validate_tns_credentials()
+        credentials.prompt_for_tns_creds()
         json_data = query_tns(
             tnsname,
             credentials.tns_api_key,

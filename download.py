@@ -526,7 +526,7 @@ def resolve_sn_coords_and_mjd0(
             raise ValueError(
                 "Cannot find coordinates or MJD0 in command line or SnInfoTable, but TNS credentials not provided"
             )
-        creds.validate_tns_credentials()
+        creds.prompt_for_tns_creds()
 
         tns_mjd0, tns_sn_coords = get_tns_data(
             tnsname,
@@ -875,7 +875,6 @@ if __name__ == "__main__":
     creds.prompt_for_atlas_password()
     logger.secret(f"TNS ID: {creds.tns_id}")
     logger.secret(f"TNS bot name: {creds.tns_bot_name}")
-    creds.prompt_for_tns_api_key()
 
     # set up SnInfoTable
     sninfo_filename = args.sninfo_file or config["dir"]["sninfo_filename"]

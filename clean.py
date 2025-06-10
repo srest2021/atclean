@@ -1136,7 +1136,6 @@ if __name__ == "__main__":
     )
     logger.secret(f"TNS ID: {credentials.tns_id}", newline=True)
     logger.secret(f"TNS bot name: {credentials.tns_bot_name}")
-    credentials.prompt_for_tns_api_key()
 
     clean = CleanLoop(
         colnames,

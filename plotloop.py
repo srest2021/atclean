@@ -407,7 +407,6 @@ if __name__ == "__main__":
     print()
     logger.secret(f"TNS ID: {creds.tns_id}")
     logger.secret(f"TNS bot name: {creds.tns_bot_name}")
-    creds.prompt_for_tns_api_key()
 
     lims = PlotLimits(
         xlower=args.xlim_lower,
