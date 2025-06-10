@@ -533,7 +533,7 @@ class Supernova:
         if self.tnsname is None:
             raise RuntimeError("TNS name (self.tnsname) cannot be None")
 
-        if control_index in self.control_lc_indices:
+        if control_index in self.lcs.keys():
             self.logger.warning(
                 f"Light curve with control index {control_index} already exists; overwriting",
                 dots=True,
@@ -562,12 +562,12 @@ class Supernova:
         if num_controls > 0:
             # look for existing control light curve files
             # so we don't fall into an infinite loop when num_controls > actual num existing controls
-            control_indices = find_all_control_indices(
+            existing_control_indices = find_all_control_indices(
                 input_dir, self.tnsname, filt=self.filt
             )
-            if len(control_indices) < num_controls:
+            if len(existing_control_indices) < num_controls:
                 raise RuntimeError(
-                    f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
+                    f"Tried to load {num_controls} control light curves, but only {len(existing_control_indices)} found: {existing_control_indices}"
                 )
 
             # keep iterating over control indices until we successfully load num_controls light curves
