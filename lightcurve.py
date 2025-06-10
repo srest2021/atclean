@@ -447,7 +447,7 @@ class Supernova:
         avg_sn.num_controls = self.num_controls
 
         for control_index in self.lc_indices:
-            avg_sn.set_avg_lc(
+            avg_sn.set_lc(
                 self.lcs[control_index].create_averaged_lc(
                     cut,
                     previous_flags,
@@ -478,20 +478,78 @@ class Supernova:
         for control_index in self.lc_indices:
             self.lcs[control_index].remove_flag(flag)
 
-    def load(self, input_dir, control_index=0, cleaned=False):
-        if self.tnsname is None:
-            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+    def has_pre_mjd0_ix(self):
+        return all(self.lcs[i].has_pre_mjd0_ix() for i in self.control_lc_indices)
 
+    def has_post_mjd0_ix(self):
+        return all(self.lcs[i].has_post_mjd0_ix() for i in self.control_lc_indices)
+
+    def get(self, control_index: int = 0):
+        try:
+            return self.lcs[control_index].t
+        except:
+            raise RuntimeError(
+                f"Cannot get averaged control light curve {control_index}. Available indices: {self.lc_indices}"
+            )
+
+    def has_pre_and_post_mjd0_ix(self):
+        return all(
+            self.lcs[i].has_pre_mjd0_ix() and self.lcs[i].has_post_mjd0_ix()
+            for i in self.control_lc_indices
+        )
+
+    def set_pre_and_post_mjd0_ix(
+        self, mjd0: Optional[float] = None, control_index: int = 0
+    ):
+        if self.mjd0 is None and mjd0 is None:
+            raise RuntimeError("Cannot set pre-MJD0 indices without MJD0")
+
+        if mjd0 is not None:
+            self.mjd0 = mjd0
+
+        self.lcs[control_index].set_pre_and_post_mjd0_ix(self.mjd0)
+
+    def set_lc(self, lc, control_index: int = 0):
+        self.lcs[control_index] = deepcopy(lc)
+        if self.mjd0 is not None:
+            self.set_pre_and_post_mjd0_ix(self.mjd0, control_index=control_index)
+
+    def set_lcs(self, lcs: Dict):
+        self.lcs = deepcopy(lcs)
+        if self.mjd0 is not None:
+            for control_index in self.control_lc_indices:
+                self.set_pre_and_post_mjd0_ix(self.mjd0, control_index=control_index)
+
+    def _get_lc_type_str(self, cleaned: bool = False):
+        return "cleaned " if cleaned else ""
+
+    def _load_new_lc(self, input_dir: str, control_index: int, cleaned: bool = False):
         self.lcs[control_index] = LightCurve(
             self.colnames, control_index=control_index, filt=self.filt
         )
         self.lcs[control_index].load_lc(input_dir, self.tnsname, cleaned=cleaned)
 
+    def load(self, input_dir, control_index=0, cleaned=False):
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+
+        if control_index in self.control_lc_indices:
+            self.logger.warning(
+                f"Light curve with control index {control_index} already exists; overwriting",
+                dots=True,
+            )
+
+        self._load_new_lc(input_dir, control_index, cleaned=cleaned)
+
+        if self.mjd0 is not None:
+            self.set_pre_and_post_mjd0_ix(control_index=control_index)
+
     def load_all(self, input_dir, num_controls=0, cleaned=False):
         self.logger.loading(
-            f"Loading SN light curve and {num_controls} control light curves",
+            f"Loading {self._get_lc_type_str(cleaned=cleaned)}SN light curve and {num_controls} {self._get_lc_type_str(cleaned=cleaned)}control light curves",
             newline=True,
         )
+
         if self.tnsname is None:
             raise RuntimeError("TNS name (self.tnsname) cannot be None")
 
@@ -499,17 +557,19 @@ class Supernova:
         self.num_controls = 0
 
         # load SN light curve
-        self.load(input_dir, cleaned=cleaned)
-
-        control_indices = find_all_control_indices(
-            input_dir, self.tnsname, filt=self.filt
-        )
-        if len(control_indices) < num_controls:
-            raise RuntimeError(
-                f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
-            )
+        self.load(input_dir, control_index=0, cleaned=cleaned)
 
         if num_controls > 0:
+            # look for existing control light curve files
+            # so we don't fall into an infinite loop when num_controls > actual num existing controls
+            control_indices = find_all_control_indices(
+                input_dir, self.tnsname, filt=self.filt
+            )
+            if len(control_indices) < num_controls:
+                raise RuntimeError(
+                    f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
+                )
+
             # keep iterating over control indices until we successfully load num_controls light curves
             control_index = 1
             while self.num_controls < num_controls:
@@ -518,28 +578,43 @@ class Supernova:
                     self.num_controls += 1
                 except:
                     self.logger.warning(
-                        f"Could not load control light curve {control_index}; skipping",
+                        f"Could not load {self._get_lc_type_str(cleaned=cleaned)}control light curve #{control_index}; skipping",
                         dots=True,
                     )
                     del self.lcs[control_index]
                 control_index += 1
-
-        self.logger.success(
-            f"Successfully loaded SN light curve and {self.num_controls} control light curves (control indices: {self.control_lc_indices})"
-        )
 
         # check for dflux_new column if cleaned
         # if found, update colnames in self and all lc objects
         if cleaned and f"{self.colnames.dflux}_new" in self.lcs[0].t.columns:
             self.update_all_colnames("dflux_new", f"{self.colnames.dflux}_new")
 
+        self.logger.success(
+            f"Successfully loaded {self._get_lc_type_str(cleaned=cleaned)}SN light curve and {self.num_controls} {self._get_lc_type_str(cleaned=cleaned)}control light curves (control indices: {self.control_lc_indices})"
+        )
+
     def update_all_colnames(self, key: str, name: str):
         self.logger.body(
-            f"Updating column names for all light curves in this Supernova object: key '{key}', name '{name}')"
+            f"Updating column names for all light curves in this {self.__class__.__name__} object: key '{key}', name '{name}')"
         )
         self.colnames.update(key, name)
         for control_index in self.lc_indices:
             self.lcs[control_index].colnames.update(key, name)
+
+    def save_all(self, output_dir, overwrite=False, cleaned=True):
+        self.logger.saving(
+            f'Dropping extra columns and saving {self._get_lc_type_str(cleaned=cleaned)}SN light curve and {self.num_controls} {self._get_lc_type_str(cleaned=cleaned)}control light curves {"" if overwrite else " (only if file does not already exist)"}',
+            newline=True,
+        )
+
+        if self.tnsname is None:
+            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+
+        for control_index in self.lc_indices:
+            self.lcs[control_index].drop_extra_columns()
+            self.lcs[control_index].save_lc(
+                output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
+            )
 
     @property
     def lc_indices(self):
@@ -604,19 +679,6 @@ class Supernova:
             if index not in self.control_lc_indices:
                 bisect.insort(self._control_indices, index)
 
-    def save_all(self, output_dir, overwrite=False, cleaned=True):
-        self.logger.saving(
-            f'Dropping extra columns and saving {"cleaned " if cleaned else ""}SN light curve and {self.num_controls} {"cleaned " if cleaned else ""}control light curves {"" if overwrite else " (only if file does not already exist)"}',
-            newline=True,
-        )
-        if self.tnsname is None:
-            raise RuntimeError("TNS name (self.tnsname) cannot be None")
-        for control_index in self.lc_indices:
-            self.lcs[control_index].drop_extra_columns()
-            self.lcs[control_index].save_lc(
-                output_dir, self.tnsname, overwrite=overwrite, cleaned=cleaned
-            )
-
     def __str__(self):
         return f"SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
 
@@ -642,59 +704,8 @@ class AveragedSupernova(Supernova):
 
         self.lcs: Dict[int, AveragedLightCurve] = {}
 
-    def set_avg_lc(self, lc, control_index: int = 0):
-        self.lcs[control_index] = deepcopy(lc)
-
-    def set_avg_lcs(self, lcs: Dict):
-        self.lcs = deepcopy(lcs)
-
-    def get_avg(self, control_index: int = 0):
-        try:
-            return self.lcs[control_index].t
-        except:
-            raise RuntimeError(
-                f"Cannot get averaged control light curve {control_index}. Num controls set to {self.num_controls} and {len(self.lcs)} lcs in dictionary."
-            )
-
-    def has_pre_mjd0_ix(self):
-        for control_index in self.control_lc_indices:
-            if not self.lcs[control_index].has_pre_mjd0_ix():
-                return False
-        return True
-
     def has_valid_mjd_ix(self):
-        for control_index in self.control_lc_indices:
-            if not self.lcs[control_index].has_valid_mjd_ix():
-                return False
-        return True
-
-    def get_good_indices(self, control_index: int = 0, flag: Optional[int] = None):
-        # if flag is 0 or no mask column, return all indices
-        if flag == 0 or not self.colnames.mask in self.lcs[control_index].t.columns:
-            return self.lcs[control_index].getindices()
-
-        if flag is None:
-            flag = self.flag
-
-        if flag is None:
-            # get all flags present in mask column
-            flag = self.lcs[control_index].get_flags()
-
-        return self.lcs[control_index].ix_unmasked(self.colnames.mask, maskval=flag)
-
-    def get_bad_indices(self, control_index: int = 0, flag: Optional[int] = None):
-        # if flag is 0 or no mask column, return no indices
-        if flag == 0 or not self.colnames.mask in self.lcs[control_index].t.columns:
-            return []
-
-        if flag is None:
-            flag = self.flag
-
-        if flag is None:
-            # get all flags present in mask column
-            flag = self.lcs[control_index].get_flags()
-
-        return self.lcs[control_index].ix_masked(self.colnames.mask, maskval=flag)
+        return all(self.lcs[i].has_valid_mjd_ix() for i in self.control_lc_indices)
 
     def get_mjd_ranges(self) -> List[List[float]]:
         if self._mjd_ranges is None:
@@ -714,79 +725,23 @@ class AveragedSupernova(Supernova):
         for control_index in self.lc_indices:
             self.lcs[control_index].set_valid_mjd_ix(self._mjd_ranges)
 
-    def set_pre_MJD0_ix(self, mjd0: Optional[float] = None, control_index: int = 0):
-        if self.mjd0 is None and mjd0 is None:
-            raise RuntimeError("Cannot set pre-MJD0 indices without MJD0")
+    def _get_lc_type_str(self, **kwargs):
+        return "binned "
 
-        if mjd0 is not None:
-            self.mjd0 = mjd0
-
-        self.lcs[control_index].set_pre_MJD0_ix(self.mjd0)
-
-    def load(self, input_dir: str, control_index: int = 0):
+    def _load_new_lc(self, input_dir: str, control_index: int, **kwargs):
         self.lcs[control_index] = AveragedLightCurve(
             self.colnames,
             control_index=control_index,
             filt=self.filt,
             mjdbinsize=self.mjdbinsize,
         )
-
         self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
-        if self.mjd0 is not None:
-            self.set_pre_MJD0_ix(control_index=control_index)
-
     def load_all(self, input_dir: str, num_controls: int = 0):
-        self.logger.loading(
-            f"Loading averaged SN light curve and {num_controls} averaged control light curves",
-            newline=True,
-        )
-        if self.tnsname is None:
-            raise RuntimeError("TNS name (self.tnsname) cannot be None")
+        return super().load_all(input_dir, num_controls=num_controls, cleaned=False)
 
-        self.lcs = {}
-        self.num_controls = 0
-
-        # load averaged SN light curve
-        self.load(input_dir)
-
-        control_indices = find_all_control_indices(
-            input_dir, self.tnsname, filt=self.filt
-        )
-        if len(control_indices) < num_controls:
-            raise RuntimeError(
-                f"Tried to load {num_controls} control light curves, but only {len(control_indices)} found: {control_indices}"
-            )
-
-        if num_controls > 0:
-            # keep iterating over control indices until we successfully load num_controls averaged light curves
-            control_index = 1
-            while self.num_controls < num_controls:
-                try:
-                    self.load(input_dir, control_index=control_index)
-                    self.num_controls += 1
-                except:
-                    self.logger.warning(
-                        f"Could not load averaged control light curve {control_index}; skipping",
-                        dots=True,
-                    )
-                    del self.lcs[control_index]
-                control_index += 1
-
-        self.logger.success(
-            f"Successfully loaded averaged SN light curve and {self.num_controls} averaged control light curves (control indices: {self.control_lc_indices})"
-        )
-
-    def save_all(self, output_dir: str, overwrite: bool = False):
-        self.logger.saving(
-            f'Dropping extra columns and saving averaged SN light curve and {self.num_controls} averaged control light curves{"" if overwrite else " (only if file does not already exist)"}',
-            newline=True,
-        )
-        for control_index in self.lc_indices:
-            self.lcs[control_index].drop_extra_columns()
-            self.lcs[control_index].save_lc(
-                output_dir, self.tnsname, overwrite=overwrite
-            )
+    def save_all(self, output_dir, overwrite=False):
+        return super().save_all(output_dir, overwrite=overwrite, cleaned=False)
 
     def __str__(self):
         return f"Averaged SN {self.tnsname} at {self.coords}: MJD0 = {self.mjd0}, {self.num_controls} control light curves"
@@ -807,16 +762,59 @@ class LightCurve(pdastrostatsclass):
         if self.colnames is not None:
             self.colnames.add("dflux_new", self.colnames.dflux, overwrite=True)
 
+        self._pre_mjd0_ix = None
+        self._post_mjd0_ix = None
+
     def set_df(self, t: pd.DataFrame):
         self.t = deepcopy(t)
 
-    def get_preMJD0_indices(self, mjd0: float) -> List[int]:
-        return self.ix_inrange(
-            colnames=self.colnames.mjd, uplim=mjd0, exclude_uplim=True
-        )
+    @property
+    def pre_mjd0_ix(self):
+        if self._pre_mjd0_ix is None:
+            raise RuntimeError(
+                "Call self.set_pre_and_post_mjd0_ix() first before accessing self.pre_mjd0_ix"
+            )
+        if len(self._pre_mjd0_ix) < 1:
+            raise RuntimeError(
+                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+        return self._pre_mjd0_ix
 
-    def get_postMJD0_indices(self, mjd0: float) -> List[int]:
-        return self.ix_inrange(colnames=self.colnames.mjd, lowlim=mjd0)
+    @property
+    def post_mjd0_ix(self):
+        if self._post_mjd0_ix is None:
+            raise RuntimeError(
+                "Call self.set_post_mjd0_ix() first before accessing self.post_mjd0_ix"
+            )
+        if len(self._post_mjd0_ix) < 1:
+            raise RuntimeError(
+                f"No post-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+        return self._post_mjd0_ix
+
+    def has_pre_mjd0_ix(self):
+        return self._pre_mjd0_ix is not None and len(self._pre_mjd0_ix) > 0
+
+    def has_post_mjd0_ix(self):
+        return self._post_mjd0_ix is not None and len(self._post_mjd0_ix) > 0
+
+    def _set_pre_and_post_mjd0_ix(self, mjd0: float, mjd_colname: str):
+        self._pre_mjd0_ix = self.ix_inrange(
+            colnames=mjd_colname, uplim=mjd0, exclude_uplim=True
+        )
+        if len(self._pre_mjd0_ix) < 1:
+            self.logger.warning(
+                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+
+        self._post_mjd0_ix = self.ix_inrange(colnames=mjd_colname, lowlim=mjd0)
+        if len(self._post_mjd0_ix) < 1:
+            self.logger.warning(
+                f"No post-MJD0 indices found in light curve (control index {self.control_index})"
+            )
+
+    def set_pre_and_post_mjd0_ix(self, mjd0: float):
+        self._set_pre_and_post_mjd0_ix(mjd0, self.colnames.mjd)
 
     def get_flags(self) -> int:
         return np.bitwise_or.reduce(self.t[self.colnames.mask])
@@ -870,9 +868,15 @@ class LightCurve(pdastrostatsclass):
                 indices = self.ix_inrange(colnames=self.colnames.dflux_new, uplim=160)
 
         if mjd0 is not None:
-            pre_mjd0_ix = self.get_preMJD0_indices(mjd0)
-            if len(pre_mjd0_ix) > 0:
-                indices = AandB(indices, pre_mjd0_ix)
+            self.set_pre_and_post_mjd0_ix(mjd0)
+            if self.has_pre_mjd0_ix():
+                indices = AandB(indices, self.pre_mjd0_ix)
+
+        if len(indices) < 1:
+            self.logger.warning(
+                f"No y limits could be calculated for light curve (control index #{self.control_index})"
+            )
+            return None, None
 
         flux_min = self.t.loc[indices, self.colnames.flux].min()
         flux_max = self.t.loc[indices, self.colnames.flux].max()
@@ -1530,8 +1534,10 @@ class AveragedLightCurve(LightCurve):
 
         self.mjdbinsize = mjdbinsize
 
-        self._pre_mjd0_ix = None
         self._valid_mjd_ix = None
+
+    def set_pre_and_post_mjd0_ix(self, mjd0):
+        self._set_pre_and_post_mjd0_ix(mjd0, self.colnames.mjdbin)
 
     @property
     def valid_mjd_ix(self):
@@ -1544,21 +1550,6 @@ class AveragedLightCurve(LightCurve):
                 f"No valid MJD indices found in light curve (control index {self.control_index})"
             )
         return self._valid_mjd_ix
-
-    @property
-    def pre_mjd0_ix(self):
-        if self._pre_mjd0_ix is None:
-            raise RuntimeError(
-                "Call self.set_pre_MJD0_ix() first before accessing self.pre_mjd0_ix"
-            )
-        if len(self._pre_mjd0_ix) < 1:
-            raise RuntimeError(
-                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
-            )
-        return self._pre_mjd0_ix
-
-    def has_pre_mjd0_ix(self):
-        return self._pre_mjd0_ix is not None and len(self._pre_mjd0_ix) > 0
 
     def has_valid_mjd_ix(self):
         return self._valid_mjd_ix is not None and len(self._valid_mjd_ix) > 0
@@ -1574,16 +1565,6 @@ class AveragedLightCurve(LightCurve):
         if len(self._valid_mjd_ix) < 1:
             raise RuntimeError(
                 f"No valid MJD indices found in light curve (control index {self.control_index}) for ranges: {mjd_ranges}"
-            )
-
-    def set_pre_MJD0_ix(self, mjd0: float):
-        self._pre_mjd0_ix = self.ix_inrange(
-            colnames=self.colnames.mjdbin, uplim=mjd0, exclude_uplim=True
-        )
-
-        if len(self._pre_mjd0_ix) < 1:
-            self.logger.warning(
-                f"No pre-MJD0 indices found in light curve (control index {self.control_index})"
             )
 
     def get_min_and_max_mjd(self):
@@ -1605,13 +1586,13 @@ class AveragedLightCurve(LightCurve):
             )
         )
 
-    def load_lc(self, input_dir, tnsname):
+    def load_lc(self, input_dir, tnsname, **kwargs):
         filename = get_filepath(
             input_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
         self.load_lc_by_filepath(filename)
 
-    def save_lc(self, output_dir, tnsname, indices=None, overwrite=False):
+    def save_lc(self, output_dir, tnsname, indices=None, overwrite=False, **kwargs):
         filename = get_filepath(
             output_dir, tnsname, self.filt, self.control_index, self.mjdbinsize
         )
@@ -2028,7 +2009,7 @@ class SimDetecSupernova(AveragedSupernova):
             )
         if pre_mjd0_ix and not self.has_pre_mjd0_ix():
             raise RuntimeError(
-                "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_MJD0_ix()"
+                "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix()"
             )
 
         msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
@@ -2074,7 +2055,7 @@ class SimDetecSupernova(AveragedSupernova):
         self.lcs[control_index].load_lc(input_dir, self.tnsname)
 
         if self.mjd0 is not None:
-            self.set_pre_MJD0_ix(control_index=control_index)
+            self.set_pre_and_post_mjd0_ix(control_index=control_index)
 
 
 class SimDetecLightCurve(AveragedLightCurve):
@@ -2113,7 +2094,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         verbose=False,
     ) -> tuple[int, List]:
         if self._pre_mjd0_ix is None:
-            self.set_pre_MJD0_ix(mjd0)
+            self.set_pre_and_post_mjd0_ix(mjd0)
 
         # for control light curves, loop through all valid indices
         # for the SN light curve, only loop through valid indices before MJD0

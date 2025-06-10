@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 from typing import Dict, List, Optional
 import matplotlib
 from matplotlib import gridspec
@@ -365,14 +366,16 @@ class Plot:
             raise ValueError(
                 "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
             )
-        preMJD0_ix = sn.lcs[0].get_preMJD0_indices(sn.mjd0)
-        postMJD0_ix = sn.lcs[0].get_postMJD0_indices(sn.mjd0)
 
         # plot pre-MJD0 SN light curve
-        self._plot_lc(ax1, sn, 0, "magenta", indices=preMJD0_ix, label="Pre-MJD0 SN")
+        self._plot_lc(
+            ax1, sn, 0, "magenta", indices=sn.lcs[0].pre_mjd0_ix, label="Pre-MJD0 SN"
+        )
 
         # plot post-MJD0 SN light curve
-        self._plot_lc(ax1, sn, 0, "lime", indices=postMJD0_ix, label="Post-MJD0 SN")
+        self._plot_lc(
+            ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
+        )
 
         if plot_template_changes:
             ax1.axvline(
