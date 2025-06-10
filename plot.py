@@ -1030,7 +1030,7 @@ class Plot:
     def plot_all_controls(
         self,
         sn: Supernova,
-        flag: int,
+        flag: Optional[int] = None,
         custom_lims: Optional[PlotLimits] = None,
         two_columns: bool = False,
         include_sn: bool = False,
@@ -1086,7 +1086,11 @@ class Plot:
                 yticks=not is_rightmost_col,
             )
 
-            good_ix = sn.lcs[0].get_good_indices(flag)
+            if flag is not None:
+                good_ix = sn.lcs[0].get_good_indices(flag)
+            else:
+                good_ix = sn.lcs[0].getindices()
+
             self._plot_lc(
                 ax,
                 sn,
@@ -1098,7 +1102,7 @@ class Plot:
             ax.text(
                 0.03,
                 0.92,
-                "SN Light Curve",
+                f"{'Binned & ' if isinstance(sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}SN Light Curve",
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
@@ -1122,7 +1126,11 @@ class Plot:
                 yticks=not is_rightmost_col,
             )
 
-            good_ix = sn.lcs[control_index].get_good_indices(flag)
+            if flag is not None:
+                good_ix = sn.lcs[control_index].get_good_indices(flag)
+            else:
+                good_ix = sn.lcs[control_index].getindices()
+
             self._plot_lc(
                 ax,
                 sn,
@@ -1132,7 +1140,7 @@ class Plot:
             )
 
             label_text = (
-                f"Binned & Cleaned Control Light Curve #{control_index}"
+                f"{'Binned & ' if isinstance(sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}Control Light Curve #{control_index}"
                 if idx == int(include_sn)
                 else f"#{control_index}"
             )

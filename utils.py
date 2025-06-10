@@ -1013,7 +1013,7 @@ class PresetColumnNames:
 def load_preset_column_names_from_config(
     preset: str,
     config: ConfigParser,
-    filts: Optional[List[str]] = None,
+    filts: Optional[List[str] | str] = None,
     verbose: bool = True,
 ) -> PresetColumnNames:
     """
@@ -1025,7 +1025,7 @@ def load_preset_column_names_from_config(
 
     :param preset: The name of the preset to load from the configuration file. Must be one of the allowed presets defined in the config.
     :param config: A ConfigParser object containing preset definitions (typically parsed from config.ini).
-    :param filt: A filter name that may be used to warn if it matches a preset but differs from `preset`. Useful for catching potential mismatches.
+    :param filts: Filters that may be used to warn if it matches a preset but differs from `preset`. Useful for catching potential mismatches.
 
     Raises RuntimeError if the provided preset is None or not found among the allowed presets.
 
