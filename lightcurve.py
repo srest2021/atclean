@@ -462,7 +462,7 @@ class Supernova:
         flagged_ix = avg_sn.lcs[0].ix_masked(
             self.colnames.mask, maskval=cut.flag, indices=non_null_ix
         )
-        percent_cut = 100 * len(flagged_ix) / len(avg_sn.lcs[0].t)
+        percent_cut = 100 * len(flagged_ix) / len(non_null_ix)
         return avg_sn, percent_cut
 
     def drop_extra_columns(self):
