@@ -705,6 +705,7 @@ class CleanLoop:
 
             # plot original SN light curve and control light curves
             self.p.plot_SN(self.sn, plot_controls=True, plot_template_changes=True)
+            self.p.plot_all_controls(self.sn, include_sn=True)
 
         if self.cut_list is None:
             raise RuntimeError("CutList (self.cut_list) cannot be None")

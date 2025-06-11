@@ -1911,12 +1911,29 @@ class PlotPdf(Plot):
         filename: str = "original",
     ):
         self.logger.plot(
-            f'Plotting original SN{" and control light curves" if plot_controls else ""}'
+            f'Plotting original SN{" over the control light curves" if plot_controls else ""}'
         )
         fig = super().plot_SN(
             sn, custom_lims, plot_controls, plot_template_changes, save, filename
         )
         self.pdf.savefig(fig)
+
+    def plot_all_controls(
+        self,
+        sn: Supernova,
+        flag: Optional[int] = None,
+        custom_lims: Optional[PlotLimits] = None,
+        include_sn: bool = False,
+        save: bool = False,
+        filename: Optional[str] = None,
+    ):
+        self.logger.plot(
+            f"Plotting all original control light curves{' and SN' if include_sn else ''}"
+        )
+        two_columns = (sn.num_controls + int(include_sn)) % 2 == 0
+        super().plot_all_controls(
+            sn, flag, custom_lims, two_columns, include_sn, save, filename
+        )
 
     def plot_cut(
         self,

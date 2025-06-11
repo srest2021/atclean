@@ -122,6 +122,8 @@ class PlotLoop:
             plot_template_changes=True,
         )
 
+        self.p.plot_all_controls(self.sn, custom_lims=custom_lims, include_sn=True)
+
         uncert_cut = self.cut_list.get(UncertaintyCut.name())
         if not uncert_cut is None:
             # plot uncertainty cut
