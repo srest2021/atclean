@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from datetime import datetime
+import os
 import time
 from typing import Callable, Dict, List, Optional
 import sys, argparse
@@ -47,24 +48,34 @@ from utils import (
 
 class OutputReadMe:
     def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
-        logger = CustomLogger(self.__class__.__name__)
+        self.logger = CustomLogger(self.__class__.__name__)
 
         self.cut_list: CutList = cut_list
 
         timestamp = datetime.now()
-        filename = self.get_filename(output_dir, tnsname, timestamp)
 
-        logger.loading(
-            f"Creating new README file for outputting {tnsname} cut information at {filename}",
+        self.filename = self.get_filename(output_dir, tnsname, timestamp)
+        self.file = None
+        self._open_file()
+
+        self._write_intro_text(tnsname, timestamp, num_controls=num_controls)
+
+    def _open_file(self):
+        self.logger.loading(
+            f"Creating new README file for outputting cut information at {self.filename}",
             newline=True,
         )
-
-        self.f = open(filename, "w+")
-        self._write_intro_text(tnsname, timestamp, num_controls=num_controls)
-        logger.success()
+        try:
+            os.makedirs(os.path.dirname(self.filename), exist_ok=True)
+            self.file = open(self.filename, "w", encoding="utf-8")
+        except Exception as e:
+            raise RuntimeError(f"Failed to open output README file: {str(e)}")
+        self.logger.success()
 
     def get_filename(self, output_dir: str, tnsname: str, timestamp: datetime):
-        return f"{output_dir}/{tnsname}/README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
+        return os.path.join(
+            output_dir, tnsname, f"README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
+        )
 
     def get_header_str(self, text: str, level=1) -> str:
         hashtags = "#" * level
@@ -91,14 +102,29 @@ class OutputReadMe:
         return f"Percent of {lc_type} light curve flagged as {flagged_as} ({hex(flag)}): {percent_cut:0.2f}%"
 
     def write_line(self, text: str = ""):
-        self.f.write(f"{text}\n")
+        try:
+            self.file.write(f"{text}\n")
+        except Exception as e:
+            raise RuntimeError(f"Failed to write line to output README: {str(e)}")
 
     def write_lines(self, lines: List[str]):
         for line in lines:
             self.write_line(line)
 
     def save(self):
-        self.f.close()
+        if self.file:
+            try:
+                self.logger.saving(f"Saving output README file at {self.filename}")
+                self.file.close()
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to properly close output README file: {str(e)}"
+                )
+        else:
+            self.logger.warning(
+                f"Output readme file (self.file) cannot be None; skipping saving",
+                dots=True,
+            )
 
     def _write_intro_text(
         self, tnsname, timestamp: datetime, num_controls: int = 0
