@@ -200,13 +200,13 @@ class OutputReadMe:
             f"\nTotal percent of SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
 
-    def add_badday_cut_section(self, percent_cut):
+    def add_badday_cut_section(self, cut: BadDayCut, percent_cut):
         self.f.write(
             f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.'
         )
         self.f.write(f"\n\n### Bad day cut (averaging)\n")
         self.f.write(
-            f"\nTotal percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}%\n"
+            f"\nPercent of binned SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%\n"
         )
         self.f.write(
             f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
@@ -646,7 +646,7 @@ class CleanLoop:
 
         if self.f is None:
             raise RuntimeError("Output README file (self.f) cannot be None")
-        self.f.add_badday_cut_section(percent_cut)
+        self.f.add_badday_cut_section(cut, percent_cut)
 
         if plot:
             if self.p is None:

@@ -457,7 +457,6 @@ class Supernova:
                 control_index=control_index,
             )
 
-        # all_flags = previous_flags | combine_flags(cut.get_flags())
         non_null_ix = avg_sn.lcs[0].ix_not_null(self.colnames.mjd)
         flagged_ix = avg_sn.lcs[0].ix_masked(
             self.colnames.mask, maskval=cut.flag, indices=non_null_ix
