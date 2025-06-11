@@ -26,6 +26,7 @@ from utils import (
     AorB,
     Coordinates,
     Credentials,
+    CustomLogger,
     SnInfoTable,
     find_all_control_indices,
     find_all_filts,
@@ -53,7 +54,10 @@ CTRL_COORDINATES_COLNAMES = [
 
 class ControlCoordinatesTable:
     def __init__(self):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         self.t: Optional[pd.DataFrame] = None
+
         self.num_controls: Optional[int] = None
         self.radius: Optional[Angle] = None
         self.sn_coords: Optional[Coordinates] = None
@@ -63,17 +67,17 @@ class ControlCoordinatesTable:
 
     def init_load(self, directory: str, tnsname: str):
         filename = self.get_filepath(directory, tnsname)
-        print(f"Loading control coordinates table at {filename}...")
+        self.logger.loading(f"Loading control coordinates table at {filename}")
         self.load(filename)
-        print("✅ Success")
+        self.logger.success()
         print(self.__str__())
 
         self._set_num_controls_from_t()
 
     def init_read_from_file(self, filepath: str):
-        print(f"Loading control coordinates table at {filepath}...")
+        self.logger.loading(f"Loading control coordinates table at {filepath}")
         self._read(filepath)
-        print("✅ Success")
+        self.logger.success()
         print(self.__str__())
 
         self._set_num_controls_from_t()
@@ -88,9 +92,8 @@ class ControlCoordinatesTable:
         self.center_coords = center_coords
         self.sn_min_dist = sn_min_dist
 
-        print(
-            f"Setting circle pattern of {self.num_controls} control light curves around center location {self.center_coords},"
-            f' with minimum {self.sn_min_dist}" distance from SN'
+        self.logger.info(
+            f'Setting circle pattern of {self.num_controls} control light curves around center location {self.center_coords}, with minimum {self.sn_min_dist}" distance from SN'
         )
 
     def init_default(self, num_controls: int, radius: float):
@@ -98,7 +101,7 @@ class ControlCoordinatesTable:
         self.radius = Angle(radius, u.arcsec)
         # set self.center_coords later
 
-        print(
+        self.logger.info(
             f'Setting circle pattern of {self.num_controls} control light curves around SN location with radius of {self.radius}" from center'
         )
 
@@ -250,8 +253,9 @@ class ControlCoordinatesTable:
             # check to see if control light curve location is within minimum distance from SN location
             offset_sep = self.sn_coords.get_distance(coords).arcsecond
             if offset_sep < self.sn_min_dist:
-                print(
-                    f'Control light curve {control_index:3d} too close to SN location ({offset_sep}" away) with minimum distance to SN as {self.sn_min_dist}"; skipping control light curve...'
+                self.logger.warning(
+                    f'Control light curve {control_index:3d} too close to SN location ({offset_sep}" away) with minimum distance to SN as {self.sn_min_dist}"; skipping',
+                    dots=True,
                 )
                 return
 
@@ -301,7 +305,9 @@ class ControlCoordinatesTable:
         for i in range(1, self.num_controls + 1):
             self.construct_row(i)
 
-        print("Control light curve coordinates generated: \n", self.__str__())
+        self.logger.success(
+            f"Control light curve coordinates generated: \n{self.__str__()}"
+        )
 
     def iterator(self, include_sn: bool = False):
         """
@@ -344,7 +350,7 @@ class ControlCoordinatesTable:
         else:
             filepath = f"{directory}/{tnsname}/{filename}"
 
-        print(f"💾 Saving control coordinates table at {filepath}...")
+        self.logger.saving(f"Saving control coordinates table at {filepath}")
         if self.t is None:
             raise RuntimeError(
                 "Cannot save ControlCoordinatesTable: table (self.t) is None"
@@ -384,9 +390,8 @@ class ControlCoordinatesTableFactory:
             or num_controls != 0
             or (center_coords is not None and center_coords.is_complete())
         ):
-            print(
-                "\n⚠️ WARNING: If not downloading control light curves, none of the following should be provided: "
-                f"File path to table of control light curve coordinates (`control_coords_table_filepath`), nonzero number of control light curves to download (`num_controls`), or center coordinates of the circle pattern (`center_coords`)"
+            CustomLogger.s_warning(
+                "If not downloading control light curves, none of the following should be provided: File path to table of control light curve coordinates (`control_coords_table_filepath`), nonzero number of control light curves to download (`num_controls`), or center coordinates of the circle pattern (`center_coords`)",
             )
 
         if download_controls:
@@ -413,6 +418,10 @@ class ControlCoordinatesTableFactory:
         center_coords: Optional[Coordinates] = None,
         sn_min_dist: Optional[float] = None,
     ) -> ControlCoordinatesTable:
+        CustomLogger.s_subheader(
+            "Constructing table of control light curve coordinates"
+        )
+
         ControlCoordinatesTableFactory.validate(
             download_controls,
             num_controls=num_controls,
@@ -444,7 +453,8 @@ class ControlCoordinatesTableFactory:
 class AtlasAuthenticator:
     @staticmethod
     def authenticate(username: str, password: str) -> Dict[str, str]:
-        print("\nConnecting to ATLAS API...")
+        logger = CustomLogger("AtlasAuthenticator")
+        logger.api("Connecting to ATLAS API", newline=True)
         resp = requests.post(
             url=f"https://fallingstar-data.com/forcedphot/api-token-auth/",
             data={"username": username, "password": password},
@@ -452,7 +462,7 @@ class AtlasAuthenticator:
         if resp.status_code != 200:
             raise RuntimeError(f"Authentication failed: {resp.status_code}")
         token = resp.json()["token"]
-        print(f"Token: {token}")
+        logger.secret(f"Token: {token}")
         headers = {"Authorization": f"Token {token}", "Accept": "application/json"}
         return headers
 
@@ -482,31 +492,33 @@ def resolve_sn_coords_and_mjd0(
     arg_center_coords: Optional[Coordinates] = None,
     use_disc_date_buffer: bool = True,
 ) -> tuple[float, Coordinates]:
-    print("\n--- Resolving SN coordinates, center coordinates, and MJD0 ---")
+    logger = CustomLogger("resolve_sn_coords_and_mjd0")
+
+    logger.subheader("Resolving SN coordinates, center coordinates, and MJD0")
     sn_coords, center_coords, mjd0 = None, None, None
 
     # first, try SN info table
     if sninfo is not None:
         sn_coords, center_coords, mjd0 = sninfo.get_info(tnsname)
-        print(
-            f"From SnInfoTable:\n"
-            f"  SN coordinates: {sn_coords}\n"
-            f"  Custom center coordinates: {center_coords}\n"
-            f"  MJD0: {mjd0} MJD"
-        )
+        logger.body(f"From SnInfoTable:")
+        logger.listitem(f"SN coordinates: {sn_coords}")
+        logger.listitem(f"Custom center coordinates: {center_coords}")
+        logger.listitem(f"MJD0: {mjd0} MJD")
 
     # next, overwrite defaults with command line args
     if arg_sn_coords is not None:
         sn_coords = arg_sn_coords
-        print(f"Overriding SnInfoTable SN coordinates with --sn_coords: {sn_coords}")
+        logger.body(
+            f"Overriding SnInfoTable SN coordinates with --sn_coords: {sn_coords}"
+        )
     if arg_center_coords is not None:
         center_coords = arg_center_coords
-        print(
+        logger.body(
             f"Overriding SnInfoTable center coordinates with --center_coords: {center_coords}"
         )
     if arg_mjd0 is not None:
         mjd0 = arg_mjd0
-        print(f"Overriding SnInfoTable MJD0 with --mjd0: {mjd0} MJD")
+        logger.body(f"Overriding SnInfoTable MJD0 with --mjd0: {mjd0} MJD")
 
     # now try querying TNS for missing info
     if sn_coords is None or sn_coords.is_incomplete() or mjd0 is None or np.isnan(mjd0):
@@ -514,7 +526,7 @@ def resolve_sn_coords_and_mjd0(
             raise ValueError(
                 "Cannot find coordinates or MJD0 in command line or SnInfoTable, but TNS credentials not provided"
             )
-        creds.validate_tns_credentials()
+        creds.prompt_for_tns_creds()
 
         tns_mjd0, tns_sn_coords = get_tns_data(
             tnsname,
@@ -526,11 +538,11 @@ def resolve_sn_coords_and_mjd0(
 
         if sn_coords is None or sn_coords.is_incomplete():
             sn_coords = tns_sn_coords
-            print(f"Using SN coordinates from TNS API: {sn_coords}")
+            logger.body(f"Using SN coordinates from TNS API: {sn_coords}")
 
         if mjd0 is None or np.isnan(mjd0):
             mjd0 = tns_mjd0
-            print(
+            logger.body(
                 f"Using MJD0 from TNS discovery date{f' - buffer of {DISC_DATE_BUFFER} MJD' if use_disc_date_buffer else ''}: {mjd0} MJD"
             )
 
@@ -551,6 +563,8 @@ class AtlasLightCurveDownloader:
     def __init__(
         self, atclean_input_dir: str, atlas_username: str, atlas_password: str
     ):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         self.atclean_input_dir = atclean_input_dir
 
         self.headers = AtlasAuthenticator.authenticate(atlas_username, atlas_password)
@@ -579,11 +593,7 @@ class AtlasLightCurveDownloader:
         self.lcs[control_index].download(
             self.headers, lookbacktime=lookbacktime, max_mjd=max_mjd
         )
-        # self.lcs[control_index].t = pd.read_table(
-        #     "/Users/sofiarest/Desktop/Supernovae/data_refactor/atclean_input/2021qvo/2021qvo.o.lc.txt",
-        #     sep="\s+",
-        # )
-        self.lcs[control_index].postprocess(flux2mag_sigmalimit=flux2mag_sigmalimit)
+        self.lcs[control_index].preprocess(flux2mag_sigmalimit=flux2mag_sigmalimit)
         return self.lcs[control_index].get_filt_lens()
 
     def load_existing_lc(
@@ -627,27 +637,31 @@ class AtlasLightCurveDownloader:
         overwrite: bool = False,
     ) -> ControlCoordinatesTable:
         if not overwrite and is_sn_in_subdir(self.atclean_input_dir, tnsname):
-            print(
-                f"Overwrite set to False and SN light curve already exists; skipping download..."
+            self.logger.warning(
+                f"Overwrite set to False and SN light curve already exists; skipping download",
+                dots=True,
             )
             if control_coords_table.t is None:
+                self.logger.loading(
+                    "Loading previously saved control coordinates table"
+                )
                 # load previously saved ControlCoordinatesTable
                 control_coords_table = ControlCoordinatesTable()
                 control_coords_table.load(input_dir, tnsname)
+                self.logger.success()
 
-            print(
-                "Control light curve coordinates table loaded: \n",
-                control_coords_table,
-                "\n--- Download: SN light curve ---",
-                "\nSkipped",
+            self.logger.body(
+                f"Control light curve coordinates table: \n{control_coords_table}"
             )
+            self.logger.subheader("Download: SN light curve")
+            self.logger.body("Skipped")
 
             return control_coords_table
 
         control_coords_table.construct(tnsname, sn_coords)
         print()
 
-        print("\n--- Download: SN light curve ---")
+        self.logger.subheader("Download: SN light curve")
         total_len, filt_lens = self.download_lc(
             0,
             sn_coords,
@@ -675,10 +689,11 @@ class AtlasLightCurveDownloader:
         )
 
         for control_index, coords in control_coords_table.iterator():
-            print(f"\n--- Download: Control light curve {control_index} ---")
+            self.logger.subheader(f"Download: Control light curve {control_index}")
             if not overwrite and control_index in existing_control_indices:
-                print(
-                    f"Overwrite set to {overwrite} and light curve already exists; skipping download..."
+                self.logger.warning(
+                    f"Overwrite set to {overwrite} and light curve already exists; skipping download",
+                    dots=True,
                 )
                 total_len, filt_lens = self.load_existing_lc(tnsname, control_index)
             else:
@@ -832,13 +847,15 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     args = define_args().parse_args()
     config = load_config(args.config_file)
 
     flux2mag_sigmalimit = float(config["download"]["flux2mag_sigmalimit"])
-    print(
-        f"\nUsing flux to magnitude sigma limit of {flux2mag_sigmalimit:f} "
-        "(i.e., calculated magnitudes will be upper limits when calculated magnitude errors are NaN)"
+    logger.info(
+        f"Using flux to magnitude sigma limit of {flux2mag_sigmalimit:f} (i.e., calculated magnitudes will be upper limits when calculated magnitude errors are NaN)",
+        newline=True,
     )
 
     # set up directories
@@ -853,13 +870,13 @@ if __name__ == "__main__":
         config["credentials"]["tns_id"],
         config["credentials"]["tns_bot_name"],
     )
-    print(f"\nATLAS username: {creds.atlas_username}")
+    print()
+    logger.secret(f"ATLAS username: {creds.atlas_username}")
     creds.prompt_for_atlas_password()
-    print(f"TNS ID: {creds.tns_id}")
-    print(f"TNS bot name: {creds.tns_bot_name}")
+    logger.secret(f"TNS ID: {creds.tns_id}")
+    logger.secret(f"TNS bot name: {creds.tns_bot_name}")
 
     # set up SnInfoTable
-    print()
     sninfo_filename = args.sninfo_file or config["dir"]["sninfo_filename"]
     sninfo = SnInfoTable(output_dir, filename=sninfo_filename)
 
@@ -882,7 +899,7 @@ if __name__ == "__main__":
     )
 
     for tnsname in args.tnsnames:
-        print(f"\n--- Downloading ATLAS light curves for {tnsname} ---")
+        logger.header(f"Downloading ATLAS light curves for {tnsname}")
 
         make_dir_if_not_exists(os.path.join(input_dir, tnsname))
         make_dir_if_not_exists(os.path.join(output_dir, tnsname))
@@ -922,4 +939,7 @@ if __name__ == "__main__":
             overwrite=args.overwrite,
         )
 
-        print(f"\n✅ Successfully downloaded {tnsname} SN and control light curves")
+        logger.success(
+            f"Successfully downloaded {tnsname} SN and control light curves",
+            newline=True,
+        )

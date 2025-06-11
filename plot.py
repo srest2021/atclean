@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 from typing import Dict, List, Optional
 import matplotlib
 from matplotlib import gridspec
@@ -29,6 +30,7 @@ from utils import (
     TEMPLATE_CHANGE_1_MJD,
     TEMPLATE_CHANGE_2_MJD,
     ChiSquareCut,
+    CustomLogger,
     PlotLimits,
     app2absmag,
     format_float_string,
@@ -101,13 +103,15 @@ class Plot:
     def __init__(
         self, output_dir: Optional[str] = None, color_scheme: Optional[Dict] = None
     ):
+        self.logger = CustomLogger()
+
         self.output_dir = output_dir
 
         if color_scheme is not None:
-            print("\nUsing custom color scheme for plots")
+            self.logger.info("Using custom color scheme for plots", newline=True)
             self.color_scheme = color_scheme
         else:
-            print("\nUsing default color scheme for plots")
+            self.logger.info("Using default color scheme for plots", newline=True)
             self.color_scheme = COLOR_SCHEME
 
     def save_plot(self, filename, **kwargs):
@@ -116,7 +120,7 @@ class Plot:
         filename = f"{self.output_dir}/{filename}.png"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
-        print(f"💾 Saving plot: {filename}")
+        self.logger.saving(f"Saving plot: {filename}")
         plt.savefig(filename, dpi=200, **kwargs)
 
     def get_lims(
@@ -238,8 +242,9 @@ class Plot:
 
         y_colname = getattr(obj.colnames, y_colname_attr)
         if not obj.can_plot(indices, columns=[y_colname]):
-            print(
-                f"⚠️ WARNING: Light curve (control index #{obj.control_index}) '{y_colname_attr}' column cannot be plotted for indices of length {len(indices)}; skipping..."
+            self.logger.warning(
+                f"Light curve (control index #{obj.control_index}) '{y_colname_attr}' column cannot be plotted for indices of length {len(indices)}; skipping",
+                dots=True,
             )
             return
 
@@ -275,8 +280,9 @@ class Plot:
         if indices is None:
             indices = obj.getindices()
         if not obj.can_plot(indices):
-            print(
-                f"⚠️ WARNING: Light curve (control index #{control_index}) cannot be plotted with indices of length {len(indices)}; skipping..."
+            self.logger.warning(
+                f"Light curve (control index #{control_index}) cannot be plotted with indices of length {len(indices)}; skipping",
+                dots=True,
             )
             return
 
@@ -360,14 +366,16 @@ class Plot:
             raise ValueError(
                 "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
             )
-        preMJD0_ix = sn.lcs[0].get_preMJD0_indices(sn.mjd0)
-        postMJD0_ix = sn.lcs[0].get_postMJD0_indices(sn.mjd0)
 
         # plot pre-MJD0 SN light curve
-        self._plot_lc(ax1, sn, 0, "magenta", indices=preMJD0_ix, label="Pre-MJD0 SN")
+        self._plot_lc(
+            ax1, sn, 0, "magenta", indices=sn.lcs[0].pre_mjd0_ix, label="Pre-MJD0 SN"
+        )
 
         # plot post-MJD0 SN light curve
-        self._plot_lc(ax1, sn, 0, "lime", indices=postMJD0_ix, label="Post-MJD0 SN")
+        self._plot_lc(
+            ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
+        )
 
         if plot_template_changes:
             ax1.axvline(
@@ -573,7 +581,7 @@ class Plot:
                 open=True,
             )
 
-        good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
+        good_ix = avg_sn.lcs[0].get_good_indices(flag)
         self._plot_lc(
             ax1,
             avg_sn,
@@ -661,8 +669,9 @@ class Plot:
     ):
         lc = sn.lcs[0]
         if not f"{lc.colnames.dflux}_new" in lc.t.columns:
-            print(
-                f"⚠️ WARNING: Cannot plot true uncertainties estimation due to missing {lc.colnames.dflux}_new column; skipping..."
+            self.logger.warning(
+                f"Cannot plot true uncertainties estimation due to missing {lc.colnames.dflux}_new column; skipping",
+                dots=True,
             )
             return None
 
@@ -1024,7 +1033,7 @@ class Plot:
     def plot_all_controls(
         self,
         sn: Supernova,
-        flag: int,
+        flag: Optional[int] = None,
         custom_lims: Optional[PlotLimits] = None,
         two_columns: bool = False,
         include_sn: bool = False,
@@ -1032,7 +1041,7 @@ class Plot:
         filename: str = "all_controls",
     ):
         if sn.num_controls < 1 and not include_sn:
-            print("⚠️ WARNING: No control light curves to plot")
+            self.logger.warning("No control light curves to plot")
             return
 
         total_panels = sn.num_controls + int(include_sn)
@@ -1080,7 +1089,11 @@ class Plot:
                 yticks=not is_rightmost_col,
             )
 
-            good_ix = sn.lcs[0].get_good_indices(flag)
+            if flag is not None:
+                good_ix = sn.lcs[0].get_good_indices(flag)
+            else:
+                good_ix = sn.lcs[0].getindices()
+
             self._plot_lc(
                 ax,
                 sn,
@@ -1092,7 +1105,7 @@ class Plot:
             ax.text(
                 0.03,
                 0.92,
-                "SN Light Curve",
+                f"{'Binned & ' if isinstance(sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}SN Light Curve",
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
@@ -1116,7 +1129,11 @@ class Plot:
                 yticks=not is_rightmost_col,
             )
 
-            good_ix = sn.lcs[control_index].get_good_indices(flag)
+            if flag is not None:
+                good_ix = sn.lcs[control_index].get_good_indices(flag)
+            else:
+                good_ix = sn.lcs[control_index].getindices()
+
             self._plot_lc(
                 ax,
                 sn,
@@ -1126,7 +1143,7 @@ class Plot:
             )
 
             label_text = (
-                f"Binned & Cleaned Control Light Curve #{control_index}"
+                f"{'Binned & ' if isinstance(sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}Control Light Curve #{control_index}"
                 if idx == int(include_sn)
                 else f"#{control_index}"
             )
@@ -1876,11 +1893,12 @@ class Plot:
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
         Plot.__init__(self)
+        self.logger = CustomLogger()
         self.filename = f"{output_dir}/{tnsname}.{filt}.plots.pdf"
         self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
-        print("\n💾 Saving PDF of plots...")
+        self.logger.saving("Saving PDF of plots", newline=True)
         self.pdf.close()
 
     def plot_SN(
@@ -1892,11 +1910,29 @@ class PlotPdf(Plot):
         save: bool = False,
         filename: str = "original",
     ):
-        print(
-            f'📈 Plotting original SN{" and control light curves" if plot_controls else ""}...'
+        self.logger.plot(
+            f'Plotting original SN{" over the control light curves" if plot_controls else ""}'
         )
         fig = super().plot_SN(
             sn, custom_lims, plot_controls, plot_template_changes, save, filename
+        )
+        self.pdf.savefig(fig)
+
+    def plot_all_controls(
+        self,
+        sn: Supernova,
+        flag: Optional[int] = None,
+        custom_lims: Optional[PlotLimits] = None,
+        include_sn: bool = False,
+        save: bool = False,
+        filename: Optional[str] = None,
+    ):
+        self.logger.plot(
+            f"Plotting all original control light curves{' and SN' if include_sn else ''}"
+        )
+        two_columns = (sn.num_controls + int(include_sn)) % 2 == 0
+        fig = super().plot_all_controls(
+            sn, flag, custom_lims, two_columns, include_sn, save, filename
         )
         self.pdf.savefig(fig)
 
@@ -1909,7 +1945,7 @@ class PlotPdf(Plot):
         title: Optional[str] = None,
         save_filename: Optional[str] = None,
     ):
-        print(f"📈 Plotting cut for flag {hex(flag)}...")
+        self.logger.plot(f"Plotting cut for flag {hex(flag)}")
         fig = super().plot_cut(
             sn, flag, control_index, custom_lims, title, save_filename
         )
@@ -1925,8 +1961,8 @@ class PlotPdf(Plot):
         save: bool = False,
         filename: str = "cleaned",
     ):
-        print(
-            f'📈 Plotting cleaned SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}...'
+        self.logger.plot(
+            f'Plotting cleaned SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}'
         )
         fig = super().plot_cleaned_SN(
             sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
@@ -1943,8 +1979,8 @@ class PlotPdf(Plot):
         save: bool = False,
         filename: str = "averaged",
     ):
-        print(
-            f'📈 Plotting averaged SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}...'
+        self.logger.plot(
+            f'Plotting averaged SN{" and control light curves" if plot_controls else ""} using flag {hex(flag)}'
         )
         fig = super().plot_averaged_SN(
             avg_sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
@@ -1958,7 +1994,7 @@ class PlotPdf(Plot):
         save: bool = False,
         filename: str = "limcutstable",
     ):
-        print("📈 Plotting LimCutsTable...")
+        self.logger.plot("Plotting LimCutsTable")
         fig = super().plot_limcuts(limcuts, cut, save, filename)
         self.pdf.savefig(fig)
 
@@ -1969,12 +2005,12 @@ class PlotPdf(Plot):
         save: bool = False,
         filename: str = "uncert_est",
     ):
-        print("📈 Plotting true uncertainties estimation...")
+        self.logger.plot("Plotting true uncertainties estimation")
         fig = super().plot_uncert_est(sn, custom_lims, save, filename)
         if not fig is None:
             self.pdf.savefig(fig)
 
     def plot_template_correction(self, lc: LightCurve):
-        print("📈 Plotting ATLAS template chanages correction...")
+        self.logger.plot("Plotting ATLAS template chanages correction")
         fig = super().plot_template_correction(lc)
         self.pdf.savefig(fig)

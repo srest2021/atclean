@@ -17,7 +17,13 @@ from enum import Enum, auto
 
 from download import make_dir_if_not_exists
 from pdastro import pdastrostatsclass
-from utils import format_float_string, load_config, load_json_config, abbreviate_list
+from utils import (
+    CustomLogger,
+    format_float_string,
+    load_config,
+    load_json_config,
+    abbreviate_list,
+)
 
 GAUSSIAN_MODEL_NAME = "gaussian"
 ASYMMETRIC_GAUSSIAN_MODEL_NAME = "asymmetric_gaussian"
@@ -96,6 +102,8 @@ class Param(ABC):
         :param values (Optional[List]): The list of values for the parameter.
         :param param_type (ParamType): ParamType indicating whether the Param is related to time, brightness, or neither.
         """
+        self.logger = CustomLogger(self.__class__.__name__)
+
         self.param_type: ParamType = param_type
         self.verbose = verbose
 
@@ -112,7 +120,7 @@ class Param(ABC):
 
     def _log(self, message: str):
         if self.verbose:
-            print(message)
+            self.logger.body(message)
 
     @property
     def values(self) -> List:
@@ -148,7 +156,7 @@ class Param(ABC):
         Validates and adjusts time parameter values to match the MJDbin format.
         """
         self._log(
-            f"Making sure the time parameter '{self.name}' values match the MJDbin column format..."
+            f"Making sure the time parameter '{self.name}' values match the MJDbin column format"
         )
         if self._values:
             self._values = list(np.floor(self.values) + 0.5)
@@ -158,7 +166,7 @@ class Param(ABC):
         Validates and adjusts brightness values to two decimal places.
         """
         self._log(
-            f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places..."
+            f"Making sure the brightness parameter '{self.name}' values have up to 2 decimal places"
         )
         if self._values:
             self._values = [round(v, 2) for v in self.values]
@@ -424,6 +432,7 @@ class Params:
     """
 
     def __init__(self):
+        self.logger = CustomLogger(self.__class__.__name__)
         self.time_param: Optional[Param] = None
         self.brightness_param: Optional[Param] = None
         self.other: Dict[str, Param] = {}
@@ -436,18 +445,18 @@ class Params:
 
         if param.is_time_param:
             if self.time_param is not None:
-                print("⚠️ WARNING: Time parameter already set")
+                self.logger.warning("Time parameter already set")
             self.time_param = param
 
         elif param.is_brightness_param:
             if self.brightness_param is not None:
-                print("⚠️ WARNING: Brightness parameter already set")
+                self.logger.warning("Brightness parameter already set")
             self.brightness_param = param
 
         else:
             if self.has(param.name):
-                print(
-                    f"⚠️ WARNING: Param {param.name} already exists in list; overwriting..."
+                self.logger.warning(
+                    f"Param {param.name} already exists in list; overwriting", dots=True
                 )
             self.other[param.name] = param
 
@@ -616,12 +625,12 @@ class Params:
         all_params = self.all_params()
         out = f"Params list (length {len(all_params)}):"
         for param in all_params:
-            out += f"\n- {param}"
+            out += f"\n• {param}"
         return out
 
     def __eq__(self, other):
         if not isinstance(other, Params):
-            print("Comparison failed: other is not a Params instance.")
+            self.logger.warning("Comparison failed: other is not a Params instance")
             return False
 
         mismatched = []
@@ -646,7 +655,9 @@ class Params:
             equal &= check(p1, p2, key)
 
         if mismatched:
-            print("Params mismatch in:", ", ".join(mismatched))
+            self.logger.body(
+                f'Params mismatch in: {", ".join(mismatched)}',
+            )
         return equal
 
 
@@ -662,7 +673,8 @@ def parse_config_param(
     :param_info: Dictionary corresponding to the JSON data under the given parameter in the config file.
     :param param_type: ParamType indicating whether the Param is related to time, brightness, or neither.
     """
-    print(f"\nParsing config parameter {name}:")
+    logger = CustomLogger()
+    logger.subheader(f"Parsing config parameter '{name}'", newline=True)
 
     if info["type"] == "list":
         res = ListParam(
@@ -714,7 +726,7 @@ def parse_config_param(
             "Type must be one of the following: list, range, logrange, random, random_inrange."
         )
 
-    print("Result: ", res.__str__())
+    logger.body(f"Result: {res.__str__()}")
     return res
 
 
@@ -726,6 +738,8 @@ def parse_config_params(
     """
     Parse the parameters in the config file and generate lists of possible values for each parameter.
     """
+    logger = CustomLogger()
+
     params: Params = Params()
     for param_name in model_settings["parameters"]:
         if param_name == time_param_name:
@@ -742,7 +756,7 @@ def parse_config_params(
         )
         params.add(param)
     params.validate()
-    print("\n", params)
+    logger.body(f"{params}", newline=True)
     return params
 
 
@@ -754,6 +768,7 @@ class SimTable(pdastrostatsclass):
         :brightness: Brightness (e.g., peak apparent magnitude or flux) for all simulations in this table.
         """
         pdastrostatsclass.__init__(self, **kwargs)
+        self.logger = CustomLogger(self.__class__.__name__)
         self.brightness = brightness
 
     def add_row(self, data: Dict):
@@ -773,7 +788,7 @@ class SimTable(pdastrostatsclass):
     def save_sim_table(self, model_name, tables_dir, verbose=False):
         filename = self.get_sim_filename(model_name, tables_dir)
         if verbose:
-            print(f"💾 Saving SimTable {filename}...")
+            self.logger.saving(f"Saving SimTable {filename}")
         self.write(filename=filename, overwrite=True, index=False)
 
     def load_sim_table(self, model_name, tables_dir):
@@ -794,6 +809,7 @@ class SimTables:
 
         :param model_name: Name of the model to be used assigned in the config file.
         """
+        self.logger = CustomLogger(self.__class__.__name__)
         self.d: Dict[str, SimTable] = {}
         self.brightness_param: Optional[Param] = None
         self.model_name = model_name
@@ -846,8 +862,9 @@ class SimTables:
             )
 
         for brightness in self.brightness_param.values:
-            print(
-                f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}..."
+            self.logger.step(
+                f"Generating {num_rows}-length SimTable for {self.brightness_param.name}={brightness}",
+                newline=False,
             )
             self.d[brightness] = SimTable(brightness)
 
@@ -862,10 +879,10 @@ class SimTables:
                 combination.update(row)
                 self.d[brightness].add_row(combination)
 
-        print("✅ Success")
+        self.logger.success()
 
     def save_all(self, tables_dir: str):
-        print(f"\n💾 Saving SimTables in directory: {tables_dir}")
+        self.logger.saving(f"Saving SimTables in directory: {tables_dir}", newline=True)
 
         if self.brightness_param is None:
             raise RuntimeError("Cannot save SimTables: missing brightness parameter")
@@ -879,10 +896,11 @@ class SimTables:
 
         for brightness in self.brightness_param.values:
             self.d[brightness].save_sim_table(self.model_name, tables_dir)
-        print("✅ Success")
 
     def load_all(self, tables_dir: str, brightness_param: Param):
-        print(f"\nLoading SimTables in directory: {tables_dir}")
+        self.logger.loading(
+            f"Loading SimTables in directory: {tables_dir}", newline=True
+        )
         self.d = {}
         self.set_brightness_param(brightness_param)
         if self.brightness_param is None:
@@ -891,7 +909,7 @@ class SimTables:
         for brightness in self.brightness_param.values:
             self.d[brightness] = SimTable(brightness)
             self.d[brightness].load_sim_table(self.model_name, tables_dir)
-        print("✅ Success")
+        self.logger.success()
 
 
 def get_sim_tables_output_dir(output_dir: str, tnsname: str):
@@ -923,22 +941,29 @@ def parse_colname_info(model_settings: Dict, model_name: str):
     return filename, mjd_colname, mag_colname, flux_colname
 
 
+def get_model_settings(model_name: str, step1_config: Dict) -> Dict:
+    if " " in model_name:
+        raise RuntimeError("Model name cannot have spaces.")
+    if model_name not in step1_config:
+        raise RuntimeError(
+            f"Model '{model_name}' not found in simulation config file\n"
+            f"Available models: {', '.join(step1_config.keys())}"
+        )
+    CustomLogger.s_loading(f"Getting settings for model '{model_name}'", newline=True)
+    res = step1_config[model_name]
+    CustomLogger.s_success()
+    return res
+
+
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     args = define_args().parse_args()
     config = load_config(args.config_file)
     step1_config = load_json_config(args.step1_config_file)
+    model_settings = get_model_settings(args.model_name, step1_config)
 
-    if " " in args.model_name:
-        raise RuntimeError("Model name cannot have spaces.")
-    if args.model_name not in step1_config:
-        raise RuntimeError(
-            f"Model '{args.model_name}' not found in simulation config file\n"
-            f"Available models: {', '.join(step1_config.keys())}"
-        )
-    print(f"Loading settings for model '{args.model_name}'...")
-    model_settings = step1_config[args.model_name]
-
-    print("Parsing model parameters...")
+    logger.header("Parsing model parameters")
     params = parse_config_params(
         model_settings,
         time_param_name=model_settings["time_parameter_name"],
@@ -948,6 +973,7 @@ if __name__ == "__main__":
         model_settings, args.model_name
     )
 
+    logger.header("Generating SimTables")
     sim_tables = SimTables(args.model_name)
     sim_tables.generate(
         params,

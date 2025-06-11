@@ -34,6 +34,7 @@ from step2_generate_detec_tables import (
     mjd_range_type,
 )
 from utils import (
+    CustomLogger,
     FomLimits,
     AandB,
     PresetColumnNames,
@@ -51,6 +52,7 @@ from utils import (
 
 class ContaminationTable:
     def __init__(self):
+        self.logger = CustomLogger(self.__class__.__name__)
         self.is_prelim = False
 
     def calculate_row(
@@ -88,10 +90,10 @@ class ContaminationTable:
         sigma_kerns: List[float],
         fom_limits: FomLimits,
     ):
-        print(
-            "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limit ranges..."
+        self.logger.subheader(
+            "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limit ranges"
         )
-        print(f"Using preliminary FOM limit ranges: {fom_limits}")
+        self.logger.info(f"Using preliminary FOM limit ranges: {fom_limits}")
 
         if sn._mjd_ranges is None:
             raise RuntimeError(
@@ -113,7 +115,7 @@ class ContaminationTable:
                 )
 
             self.is_prelim = True
-            print("✅ Success")
+            self.logger.success()
         except Exception as e:
             self.t = None
             self.is_prelim = False
@@ -173,11 +175,12 @@ class ContaminationTable:
             )
 
         if verbose:
-            print("Preliminary contamination table: ")
+            self.logger.body("Preliminary contamination table: ")
             print(self.t.to_string())
 
-        print(
-            f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {target_value} positive control light curves..."
+        self.logger.info(
+            f"Refining FOM limits with up to {n_steps} iterations to achieve target contamination of {target_value} positive control light curves",
+            newline=True,
         )
         fom_limits = FomLimits()
         i = 0
@@ -186,8 +189,10 @@ class ContaminationTable:
                 i, prelim_fom_limit_ranges
             )
             if verbose:
-                print(f"\n--- sigma_kern = {sigma_kern} ---")
-                print(f"Preliminary FOM range: [{lower_limit}, {upper_limit}]")
+                self.logger.subheader(f"sigma_kern = {sigma_kern}")
+                self.logger.body(
+                    f"Preliminary FOM range: [{lower_limit}, {upper_limit}]"
+                )
 
             best_row = None
             for step in range(n_steps):
@@ -195,11 +200,8 @@ class ContaminationTable:
                 new_row = self.calculate_row(sn, sigma_kern, new_fom_limit)
                 cur_value = new_row["n_pos_controls"]
                 if verbose:
-                    print(
-                        f"Step {step + 1:>2}/{n_steps}: "
-                        f"FOM limit={new_fom_limit:.2f}, "
-                        f"Contamination={cur_value}, "
-                        f"Bounds=[{lower_limit:.2f}, {upper_limit:.2f}]"
+                    self.logger.body(
+                        f"Step {step + 1:>2}/{n_steps}: FOM limit={new_fom_limit:.2f}, Contamination={cur_value}, Bounds=[{lower_limit:.2f}, {upper_limit:.2f}]"
                     )
 
                 if cur_value == target_value:
@@ -218,12 +220,14 @@ class ContaminationTable:
                 if round(abs(upper_limit - lower_limit), 2) <= convergence_threshold:
                     if verbose:
                         if best_row:
-                            print(
-                                f"→ Converged at FOM={best_row['fom_limit']} (exact match)"
+                            self.logger.listitem(
+                                f"Converged at FOM={best_row['fom_limit']} (exact match)",
+                                symbol="→",
                             )
                         else:
-                            print(
-                                f"→ Converged at FOM={new_fom_limit} (best guess), Contamination={cur_value}"
+                            self.logger.listitem(
+                                f"Converged at FOM={new_fom_limit} (best guess), Contamination={cur_value}",
+                                symbol="→",
                             )
                     break
 
@@ -238,12 +242,9 @@ class ContaminationTable:
             # fom_limits[sigma_kern] = final_row["fom_limit"]
             fom_limits.add(sigma_kern, final_row["fom_limit"])
             if verbose:
-                print(
-                    f"✔ Final FOM limit for sigma_kern={sigma_kern}: "
-                    f"{fom_limits.get(sigma_kern):.2f} "
-                    f"(Contamination={final_row['n_pos_controls']})"
+                self.logger.success(
+                    f"Final FOM limit for sigma_kern={sigma_kern}: {fom_limits.get(sigma_kern):.2f} (Contamination={final_row['n_pos_controls']})"
                 )
-                print("-" * 22)
 
             i += 2
 
@@ -251,7 +252,7 @@ class ContaminationTable:
         self.t = self.t.iloc[1::2].reset_index(drop=True)
 
         if verbose:
-            print("\nFinal contamination table: ")
+            self.logger.body("Final contamination table: ", newline=True)
             print(self.__str__())
 
         return fom_limits
@@ -273,13 +274,14 @@ class ContaminationTable:
 
     def load(self, detec_tables_dir: str, prelim: bool = False):
         filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
-        print(f"Loading contamination table at {filename}...")
+        self.logger.loading(f"Loading contamination table at {filename}")
         try:
             self.t = pd.read_table(filename, sep="\s+")
         except Exception as e:
             raise RuntimeError(
                 f"Could not load efficiency table at {filename}: {str(e)}"
             )
+        self.logger.success()
 
     def save(self, detec_tables_dir: str, prelim: bool = False):
         if self.t is None:
@@ -287,7 +289,7 @@ class ContaminationTable:
 
         make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/contamination{'_prelim' if prelim else ''}.txt"
-        print(f"💾 Saving contamination table as {filename}...")
+        self.logger.saving(f"Saving contamination table as {filename}", newline=True)
         self.t.to_string(filename, index=False)
 
     def __str__(self):
@@ -311,6 +313,7 @@ class EfficiencyTable(pdastrostatsclass):
         :param params: Collection of parameter names and possible values.
         """
         pdastrostatsclass.__init__(self, **kwargs)
+        self.logger = CustomLogger(self.__class__.__name__)
         self.sigma_kerns: List[float] = sigma_kerns
         self._fom_limits: FomLimits = FomLimits()
         self.params: Params = params
@@ -338,7 +341,10 @@ class EfficiencyTable(pdastrostatsclass):
             **{param.name: param.values for param in self.params.other_params()},
         }
 
-        print(f"\nSetting up efficiency table with columns: {all_params.keys()}")
+        self.logger.info(
+            f"Setting up efficiency table with columns: {all_params.keys()}",
+            newline=True,
+        )
 
         keys, values = zip(*(all_params).items())
         combinations = list(itertools.product(*values))
@@ -419,7 +425,7 @@ class EfficiencyTable(pdastrostatsclass):
             raise ValueError(f"Parsing FOM limits failed: {fom_limits}")
 
         l = len(self.t)
-        print("Calculating efficiencies...")
+        self.logger.subheader("Calculating efficiencies")
         if progress_bar:
             print_progress_bar(0, l, prefix="Progress:", suffix="Complete", length=50)
 
@@ -450,7 +456,8 @@ class EfficiencyTable(pdastrostatsclass):
                     i + 1, l, prefix="Progress:", suffix="Complete", length=50
                 )
 
-        print("✅ Success")
+        if not progress_bar:
+            self.logger.success()
         print(self.__str__())
 
     def get_subset(
@@ -518,18 +525,19 @@ class EfficiencyTable(pdastrostatsclass):
 
     def load(self, detec_tables_dir: str, model_name: str):
         filename = f"{detec_tables_dir}/efficiencies_{model_name}.txt"
-        print(f"Loading efficiency table at {filename}...")
+        self.logger.loading(f"Loading efficiency table at {filename}", newline=True)
         try:
             self.load_spacesep(filename, delim_whitespace=True)
         except Exception as e:
             raise RuntimeError(
                 f"Could not load efficiency table at {filename}: {str(e)}"
             )
+        self.logger.success()
 
     def save(self, detec_tables_dir: str, model_name: str):
         make_dir_if_not_exists(detec_tables_dir)
         filename = f"{detec_tables_dir}/efficiencies_{model_name}.txt"
-        print(f"💾 Saving efficiency table as {filename}...")
+        self.logger.saving(f"Saving efficiency table as {filename}", newline=True)
         self.write(filename=filename, overwrite=True, index=False)
 
     def __str__(self):
@@ -547,6 +555,8 @@ class MagnitudeThresholdTable:
         """
         Initialize a MagnitudeThresholdTable.
         """
+        self.logger = CustomLogger(self.__class__.__name__)
+
         self.all: Optional[pd.DataFrame] = None
         self.best: Optional[pd.DataFrame] = None
 
@@ -665,19 +675,15 @@ class MagnitudeThresholdTable:
                     subset[f"pct_detec_{format_float_string(fom_limit)}"],
                     p,
                 )
-            except MultipleRootsFound as ex:
-                print(
-                    f"⚠️ WARNING: Multiple roots found for sigma_kern={sigma_kern}, "
-                    f"{select_param_name}={select_param_value}, fom_limit={fom_limit}, "
-                    f"percent={p}. Roots: {ex.roots}"
+            except MultipleRootsFound as e:
+                self.logger.warning(
+                    f"Multiple roots found for sigma_kern={sigma_kern}, {select_param_name}={select_param_value}, fom_limit={fom_limit}, percent={p}. Roots: {e.roots}"
                 )
                 # TODO: SHOULD THIS BE np.nan OR ex.roots[0]?
-                row[colname] = ex.roots[0]
-            except Exception as ex:
-                print(
-                    f"ERROR: Exception during mag threshold calc for sigma_kern={sigma_kern}, "
-                    f"{select_param_name}={select_param_value}, fom_limit={fom_limit}, "
-                    f"percent={p}. Exception: {ex}"
+                row[colname] = e.roots[0]
+            except Exception as e:
+                self.logger.error(
+                    f"Exception during mag threshold calc for sigma_kern={sigma_kern}, {select_param_name}={select_param_value}, fom_limit={fom_limit}, percent={p}. Exception: {str(e)}"
                 )
                 row[colname] = np.nan
         return row
@@ -695,7 +701,7 @@ class MagnitudeThresholdTable:
         if e.t.empty:
             raise ValueError("EfficiencyTable cannot be empty")
 
-        print("Calculating table of all magnitude thresholds...")
+        self.logger.subheader("Calculating table of all magnitude thresholds")
         columns = ["sigma_kern", select_param_name, "fom_limit"] + [
             f"mag_threshold_{format_float_string(p)}" for p in percents
         ]
@@ -722,7 +728,7 @@ class MagnitudeThresholdTable:
                 percents,
             )
             self.all.loc[i] = row
-        print("✅ Success")
+        self.logger.success()
 
     def _calculate_best(
         self,
@@ -740,7 +746,7 @@ class MagnitudeThresholdTable:
                 "Table of all magnitude thresholds cannot be None or empty"
             )
 
-        print("Calculating table of best magnitude thresholds...")
+        self.logger.subheader("Calculating table of best magnitude thresholds")
         columns = [select_param_name]
         for p in percents:
             columns.append(f"best_sigma_kern_{format_float_string(p)}")
@@ -779,8 +785,7 @@ class MagnitudeThresholdTable:
                     "sigma_kern"
                 ]
             self.best = new_row(self.best, row)
-
-        print("✅ Success")
+        self.logger.success()
 
     def calculate(
         self,
@@ -816,14 +821,19 @@ class MagnitudeThresholdTable:
             filename_all = (
                 f"{detec_tables_dir}/all_magnitude_thresholds_{model_name}.txt"
             )
-            print(f"💾 Saving table of all magnitude thresholds as {filename_all}...")
+            self.logger.saving(
+                f"Saving table of all magnitude thresholds as {filename_all}",
+                newline=True,
+            )
             self.all.to_string(filename_all, index=False)
 
         if self.best is not None and not self.best.empty:
             filename_best = (
                 f"{detec_tables_dir}/best_magnitude_thresholds_{model_name}.txt"
             )
-            print(f"💾 Saving table of best magnitude thresholds as {filename_best}...")
+            self.logger.saving(
+                f"Saving table of best magnitude thresholds as {filename_best}",
+            )
             self.best.to_string(filename_best, index=False)
 
 
@@ -831,6 +841,8 @@ class AnalysisLoop:
     def __init__(
         self, sigma_kerns: List[float], model_name: str, detec_tables_dir: str
     ):
+        self.logger = CustomLogger()
+
         self.sigma_kerns = sigma_kerns
         self.model_name = model_name
         self.detec_tables_dir = detec_tables_dir
@@ -857,7 +869,7 @@ class AnalysisLoop:
         if mjd_ranges is not None:
             self._sn.set_mjd_ranges(mjd_ranges)
         if skip_control_ix:
-            print(f"Skipping control light curve indices: {skip_control_ix}")
+            self.logger.info(f"Skipping control light curve indices: {skip_control_ix}")
             self._sn.remove_lc_indices(skip_control_ix)
 
     def load_sn(
@@ -932,16 +944,13 @@ class AnalysisLoop:
         if n_steps < 2:
             raise ValueError("n_steps must be >= 2")
 
-        print()
         _, prelim_fom_limit_ranges = self._sn.get_prelim_fom_limit_ranges(
             self.sigma_kerns
         )
 
-        print()
         contam = ContaminationTable()
         contam.construct_prelim_t(self._sn, self.sigma_kerns, prelim_fom_limit_ranges)
 
-        print()
         fom_limits = contam.calculate(
             self._sn,
             prelim_fom_limit_ranges,
@@ -952,7 +961,9 @@ class AnalysisLoop:
         )
         contam.save(self.detec_tables_dir)
 
-        print(f"Best FOM limits for each sigma_kern: {fom_limits}")
+        self.logger.success(
+            f"Best FOM limits for each sigma_kern: {fom_limits}", newline=True
+        )
         return fom_limits
 
     def get_brightness_param_from_detec_tables(self, param_name: str = "brightness"):
@@ -974,7 +985,7 @@ class AnalysisLoop:
             param_name, values, param_type=ParamType.BRIGHTNESS
         )
         self._params.add(brightness_param)
-        print(self._params.brightness_param)
+        self.logger.success("Result: " + self._params.brightness_param.__str__())
 
     def set_brightness_param(self, values: List[float], param_name="brightness"):
         if not values:
@@ -1023,9 +1034,12 @@ class AnalysisLoop:
                 "SimDetecTables (self._tables) must be set before calculating efficiencies"
             )
 
+        self.logger.header("Calculating best FOM limits and their contamination")
         fom_limits = self.calculate_best_fom_limits(
             target_value=target_value, n_steps=n_steps
         )
+
+        self.logger.header("Calculating efficiencies using best FOM limits")
         self.efficiencies = EfficiencyTable(self.sigma_kerns, self._params)
         self.efficiencies.calculate_efficiencies(self._tables, fom_limits)
         self.efficiencies.save(self.detec_tables_dir, self.model_name)
@@ -1034,6 +1048,8 @@ class AnalysisLoop:
     def calculate_mag_thresholds(
         self, select_param_name: str, percents: List[float] = [50, 80]
     ) -> MagnitudeThresholdTable:
+        self.logger.header("Calculating apparent magnitude thresholds")
+
         if self.efficiencies is None or self.efficiencies.t.empty:
             raise RuntimeError(
                 "Efficiencies (self.efficiencies) must be calulated before calculating magnitude thresholds"
@@ -1157,6 +1173,8 @@ def define_args(
 
 
 if __name__ == "__main__":
+    logger = CustomLogger()
+
     config = load_config("config.ini")
     args = define_args(config).parse_args()
 
@@ -1164,7 +1182,7 @@ if __name__ == "__main__":
         raise RuntimeError("Model name cannot have spaces.")
 
     colnames = load_preset_column_names_from_config(
-        args.preset, config, filt=args.filter
+        args.preset, config, filts=args.filter
     )
 
     mjd0 = args.mjd0
@@ -1174,7 +1192,9 @@ if __name__ == "__main__":
             config["dir"]["output"], filename=config["dir"]["sninfo_filename"]
         )
         _, _, mjd0 = sninfo.get_info(args.tnsname)
-    print(f"MJD0: {mjd0}")
+    logger.info(f"MJD0: {mjd0}", newline=True)
+    if args.mjd_ranges is not None:
+        logger.info(f"Valid MJD ranges: {args.mjd_ranges}")
 
     analysis_loop = AtlasAnalysisLoop(
         args.sigma_kerns,
@@ -1194,8 +1214,6 @@ if __name__ == "__main__":
         skip_control_ix=args.skip_control_ix,
         flag=hexstring_to_int(config["averaging"]["flag"]),
     )
-    if args.mjd_ranges is not None:
-        print(f"\nValid MJD ranges: {args.mjd_ranges}")
 
     print()
     analysis_loop.get_brightness_param_from_detec_tables()

@@ -28,6 +28,136 @@ TEMPLATE_CHANGE_2_MJD = 58882
 
 CONFIG_CUT_NAMES = ["uncert_cut", "x2_cut", "controls_cut", "badday_cut", "averaging"]
 
+ATLAS_API_COLUMN_NAMES = [
+    "MJD",
+    "m",
+    "dm",
+    "uJy",
+    "duJy",
+    "F",
+    "err",
+    "chi/N",
+    "RA",
+    "Dec",
+    "x",
+    "y",
+    "maj",
+    "min",
+    "phi",
+    "apfit",
+    "Sky",
+    "ZP",
+    "Obs",
+    "Mask",
+]
+
+
+def add_static_methods(cls):
+    """
+    Class decorator that automatically adds static versions of all public instance methods.
+
+    For each instance method (not starting with "_" or "s_"), this decorator adds a static method
+    with the same name prefixed by 's_'. The static version will instantiate the class with default
+    parameters and call the corresponding instance method.
+
+    This is best used when instance methods don't depend on constructor arguments.
+
+    Example:
+        @add_static_methods
+        class CustomLogger:
+            def step(self, message):
+                print(f"⚙️ {message}")
+
+        CustomLogger.s_step("This works statically!")
+    """
+    default_instance = cls()
+
+    for name, method in list(cls.__dict__.items()):
+        if callable(method) and not name.startswith("_") and not name.startswith("s_"):
+
+            def make_static(meth_name):
+                def static_method(*args, **kwargs):
+                    return getattr(default_instance, meth_name)(*args, **kwargs)
+
+                return static_method
+
+            setattr(cls, f"s_{name}", staticmethod(make_static(name)))
+
+    return cls
+
+
+@add_static_methods
+class CustomLogger:
+    def __init__(self, prefix=""):
+        self.prefix = f"[{prefix}] " if prefix else ""
+
+    def _print(
+        self, message: str, symbol: str = "", newline: bool = False, dots: bool = False
+    ):
+        newline_part = "\n" if newline else ""
+        suffix = "..." if dots else ""
+
+        # capitalize first letter of message
+        if message:
+            message_part = message[0].upper() + message[1:]
+
+        symbol_part = f"{symbol} " if symbol else ""
+
+        print(f"{newline_part}{symbol_part}{self.prefix}{message_part}{suffix}")
+
+    def warning(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="⚠️ WARNING:", newline=newline, dots=dots)
+
+    def error(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="❌ ERROR:", newline=newline, dots=dots)
+
+    def success(
+        self, message: str = "Success", newline: bool = False, dots: bool = False
+    ):
+        self._print(message, symbol="✅", newline=newline, dots=dots)
+
+    def header(
+        self,
+        message: str,
+        num_dashes: int = 3,
+        newline: bool = True,
+    ):
+        prefix_newline = "\n" if newline else ""
+        dashes = "-" * num_dashes
+        # no prefix for header
+        print(f"{prefix_newline}{dashes} {message} {dashes}")
+
+    def subheader(self, message: str, newline: bool = True):
+        self.header(message, num_dashes=2, newline=newline)
+
+    def step(self, message: str, newline: bool = True, dots: bool = False):
+        self._print(message, symbol="⚙️", newline=newline, dots=dots)
+
+    def body(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, newline=newline, dots=dots)
+
+    def listitem(self, message: str, symbol="•", dots: bool = False):
+        # no prefix for listitem
+        print(f'{symbol} {message}{"..." if dots else ""}')
+
+    def info(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="🔧", newline=newline, dots=dots)
+
+    def secret(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="🔒", newline=newline, dots=dots)
+
+    def loading(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="🔄", newline=newline, dots=dots)
+
+    def saving(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="💾", newline=newline, dots=dots)
+
+    def api(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="🌐", newline=newline, dots=dots)
+
+    def plot(self, message: str, newline: bool = False, dots: bool = False):
+        self._print(message, symbol="📈", newline=newline, dots=dots)
+
 
 # convert flux to magnitude
 def flux2mag(flux: float):
@@ -122,12 +252,13 @@ def app2absmag(values: List[float], distance_modulus=29.04, precision=2):
     return [round(v - distance_modulus, precision) for v in values]
 
 
-# load a JSON config file
 def load_json_config(filename: str):
     try:
-        print(f"Loading JSON config file at {filename}...")
+        CustomLogger.s_loading(f"Loading JSON config file at {filename}", newline=True)
         with open(filename) as cfg:
-            return json.load(cfg)
+            res = json.load(cfg)
+            CustomLogger.s_success()
+            return res
     except Exception as e:
         raise RuntimeError(f"Could not load JSON config file at {filename}: {str(e)}")
 
@@ -206,22 +337,27 @@ def make_dir_if_not_exists(directory):
         try:
             os.makedirs(directory)
         except PermissionError:
-            print(f"Permission denied: Cannot create directory at {directory}")
+            raise PermissionError(
+                f"Permission denied: Cannot create directory at {directory}"
+            )
         except FileExistsError:
             # This can occur if the directory is created between the `isdir` check and `makedirs` call.
-            print(f"Directory already exists: {directory}")
+            raise FileExistsError(f"Directory already exists: {directory}")
         except Exception as e:
-            print(f"An error occurred while creating directory {directory}: {str(e)}")
+            raise RuntimeError(
+                f"An error occurred while creating directory {directory}: {str(e)}"
+            )
 
 
 # load a .ini config file
 def load_config(filename):
     cfg = configparser.ConfigParser()
     try:
-        print(f"\nLoading config file at {filename}...")
+        CustomLogger.s_loading(f"Loading config file at {filename}", newline=True)
         cfg.read(filename)
     except Exception as e:
         raise RuntimeError(f"Could not load config file at {filename}: {str(e)}")
+    CustomLogger.s_success()
     return cfg
 
 
@@ -232,7 +368,9 @@ def extract_from_subdir(
     convert_function: Callable = lambda x: x,
 ):
     if not os.path.isdir(directory):
-        print(f"⚠️ WARNING: Cannot search because the path does not exist: {directory}")
+        CustomLogger.s_warning(
+            f"Cannot search because the path does not exist: {directory}"
+        )
         return []
 
     extracted_values = set()
@@ -244,7 +382,9 @@ def extract_from_subdir(
             extracted_values.add(convert_function(value))
 
     if not extracted_values:
-        print(f"⚠️ WARNING: Could not find {group_name} from the files in {directory}")
+        CustomLogger.s_warning(
+            f"Could not find {group_name} from the files in {directory}"
+        )
 
     return list(extracted_values)
 
@@ -270,6 +410,25 @@ def find_all_filts(directory: str, tnsname: str) -> List[str]:
     )
     subdir = os.path.join(directory, tnsname)
     return extract_from_subdir(subdir, pattern, "filt")
+
+
+def check_filts_against_preset(
+    preset: str, allowed_presets: List[str], filts: List[str] | str
+):
+    if isinstance(filts, str):
+        filts = [filts]
+
+    for filt in filts:
+        if filt in allowed_presets and filt != preset:
+            ans = (
+                input(
+                    f"WARNING: Filter '{filt}' is already defined in the config file as a preset, but does not match the current preset '{preset}'. Consider removing the filter from the current list of filters to clean, then running a separate command using the preset '{filt}'. \nCONTINUE (not recommended)? (y/n): "
+                )
+                .strip()
+                .lower()
+            )
+            if ans not in ["y", "yes"]:
+                sys.exit(0)
 
 
 def find_all_control_indices(directory: str, tnsname: str, filt=None) -> List:
@@ -348,7 +507,7 @@ def _expand_ranges(
     if expand_edges == 0.0 or expand_edges is None:
         return ranges
 
-    print(f"Expanding range edges by {expand_edges}...")
+    CustomLogger.s_body(f"Expanding range edges by {expand_edges}")
 
     expanded = []
     for start, end in ranges:
@@ -397,7 +556,7 @@ def get_inverse_mjd_ranges(
     # merge exclude_mjd_ranges with the inverse list
     if exclude_mjd_ranges is not None:
         validate_mjd_ranges(exclude_mjd_ranges, var_name="EXCLUDE_MJD_RANGES")
-        print(f"Excluding additional MJD ranges {exclude_mjd_ranges}...")
+        CustomLogger.s_body(f"Excluding additional MJD ranges {exclude_mjd_ranges}")
         if len(exclude_mjd_ranges) > 0:
             combined = inverse + exclude_mjd_ranges
             inverse = _merge_ranges(combined)
@@ -495,6 +654,7 @@ class PlotLimits:
 class FomLimits:
     def __init__(self):
         self._values = {}
+        self.logger = CustomLogger(self.__class__.__name__)
 
     def add(self, sigma_kern: float, values: List[float | int] | float | int):
         """
@@ -527,7 +687,7 @@ class FomLimits:
         Overwrite any current sigma_kerns and FOM limits with new ones.
         """
         if self._values:
-            print("⚠️ WARNING: Overwriting current FOM limits with new ones")
+            self.logger.warning("Overwriting current FOM limits with new ones")
         self._values = self.validate(sigma_kerns, values)
 
     def set_blank(self, sigma_kerns: List[float]):
@@ -834,24 +994,27 @@ class PresetColumnNames:
         """Readable string representation of all column names."""
         skip_colnames = ["mjdbin", "fdf", "mask"]
 
-        lines = ["--- Required Columns ---"]
+        lines = ["-- Required Columns --"]
         for k, v in self.required_columns.items():
             if k in skip_colnames:
                 continue
             lines.append(f"{k}: {v}")
 
-        lines.append("--- Optional Columns ---")
+        lines.append("-- Optional Columns --")
         for k, v in self.optional_columns.items():
             lines.append(f"{k}: {v}")
 
-        lines.append("--- Extra Columns to Copy ---")
+        lines.append("-- Extra Columns to Copy --")
         lines.append(", ".join(self.extra_columns) if self.extra_columns else "(None)")
 
         return "\n".join(lines)
 
 
 def load_preset_column_names_from_config(
-    preset: str, config: ConfigParser, filt: str = None, verbose: bool = True
+    preset: str,
+    config: ConfigParser,
+    filts: Optional[List[str] | str] = None,
+    verbose: bool = True,
 ) -> PresetColumnNames:
     """
     Load a set of preset column names from a configuration file.
@@ -862,14 +1025,16 @@ def load_preset_column_names_from_config(
 
     :param preset: The name of the preset to load from the configuration file. Must be one of the allowed presets defined in the config.
     :param config: A ConfigParser object containing preset definitions (typically parsed from config.ini).
-    :param filt: A filter name that may be used to warn if it matches a preset but differs from `preset`. Useful for catching potential mismatches.
+    :param filts: Filters that may be used to warn if it matches a preset but differs from `preset`. Useful for catching potential mismatches.
 
     Raises RuntimeError if the provided preset is None or not found among the allowed presets.
 
     If `filt` is specified and matches a preset name different from `preset`, a warning is printed.
     """
     if verbose:
-        print(f"\nLoading '{preset}' preset column names from config.ini...")
+        CustomLogger.s_loading(
+            f"Loading '{preset}' preset column names from config.ini", newline=True
+        )
 
     allowed_presets = get_allowed_presets(config)
     if preset is None or preset not in allowed_presets:
@@ -877,14 +1042,12 @@ def load_preset_column_names_from_config(
             f"Please specify the preset name to load from the config file (allowed presets: {allowed_presets})"
         )
 
-    if filt is not None and filt in allowed_presets and filt != preset:
-        print(
-            f"⚠️ WARNING: filter '{filt}' identified as preset in config file, but does not match preset {preset}"
-        )
+    if filts is not None:
+        check_filts_against_preset(preset, allowed_presets, filts)
 
     colnames = PresetColumnNames(config, preset)
     if verbose:
-        print("✅ Success")
+        CustomLogger.s_success()
         print(colnames.__str__())
     return colnames
 
@@ -899,17 +1062,17 @@ class Credentials:
         self.tns_id = parse_config_str(tns_id)
         self.tns_bot_name = parse_config_str(tns_bot_name)
 
-    def validate_tns_credentials(self):
-        tns_params = [self.tns_api_key, self.tns_id, self.tns_bot_name]
-        not_none_count = sum(param is not None for param in tns_params)
-        if 0 < not_none_count < 3:
-            raise RuntimeError(
-                "Either all or none of 'tns_api_key', 'tns_id', and 'tns_bot_name' must be provided."
-            )
-
     def prompt_for_atlas_password(self):
         if self.atlas_password is None:
             self.atlas_password = getpass(prompt="Enter ATLAS password: ")
+
+    def prompt_for_tns_creds(self):
+        if self.tns_id is None:
+            self.tns_id = getpass(prompt="Enter TNS ID: ")
+        if self.tns_bot_name is None:
+            self.tns_bot_name = getpass(prompt="Enter TNS bot name: ")
+        if self.tns_api_key is None:
+            self.tns_api_key = getpass(prompt="Enter TNS API key: ")
 
 
 class BaseAngle(ABC):
@@ -1035,21 +1198,28 @@ class Coordinates:
 # (TODO: if MJD0=None, consider entire light curve as pre-SN light curve)
 class SnInfoTable:
     def __init__(self, directory, filename=None):
+        self.logger = CustomLogger(self.__class__.__name__)
+
         if filename is None:
             self.filename = f"{directory}/sninfo.txt"
         else:
             self.filename = f"{directory}/{filename}"
 
         try:
-            print(f"Loading SN info table at {self.filename}...")
+            self.logger.loading(
+                f"Loading SN info table at {self.filename}", newline=True
+            )
             self.t = pd.read_table(self.filename, sep="\s+")
             if not "tnsname" in self.t.columns:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
-            print("✅ Success")
+            self.logger.success()
         except Exception:
-            print(f"No existing SN info table at that path; creating blank table...")
+            self.logger.body(
+                f"No existing SN info table at that path; creating blank table",
+                dots=True,
+            )
             self.t = pd.DataFrame(
                 columns=["tnsname", "ra", "dec", "mjd0", "center_ra", "center_dec"]
             )
@@ -1061,8 +1231,9 @@ class SnInfoTable:
 
         matching_ix = self.t.index[self.t["tnsname"].eq(tnsname)]
         if len(matching_ix) >= 2:
-            print(
-                f"⚠️ WARNING: SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows..."
+            self.logger.warning(
+                f"SN info table has {len(matching_ix)} matching rows for TNS name {tnsname}. Dropping duplicate rows",
+                dots=True,
             )
             self.t.drop(index=matching_ix[1:], inplace=True)
             first_ix = self.t.index[self.t["tnsname"].eq(tnsname)][0]
@@ -1181,7 +1352,7 @@ class SnInfoTable:
             self.add_new_row(tnsname, coords, mjd0)
 
     def save(self):
-        print(f"\n💾 Saving SN info table at {self.filename}...")
+        self.logger.saving(f"Saving SN info table at {self.filename}", newline=True)
         self.t["ra"] = self.t["ra"].astype(str)
         self.t["dec"] = self.t["dec"].astype(str)
         self.t.to_string(self.filename, index=False)
@@ -1226,9 +1397,11 @@ def get_filepath(
 
 
 def query_tns(tnsname, api_key, tns_id, bot_name):
+    logger = CustomLogger("query_tns")
+
     if tns_id is None or bot_name is None:
-        print(
-            "⚠️ WARNING: Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
+        logger.warning(
+            "Cannot query TNS without TNS ID and bot name. Please specify these parameters in config.ini."
         )
         return None
 
@@ -1251,9 +1424,9 @@ def query_tns(tnsname, api_key, tns_id, bot_name):
         return json_data
     except Exception as e:
         if json_data and "data" in json_data:
-            print(json_data["data"])
+            logger.body(json_data["data"])
         else:
-            print("No JSON data received or failed to parse response")
+            logger.body("No JSON data received or failed to parse response")
         raise RuntimeError("ERROR in query_tns(): " + str(e))
 
 
@@ -1283,20 +1456,24 @@ def get_tns_mjd0_from_json(json_data, use_disc_date_buffer: bool = True):
 def get_mjd0_from_tns(
     tnsname: str, sninfo: SnInfoTable, credentials: Credentials
 ) -> Tuple[float, Coordinates | None]:
+    logger = CustomLogger("get_mjd0_from_tns")
+
     _, sninfo_row = sninfo.get_row(tnsname)
     if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
         # get MJD0 from SN info table
-        print(f'\nSetting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table...')
+        logger.info(
+            f'Setting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table', newline=True
+        )
         mjd0 = float(sninfo_row["mjd0"])
         if not isinstance(mjd0, (int, float)):
             raise RuntimeError(f"Invalid MJD0: {mjd0}")
         else:
-            print("✅ Success")
+            logger.success()
             return mjd0, None
     else:
         # get MJD0 from TNS
-        print(f"\nQuerying TNS for SN {tnsname} discovery date...")
-        credentials.validate_tns_credentials()
+        logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
+        credentials.prompt_for_tns_creds()
         json_data = query_tns(
             tnsname,
             credentials.tns_api_key,
@@ -1305,26 +1482,30 @@ def get_mjd0_from_tns(
         )
         mjd0 = get_tns_mjd0_from_json(json_data)
         coords = get_tns_coords_from_json(json_data)
-        print("✅ Success")
+        logger.success()
         return mjd0, coords
 
 
 def get_tns_data(
     tnsname: str, tns_api_key, tns_id, tns_bot_name, use_disc_date_buffer: bool = True
 ) -> tuple[float, Coordinates]:
-    print(f"Querying TNS for {tnsname} RA, Dec, and MJD0...")
+    logger = CustomLogger("get_tns_data")
+    logger.api(f"Querying TNS for {tnsname} RA, Dec, and MJD0", newline=True)
+
     json_data = query_tns(tnsname, tns_api_key, tns_id, tns_bot_name)
     if json_data is None:
-        print(f"No data returned; skipping...")
+        logger.warning(f"No data returned; skipping", dots=True)
         return
 
     coords = get_tns_coords_from_json(json_data)
     mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
-    print("✅ Success")
+    logger.success()
     return mjd0, coords
 
 
 def query_atlas(headers, ra, dec, min_mjd, max_mjd):
+    logger = CustomLogger("query_atlas")
+
     baseurl = "https://fallingstar-data.com/forcedphot"
     task_url = None
     while not task_url:
@@ -1342,10 +1523,10 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
             )
             if resp.status_code == 201:
                 task_url = resp.json()["url"]
-                print(f"Task url: {task_url}")
+                logger.body(f"Task url: {task_url}")
             elif resp.status_code == 429:
                 message = resp.json()["detail"]
-                print(f"{resp.status_code} {message}")
+                logger.body(f"{resp.status_code} {message}")
                 t_sec = re.findall(r"available in (\d+) seconds", message)
                 t_min = re.findall(r"available in (\d+) minutes", message)
                 if t_sec:
@@ -1354,28 +1535,30 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
                     waittime = int(t_min[0]) * 60
                 else:
                     waittime = 10
-                print(f"Waiting {waittime} seconds")
+                logger.body(f"Waiting {waittime} seconds")
                 time.sleep(waittime)
             else:
-                print(f"ERROR {resp.status_code}")
-                print(resp.text)
+                logger.error(f"{resp.status_code}")
+                logger.body(resp.text)
                 sys.exit()
 
     result_url = None
     taskstarted_printed = False
 
-    print("Waiting for job to start...")
+    logger.body("Waiting for job to start...")
     while not result_url:
         with requests.Session() as s:
             resp = s.get(task_url, headers=headers)
             if resp.status_code == 200:
                 if not (resp.json()["finishtimestamp"] is None):
                     result_url = resp.json()["result_url"]
-                    print(f"✅ Task is complete with results available at {result_url}")
+                    logger.success(
+                        f"Task is complete with results available at {result_url}"
+                    )
                     break
                 elif resp.json()["starttimestamp"]:
                     if not taskstarted_printed:
-                        print(
+                        logger.body(
                             f"Task is running (started at {resp.json()['starttimestamp']})"
                         )
                         taskstarted_printed = True
@@ -1384,37 +1567,14 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
                     # print(f"Waiting for job to start (queued at {resp.json()['timestamp']})")
                     time.sleep(4)
             else:
-                print(f"ERROR {resp.status_code}")
-                print(resp.text)
+                logger.error(f"{resp.status_code}")
+                logger.body(resp.text)
                 sys.exit()
 
     with requests.Session() as s:
         if result_url is None:
-            print("⚠️ WARNING: Empty light curve (no data within this MJD range).")
-            dfresult = pd.DataFrame(
-                columns=[
-                    "MJD",
-                    "m",
-                    "dm",
-                    "uJy",
-                    "duJy",
-                    "F",
-                    "err",
-                    "chi/N",
-                    "RA",
-                    "Dec",
-                    "x",
-                    "y",
-                    "maj",
-                    "min",
-                    "phi",
-                    "apfit",
-                    "Sky",
-                    "ZP",
-                    "Obs",
-                    "Mask",
-                ]
-            )
+            logger.warning("Empty light curve (no data within the queried MJD range)")
+            dfresult = pd.DataFrame(columns=ATLAS_API_COLUMN_NAMES)
         else:
             result = s.get(result_url, headers=headers).text
             dfresult = pd.read_csv(io.StringIO(result.replace("###", "")), sep="\s+")
@@ -1438,7 +1598,8 @@ def combine_flags(flags: List[int]) -> int:
 
 
 def get_config_custom_cuts(config: ConfigParser) -> List:
-    print("\nSearching config file for custom cuts...")
+    logger = CustomLogger("get_config_custom_cuts")
+    logger.body("Searching config file for custom cuts", newline=True)
 
     required_keys = {"column", "flag", "max_value", "min_value"}
     custom_cuts = []
@@ -1446,13 +1607,14 @@ def get_config_custom_cuts(config: ConfigParser) -> List:
     for key in config:
         if key.endswith("_cut") and not key in CONFIG_CUT_NAMES:
             if not required_keys.issubset(config[key].keys()):
-                print(
-                    f"⚠️ WARNING: Custom cut {key} missing required fields (required fields: {required_keys}); skipping..."
+                logger.warning(
+                    f"Custom cut {key} missing required fields (required fields: {required_keys}); skipping",
+                    dots=True,
                 )
             else:
                 custom_cuts.append(config[key])
 
-    print(f"Found {len(custom_cuts)}")
+    logger.success(f"Found {len(custom_cuts)} custom cuts")
     return custom_cuts
 
 
@@ -1679,12 +1841,13 @@ class BadDayCut(Cut):
 
 class CutList:
     def __init__(self):
+        self.logger = CustomLogger(self.__class__.__name__)
         self.list: Dict[str, Cut] = {}
 
     def add(self, cut: Cut):
         if cut.name() in self.list:
-            print(
-                f"⚠️ WARNING: cut by the name {cut.name()} already exists; overwriting..."
+            self.logger.warning(
+                f"Cut by the name {cut.name()} already exists; overwriting", dots=True
             )
         self.list[cut.name()] = cut
 
@@ -1793,7 +1956,7 @@ class CutList:
         return mask
 
     def __str__(self):
-        output = ""
+        output = []
         for name in self.list:
-            output += self.list[name].__str__()
-        return output
+            output.append("• " + self.list[name].__str__())
+        return "\n".join(output)
