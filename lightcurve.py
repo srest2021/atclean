@@ -534,7 +534,7 @@ class Supernova:
 
         if control_index in self.lcs.keys():
             self.logger.warning(
-                f"Light curve with control index {control_index} already exists; overwriting",
+                f"Light curve with control index {control_index} already loaded; overwriting",
                 dots=True,
             )
 

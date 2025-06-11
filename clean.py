@@ -47,179 +47,246 @@ from utils import (
 
 class OutputReadMe:
     def __init__(self, output_dir, tnsname, cut_list, num_controls=0):
-        self.logger = CustomLogger(self.__class__.__name__)
+        logger = CustomLogger(self.__class__.__name__)
+
+        self.cut_list: CutList = cut_list
 
         timestamp = datetime.now()
-        filename = (
-            f"{output_dir}/{tnsname}/README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
-        )
-        self.logger.loading(
-            f"Opening README.md file for outputting cut information at {filename}",
+        filename = self.get_filename(output_dir, tnsname, timestamp)
+
+        logger.loading(
+            f"Creating new README file for outputting {tnsname} cut information at {filename}",
             newline=True,
         )
-        self.f = open(filename, "w+")
-        self.tnsname: str = tnsname
-        self.cut_list: CutList = cut_list
-        self.begin(timestamp, num_controls=num_controls)
-        self.logger.success()
 
-    def begin(self, timestamp: datetime, num_controls: int = 0):
+        self.f = open(filename, "w+")
+        self._write_intro_text(tnsname, timestamp, num_controls=num_controls)
+        logger.success()
+
+    def get_filename(self, output_dir: str, tnsname: str, timestamp: datetime):
+        return f"{output_dir}/{tnsname}/README_{timestamp.strftime('%Y%m%d_%H%M%S')}.md"
+
+    def get_header_str(self, text: str, level=1) -> str:
+        hashtags = "#" * level
+        return f"\n{hashtags} {text}"
+
+    def get_applicable_cut_lines(self, cut: Cut) -> List[str]:
+        lines = [f"Column: '{cut.column}'", f"Flag: {hex(cut.flag)}"]
+        if cut.min_value is not None:
+            lines.append(f"Min value: {cut.min_value}")
+        if cut.max_value is not None:
+            lines.append(f"Max value: {cut.max_value}")
+        return lines
+
+    def get_percent_cut_str(
+        self,
+        flag: int,
+        percent_cut: float,
+        lc_type: str = "SN",
+        flagged_as: str = "bad",
+    ) -> str:
+        """
+        Return an informative string describing the percentage of data flagged with a certain hex value.
+        """
+        return f"Percent of {lc_type} light curve flagged as {flagged_as} ({hex(flag)}): {percent_cut:0.2f}%"
+
+    def write_line(self, text: str = ""):
+        self.f.write(f"{text}\n")
+
+    def write_lines(self, lines: List[str]):
+        for line in lines:
+            self.write_line(line)
+
+    def save(self):
+        self.f.close()
+
+    def _write_intro_text(
+        self, tnsname, timestamp: datetime, num_controls: int = 0
+    ) -> List[str]:
         badday_cut = self.cut_list.get(BadDayCut.name())
         mjdbinsize = 1.0 if badday_cut is None else badday_cut.mjd_bin_size
 
-        self.f.write(f"# SN {self.tnsname} Light Curve Cleaning and Averaging")
-        self.f.write(f"\n\nTimestamp: {timestamp.strftime('%B %d, %Y at %I:%M:%S %p')}")
-        full_command = " ".join(sys.argv)
-        self.f.write(f"\n\nCommand run: `{full_command}`")
+        self.write_line(
+            f"""# SN {tnsname} Light Curve Cleaning and Averaging
 
-        self.f.write(
-            f'\n\nThe SN light curves are separated by filter and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.'
-        )
+Timestamp: {timestamp.strftime('%B %d, %Y at %I:%M:%S %p')}
 
-        self.f.write(
-            f"\n\nThe following details the file names for each of the light curve versions:"
+Full command: `{' '.join(sys.argv)}`
+
+The SN light curves are separated by filter and labelled as such in the file name. Averaged light curves contain an additional number in the file name that represents the MJD bin size used. Control light curves are located in the "controls" subdirectory and follow the same naming scheme, only with their control index added after the SN name.
+
+The following details the file names for each of the light curve versions:
+- Original SN light curves: {tnsname}.o.lc.txt and {tnsname}.c.lc.txt
+- Cleaned SN light curves: {tnsname}.o.clean.lc.txt and {tnsname}.c.clean.lc.txt"""
         )
-        self.f.write(
-            f"\n\t- Original SN light curves: {self.tnsname}.o.lc.txt and {self.tnsname}.c.lc.txt"
-        )
-        self.f.write(
-            f"\n\t- Cleaned SN light curves: {self.tnsname}.o.clean.lc.txt and {self.tnsname}.c.clean.lc.txt"
-        )
+        if num_controls > 0:
+            self.write_line(
+                f"- Control light curves: {tnsname}_i{1:03d}.o.lc.txt, ..., {tnsname}_i{num_controls:03d}.c.lc.txt"
+            )
         if self.cut_list.has(BadDayCut.name()):
-            self.f.write(
-                f"\n\t- Averaged light curves (for MJD bin size {format_float_string(mjdbinsize)} days): {self.tnsname}.o.{format_float_string(mjdbinsize)}days.lc.txt and {self.tnsname}.c.{format_float_string(mjdbinsize)}days.lc.txt"
-            )
-        if self.cut_list.has(ControlLightCurveCut.name()):
-            self.f.write(
-                f"\n\t- Control light curves, where X=001,...,{num_controls:03d}: {self.tnsname}_iX.o.lc.txt and {self.tnsname}_iX.c.lc.txt"
+            self.write_line(
+                f"- Averaged light curves (for MJD bin size {format_float_string(mjdbinsize)} days): {tnsname}.o.{format_float_string(mjdbinsize)}days.lc.txt and {tnsname}.c.{format_float_string(mjdbinsize)}days.lc.txt"
             )
 
-        self.f.write(
-            f'\n\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut): '
+        self.write_line(
+            f'\nThe following summarizes the hex values in the "Mask" column of each light curve for each cut applied (see below sections for more information on each cut):'
         )
+
+        lines = []
+
         if self.cut_list.has(UncertaintyCut.name()):
-            self.f.write(
-                f"\n\t- Uncertainty cut: {hex(self.cut_list.get(UncertaintyCut.name()).flag)}"
+            lines.append(
+                f"- Uncertainty cut: {hex(self.cut_list.get(UncertaintyCut.name()).flag)}"
             )
         if self.cut_list.has(ChiSquareCut.name()):
-            self.f.write(
-                f"\n\t- Chi-square cut: {hex(self.cut_list.get(ChiSquareCut.name()).flag)}"
+            lines.append(
+                f"- Chi-square cut: {hex(self.cut_list.get(ChiSquareCut.name()).flag)}"
             )
         if self.cut_list.has(ControlLightCurveCut.name()):
-            self.f.write(
-                f"\n\t- Control light curve cut: {hex(self.cut_list.get(ControlLightCurveCut.name()).flag)}"
-            )
-        if badday_cut is not None:
-            self.f.write(
-                f"\n\t- Bad day (for averaged light curves only): {hex(badday_cut.flag)}"
+            lines.append(
+                f"- Control light curve cut: {hex(self.cut_list.get(ControlLightCurveCut.name()).flag)}"
             )
 
         custom_cuts = self.cut_list.get_custom_cuts()
         for cut in custom_cuts.values():
-            self.f.write(f'\n\t- Custom cut on "{cut.column}" column: {hex(cut.flag)}')
+            lines.append(f'- Custom cut on "{cut.column}" column: {hex(cut.flag)}')
 
-    def add_filter_section(self, filt):
-        self.f.write(f"\n\n## FILTER: {filt}")
+        if badday_cut is not None:
+            lines.append(f"- Bad day cut (averaging): {hex(badday_cut.flag)}")
 
-    def add_template_correction_section(self, output):
-        self.f.write(f"\n\n### ATLAS template change correction\n")
-        self.f.write("\n".join(output))
+        self.write_lines(lines)
+
+    def add_filter_section(self, filt: str):
+        self.write_line(self.get_header_str(f"Filter: {filt}", level=2))
+
+    def add_standard_cut_section(
+        self,
+        title: str,
+        cut: Cut,
+        percent_cut: float,
+        additional_lines: Optional[List[str]] = None,
+    ):
+        self.write_line(self.get_header_str(title, level=3))
+        self.write_line()
+        self.write_lines(self.get_applicable_cut_lines(cut))
+        if additional_lines is not None:
+            self.write_lines(additional_lines)
+        self.write_line(self.get_percent_cut_str(cut.flag, percent_cut))
+
+    def add_template_correction_section(self, lines: List[str]):
+        self.write_line(
+            self.get_header_str(f"ATLAS template change correction", level=3)
+        )
+        self.write_line()
+        self.write_lines(lines)
 
     def add_uncert_est_section(
         self,
-        sigma_typical_old,
-        sigma_typical_new,
-        final_sigma_extra,
-        percent_greater,
-        apply,
+        sigma_typical_old: float,
+        sigma_typical_new: float,
+        final_sigma_extra: float,
+        percent_greater: float,
+        apply: bool,
     ):
-        self.f.write(f"\n\n### True uncertainties estimation\n")
-        self.f.write(
-            f"\nWe can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature."
-        )
-        self.f.write(
-            f"\nNew typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty."
-        )
-        self.f.write(f"\nApply true uncertainties estimation: {apply}.")
+        self.write_line(self.get_header_str(f"True uncertainties estimation", level=3))
+        self.write_line()
+
+        lines = [
+            f"Apply true uncertainties estimation: {apply}.",
+            f"We can increase the typical uncertainties from {sigma_typical_old:0.2f} to {sigma_typical_new:0.2f} by adding an additional systematic uncertainty of {final_sigma_extra:0.2f} in quadrature.",
+            f"The new typical uncertainty is {percent_greater:0.2f}% greater than old typical uncertainty.",
+        ]
+
         if percent_greater >= 10:
-            self.f.write("\nTrue uncertainties estimation recommended.")
+            lines[-1] += "True uncertainties estimation recommended."
             if apply:
-                self.f.write(
-                    '\nThe extra noise was added to the uncertainties of the SN light curve and copied to the "duJy_new" column.'
+                lines.append(
+                    "The extra noise was added to the uncertainties of the SN light curve and put in a new uncertainties column."
                 )
         else:
-            self.f.write(
-                "\nTrue uncertainties estimation not needed; procedure skipped."
-            )
+            lines.append("True uncertainties estimation not needed; procedure skipped.")
 
-    def add_uncert_cut_section(self, cut: UncertaintyCut, percent_cut):
-        self.f.write(f"\n\n### Uncertainty cut\n")
-        self.f.write(f"\nSelected uncertainty max value of {cut.max_value}\n")
-        self.f.write(
-            f"\nTotal percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
-        )
+        self.write_lines(lines)
+
+    def add_uncert_cut_section(self, cut: UncertaintyCut, percent_cut: str):
+        self.add_standard_cut_section("Uncertainty cut", cut, percent_cut)
 
     def add_x2_cut_section(
-        self, cut: ChiSquareCut, percent_contamination, percent_loss, percent_cut
+        self,
+        cut: ChiSquareCut,
+        percent_contamination: float,
+        percent_loss: float,
+        percent_cut: float,
     ):
-        self.f.write(f"\n\n### Chi-square cut\n")
-        self.f.write(
-            f"\nChi-square cut {cut.max_value:0.2f} selected with {percent_contamination:0.2f}% contamination and {percent_loss:0.2f}% loss\n"
-        )
-        self.f.write(
-            f"\nTotal percent of SN light curve flagged with {hex(cut.flag)}: {percent_cut:0.2f}%"
+        self.add_standard_cut_section(
+            f"PSF chi-square cut",
+            cut,
+            percent_cut,
+            additional_lines=[
+                f"Selected chi-square cut has {percent_contamination:0.2f}% contamination and {percent_loss:0.2f}% loss"
+            ],
         )
 
     def add_controls_cut_section(
         self,
         cut: ControlLightCurveCut,
-        x2_percent_cut,
-        stn_percent_cut,
-        Nclip_percent_cut,
-        Ngood_percent_cut,
-        questionable_percent_cut,
-        percent_cut,
+        x2_percent_cut: float,
+        snr_percent_cut: float,
+        Nclip_percent_cut: float,
+        Ngood_percent_cut: float,
+        questionable_percent_cut: float,
+        percent_cut: float,
     ):
-        self.f.write(f"\n\n### Control light curve cut\n")
-        self.f.write(
-            f"\nPercent of SN light curve above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
+        self.write_line(self.get_header_str(f"Control light curve cut", level=3))
+        self.write_line()
+        self.write_line(
+            self.get_percent_cut_str(
+                cut.x2_flag,
+                x2_percent_cut,
+                flagged_as=f"above x2_max bound of {cut.x2_max}",
+            )
         )
-        self.f.write(
-            f"\nPercent of SN light curve above snr_max bound ({hex(cut.snr_flag)}): {stn_percent_cut:0.2f}%"
+        self.write_line(
+            self.get_percent_cut_str(
+                cut.snr_flag,
+                snr_percent_cut,
+                flagged_as=f"above snr_max bound of {cut.snr_max}",
+            )
         )
-        self.f.write(
-            f"\nPercent of SN light curve above Nclip_max bound ({hex(cut.Nclip_flag)}): {Nclip_percent_cut:0.2f}%"
+        self.write_line(
+            self.get_percent_cut_str(
+                cut.Nclip_flag,
+                Nclip_percent_cut,
+                flagged_as=f"above Nclip_max bound of {cut.Nclip_max}",
+            )
         )
-        self.f.write(
-            f"\nPercent of SN light curve below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
+        self.write_line(
+            self.get_percent_cut_str(
+                cut.Ngood_flag,
+                Ngood_percent_cut,
+                flagged_as=f"above Ngood_min bound of {cut.Ngood_min}",
+            )
         )
-        self.f.write(
-            f"\nTotal percent of SN light curve flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.questionable_flag)}): {questionable_percent_cut:0.2f}%"
+        self.write_line(
+            self.get_percent_cut_str(
+                cut.questionable_flag,
+                questionable_percent_cut,
+                flagged_as=f"questionable (not masked with control light curve cut flags but Nclip > 0)",
+            )
         )
-        self.f.write(
-            f"\nTotal percent of SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
+        self.write_line(self.get_percent_cut_str(cut.flag, percent_cut))
+
+    def add_badday_cut_section(self, cut: BadDayCut, percent_cut: float):
+        self.write_line(self.get_header_str("Bad day cut (averaging)", level=3))
+        self.write_line()
+        self.write_line(
+            self.get_percent_cut_str(cut.flag, percent_cut, lc_type="binned SN")
         )
 
-    def add_badday_cut_section(self, cut: BadDayCut, percent_cut):
-        self.f.write(
-            f'\n\nAfter the cuts are applied, the light curves are resaved with the new "Mask" column.'
+    def add_custom_cut_section(self, cut: CustomCut, percent_cut: float):
+        self.add_standard_cut_section(
+            f"Custom cut on '{cut.column}' column", cut, percent_cut
         )
-        self.f.write(f"\n\n### Bad day cut (averaging)\n")
-        self.f.write(
-            f"\nPercent of binned SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%\n"
-        )
-        self.f.write(
-            f"\nThe averaged light curves are then saved in a new file with the MJD bin size added to the filename."
-        )
-
-    def add_custom_cut_section(self, cut: CustomCut, percent_cut):
-        self.f.write(f"\n\n### {cut.name()}\n")
-        self.f.write(
-            f"\nTotal percent of SN light curve flagged ({hex(cut.flag)}): {percent_cut:0.2f}%"
-        )
-
-    def save(self):
-        self.f.close()
 
 
 class UncertEstTable:
@@ -581,38 +648,55 @@ class CleanLoop:
 
         (
             x2_percent_cut,
-            stn_percent_cut,
+            snr_percent_cut,
             Nclip_percent_cut,
             Ngood_percent_cut,
             questionable_percent_cut,
             percent_cut,
         ) = self.sn.apply_controls_cut(cut, previous_flags)
 
-        self.logger.body(
-            f"Percent of data above x2_max bound ({hex(cut.x2_flag)}): {x2_percent_cut:0.2f}%"
-        )
-        self.logger.body(
-            f"Percent of data above snr_max bound ({hex(cut.snr_flag)}): {stn_percent_cut:0.2f}%"
-        )
-        self.logger.body(
-            f"Percent of data above Nclip_max bound ({hex(cut.Nclip_flag)}): {Nclip_percent_cut:0.2f}%"
-        )
-        self.logger.body(
-            f"Percent of data below Ngood_min bound ({hex(cut.Ngood_flag)}): {Ngood_percent_cut:0.2f}%"
-        )
-        self.logger.body(
-            f"Total percent of data flagged as questionable (not masked with control light curve flags but Nclip > 0) ({hex(cut.questionable_flag)}): {questionable_percent_cut:0.2f}%"
-        )
-        self.logger.body(
-            f"Total percent of data flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
-        )
-
         if self.f is None:
             raise RuntimeError("Output README file (self.f) cannot be None")
+        self.logger.body(
+            self.f.get_percent_cut_str(
+                cut.x2_flag,
+                x2_percent_cut,
+                flagged_as=f"above x2_max bound of {cut.x2_max}",
+            )
+        )
+        self.logger.body(
+            self.f.get_percent_cut_str(
+                cut.snr_flag,
+                snr_percent_cut,
+                flagged_as=f"above snr_max bound of {cut.snr_max}",
+            )
+        )
+        self.logger.body(
+            self.f.get_percent_cut_str(
+                cut.Nclip_flag,
+                Nclip_percent_cut,
+                flagged_as=f"above Nclip_max bound of {cut.Nclip_max}",
+            )
+        )
+        self.logger.body(
+            self.f.get_percent_cut_str(
+                cut.Ngood_flag,
+                Ngood_percent_cut,
+                flagged_as=f"above Ngood_min bound of {cut.Ngood_min}",
+            )
+        )
+        self.logger.body(
+            self.f.get_percent_cut_str(
+                cut.questionable_flag,
+                questionable_percent_cut,
+                flagged_as=f"questionable (not masked with control light curve cut flags but Nclip > 0)",
+            )
+        )
+        self.logger.body(self.f.get_percent_cut_str(cut.flag, percent_cut))
         self.f.add_controls_cut_section(
             cut,
             x2_percent_cut,
-            stn_percent_cut,
+            snr_percent_cut,
             Nclip_percent_cut,
             Ngood_percent_cut,
             questionable_percent_cut,

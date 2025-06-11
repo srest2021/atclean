@@ -106,7 +106,7 @@ class CustomLogger:
         print(f"{newline_part}{symbol_part}{self.prefix}{message_part}{suffix}")
 
     def warning(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(message, symbol="⚠️ WARNING:", newline=newline, dots=dots)
+        self._print(message, symbol="⚠️  WARNING:", newline=newline, dots=dots)
 
     def error(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, symbol="❌ ERROR:", newline=newline, dots=dots)
@@ -131,7 +131,7 @@ class CustomLogger:
         self.header(message, num_dashes=2, newline=newline)
 
     def step(self, message: str, newline: bool = True, dots: bool = False):
-        self._print(message, symbol="⚙️", newline=newline, dots=dots)
+        self._print(message, symbol="⚙️ ", newline=newline, dots=dots)
 
     def body(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, newline=newline, dots=dots)
