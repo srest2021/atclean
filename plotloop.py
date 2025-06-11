@@ -121,7 +121,6 @@ class PlotLoop:
             plot_controls=True,
             plot_template_changes=True,
         )
-
         self.p.plot_all_controls(self.sn, custom_lims=custom_lims, include_sn=True)
 
         uncert_cut = self.cut_list.get(UncertaintyCut.name())
@@ -164,16 +163,20 @@ class PlotLoop:
 
         # plot cleaned light curve using all previous cuts
         previous_flags = self.cut_list.get_previous_flags(BadDayCut.name())
-        self.p.plot_cut(
-            self.sn, previous_flags, custom_lims=custom_lims, title="All previous cuts"
-        )
-        self.p.plot_cleaned_SN(
-            self.sn,
-            previous_flags,
-            custom_lims=custom_lims,
-            plot_controls=True,
-            plot_flagged=False,
-        )
+        if previous_flags > 0:
+            self.p.plot_cut(
+                self.sn,
+                previous_flags,
+                custom_lims=custom_lims,
+                title="All previous cuts",
+            )
+            self.p.plot_cleaned_SN(
+                self.sn,
+                previous_flags,
+                custom_lims=custom_lims,
+                plot_controls=True,
+                plot_flagged=False,
+            )
 
         badday_cut = self.cut_list.get(BadDayCut.name())
         if not badday_cut is None:
@@ -227,10 +230,10 @@ class PlotLoop:
             if mjd0 is None:
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    self.logger.body(f"Setting MJD0 to {mjd0}", newline=True)
+                    self.logger.info(f"Setting MJD0 to {mjd0}", newline=True)
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
             else:
-                self.logger.body(f"Setting MJD0 to {mjd0}", newline=True)
+                self.logger.info(f"Setting MJD0 to {mjd0}", newline=True)
 
             for filt in filters:
                 self.plot_lcs(

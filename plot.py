@@ -1931,9 +1931,10 @@ class PlotPdf(Plot):
             f"Plotting all original control light curves{' and SN' if include_sn else ''}"
         )
         two_columns = (sn.num_controls + int(include_sn)) % 2 == 0
-        super().plot_all_controls(
+        fig = super().plot_all_controls(
             sn, flag, custom_lims, two_columns, include_sn, save, filename
         )
+        self.pdf.savefig(fig)
 
     def plot_cut(
         self,

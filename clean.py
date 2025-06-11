@@ -641,7 +641,7 @@ class CleanLoop:
         )
         self.logger.success()
         self.logger.body(
-            f"Total percent of SN light curve flagged as bad ({hex(self.cut_list.get_all_default_flags())}): {percent_cut:0.2f}"
+            f"Percent of binned SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}"
         )
 
         if self.f is None:
@@ -817,12 +817,12 @@ class CleanLoop:
             ):
                 mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
                 if not coords is None:
-                    self.logger.body(
+                    self.logger.info(
                         f"Setting MJD0 to TNS discovery date: {mjd0} MJD", newline=True
                     )
                     self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
             else:
-                self.logger.body(f"Setting MJD0: {mjd0} MJD", newline=True)
+                self.logger.info(f"Setting MJD0: {mjd0} MJD", newline=True)
 
             if filts is None:
                 self.logger.loading(

@@ -1461,7 +1461,7 @@ def get_mjd0_from_tns(
     _, sninfo_row = sninfo.get_row(tnsname)
     if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
         # get MJD0 from SN info table
-        logger.body(
+        logger.info(
             f'Setting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table', newline=True
         )
         mjd0 = float(sninfo_row["mjd0"])

@@ -111,16 +111,16 @@ class Supernova:
             )
             if self.coords.is_incomplete():
                 self.coords = coords
-                self.logger.body(
+                self.logger.info(
                     f"Setting coordinates to TNS coordinates: {self.coords}"
                 )
             if self.mjd0 is None or np.isnan(self.mjd0):
                 self.mjd0 = mjd0
-                self.logger.body(
+                self.logger.info(
                     f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
         else:
-            self.logger.body(
+            self.logger.info(
                 "Coordinates and MJD0 both present; skipping TNS query", dots=True
             )
 
@@ -457,10 +457,10 @@ class Supernova:
                 control_index=control_index,
             )
 
-        all_flags = previous_flags | combine_flags(cut.get_flags())
+        # all_flags = previous_flags | combine_flags(cut.get_flags())
         percent_cut = (
             100
-            * len(avg_sn.lcs[0].ix_masked(self.colnames.mask, maskval=all_flags))
+            * len(avg_sn.lcs[0].ix_masked(self.colnames.mask, maskval=cut.flag))
             / len(avg_sn.lcs[0].t)
         )
         return avg_sn, percent_cut
@@ -1733,16 +1733,16 @@ class FullLightCurve(pdastrostatsclass):
             )
             if self.coords.is_incomplete():
                 self.coords = coords
-                self.logger.body(
+                self.logger.info(
                     f"Setting coordinates to TNS coordinates: {self.coords}"
                 )
             if self.mjd0 is None or np.isnan(self.mjd0):
                 self.mjd0 = mjd0
-                self.logger.bod(
+                self.logger.info(
                     f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}: {self.mjd0}"
                 )
         else:
-            self.logger.body(
+            self.logger.info(
                 "Coordinates and MJD0 both present; skipping TNS query", dots=True
             )
 
