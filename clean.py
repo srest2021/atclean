@@ -641,7 +641,7 @@ class CleanLoop:
         )
         self.logger.success()
         self.logger.body(
-            f"Percent of binned SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}"
+            f"Percent of binned SN light curve flagged as bad ({hex(cut.flag)}): {percent_cut:0.2f}%"
         )
 
         if self.f is None:
