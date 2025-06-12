@@ -1190,7 +1190,7 @@ class Coordinates:
             output.append(f"Dec {self.get_Dec_str()}")
 
         if len(output) < 1:
-            return f"⚠️ WARNING: Coordinates are empty and cannot be printed."
+            return f"⚠️  WARNING: Coordinates are empty and cannot be printed."
         return ", ".join(output)
 
 
@@ -1214,6 +1214,8 @@ class SnInfoTable:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
+            if "mjd0" not in self.t.columns:
+                self.t["mjd0"] = np.nan
             self.logger.success()
         except Exception:
             self.logger.body(
@@ -1268,8 +1270,7 @@ class SnInfoTable:
         if "center_dec" in row and not self.is_nan(row["center_dec"]):
             center_dec = row["center_dec"]
 
-        assert "mjd0" in row
-        if self.is_nan(row["mjd0"]):
+        if "mjd0" not in row or self.is_nan(row["mjd0"]):
             mjd0 = None
         else:
             if not isinstance(row["mjd0"], (int, float, np.integer, np.floating)):

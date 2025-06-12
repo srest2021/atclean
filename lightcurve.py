@@ -617,14 +617,17 @@ class Supernova:
 
     @property
     def lc_indices(self):
-        if not self._all_indices:
+        if not self._all_indices or len(self._all_indices) != len(self.lcs.keys()):
             self._all_indices = list(self.lcs.keys())
             self._all_indices.sort()
         return self._all_indices
 
     @property
     def control_lc_indices(self):
-        if not self._control_indices:
+        if (
+            not self._control_indices
+            or len(self._control_indices) != len(self.lcs.keys()) - 1
+        ):
             self._control_indices = list(self.lcs.keys())
             if 0 in self._control_indices:
                 self._control_indices.remove(0)
