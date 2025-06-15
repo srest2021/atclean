@@ -19,6 +19,7 @@ from download import (
 from plot import PlotPdf
 from utils import (
     CONFIG_CUT_NAMES,
+    DISC_DATE_BUFFER,
     BadDayCut,
     ChiSquareCut,
     ControlLightCurveCut,
@@ -35,7 +36,7 @@ from utils import (
     CutList,
     SnInfoTable,
     get_allowed_presets,
-    get_mjd0_from_tns,
+    resolve_mjd0,
     PresetColumnNames,
     load_preset_column_names_from_config,
     new_row,
@@ -909,28 +910,36 @@ class CleanLoop:
     ):
         self.cut_list = cut_list
 
-        for obj_index in range(len(tnsnames)):
+        l = len(tnsnames)
+        for obj_index in range(l):
             tnsname = tnsnames[obj_index]
-            self.logger.header(f"Cleaning light curves for {tnsname}")
+            self.logger.header(
+                f"Cleaning light curves for {tnsname} ({obj_index+1}/{l})"
+            )
 
             make_dir_if_not_exists(f"{output_dir}/{tnsname}")
             self.f = OutputReadMe(
                 self.output_dir, tnsname, cut_list, num_controls=num_controls
             )
 
-            if mjd0 is None and (
-                plot
-                or (
-                    cut_list.has(ChiSquareCut.name())
-                    and cut_list.get(ChiSquareCut.name()).use_pre_mjd0_lc
-                )
+            if (
+                mjd0 is None
+                and cut_list.has(ChiSquareCut.name())
+                and cut_list.get(ChiSquareCut.name()).use_pre_mjd0_lc
             ):
-                mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
-                if not coords is None:
+                use_disc_date_buffer = True
+                mjd0 = resolve_mjd0(
+                    tnsname,
+                    self.sninfo,
+                    self.credentials,
+                    use_disc_date_buffer=use_disc_date_buffer,
+                )
+                if mjd0 is not None:
                     self.logger.info(
-                        f"Setting MJD0 to TNS discovery date: {mjd0} MJD", newline=True
+                        f"Setting MJD0 to TNS discovery date{f' - {DISC_DATE_BUFFER}' if use_disc_date_buffer else ''}:: {mjd0} MJD",
+                        newline=True,
                     )
-                    self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
+                self.sninfo.update_row(tnsname, mjd0=mjd0)
             else:
                 self.logger.info(f"Setting MJD0: {mjd0} MJD", newline=True)
 

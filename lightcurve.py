@@ -819,6 +819,8 @@ class LightCurve(pdastrostatsclass):
         self._set_pre_and_post_mjd0_ix(mjd0, self.colnames.mjd)
 
     def get_flags(self) -> int:
+        if self.t is None or len(self.t) < 1:
+            return 0
         return np.bitwise_or.reduce(self.t[self.colnames.mask])
 
     def get_good_indices(self, flag: Optional[int] = None) -> List[int]:
@@ -1755,7 +1757,7 @@ class FullLightCurve(pdastrostatsclass):
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
     ):
-        if lookbacktime:
+        if lookbacktime is not None:
             min_mjd = float(Time.now().mjd - lookbacktime)
         else:
             min_mjd = 50000.0

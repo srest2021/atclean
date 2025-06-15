@@ -940,6 +940,10 @@ class PresetColumnNames:
                 )
             self.optional_columns[key] = name
 
+    def update_many(self, coldict: Dict, is_required: bool = False):
+        for key, name in coldict.items():
+            self.update(key, name, is_required=is_required)
+
     def get_required_column_names(self, is_averaged: bool = False):
         if is_averaged:
             return [
@@ -1287,7 +1291,11 @@ class SnInfoTable:
         overwrite=False,
     ):
         try:
-            if overwrite or np.isnan(self.t.at[index, "mjd0"]):
+            if (
+                (overwrite or np.isnan(self.t.at[index, "mjd0"]))
+                and mjd0 is not None
+                and not np.isnan(mjd0)
+            ):
                 self.t.loc[index, "mjd0"] = mjd0
 
             if (
@@ -1350,7 +1358,7 @@ class SnInfoTable:
                 index, coords=coords, mjd0=mjd0, overwrite=overwrite
             )
         else:
-            self.add_new_row(tnsname, coords, mjd0)
+            self.add_new_row(tnsname, coords=coords, mjd0=mjd0)
 
     def save(self):
         self.logger.saving(f"Saving SN info table at {self.filename}", newline=True)
@@ -1454,10 +1462,14 @@ def get_tns_mjd0_from_json(json_data, use_disc_date_buffer: bool = True):
         raise RuntimeError(f"Failed to get discovery date from TNS JSON data: {str(e)}")
 
 
-def get_mjd0_from_tns(
-    tnsname: str, sninfo: SnInfoTable, credentials: Credentials
-) -> Tuple[float, Coordinates | None]:
+def resolve_mjd0(
+    tnsname: str,
+    sninfo: SnInfoTable,
+    credentials: Credentials,
+    use_disc_date_buffer: bool = True,
+) -> float | None:
     logger = CustomLogger("get_mjd0_from_tns")
+    logger.subheader("Resolving MJD0")
 
     _, sninfo_row = sninfo.get_row(tnsname)
     if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
@@ -1466,25 +1478,30 @@ def get_mjd0_from_tns(
             f'Setting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table', newline=True
         )
         mjd0 = float(sninfo_row["mjd0"])
-        if not isinstance(mjd0, (int, float)):
-            raise RuntimeError(f"Invalid MJD0: {mjd0}")
-        else:
+        if isinstance(mjd0, (int, float)):
             logger.success()
-            return mjd0, None
-    else:
-        # get MJD0 from TNS
-        logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
-        credentials.prompt_for_tns_creds()
-        json_data = query_tns(
-            tnsname,
-            credentials.tns_api_key,
-            credentials.tns_id,
-            credentials.tns_bot_name,
-        )
-        mjd0 = get_tns_mjd0_from_json(json_data)
-        coords = get_tns_coords_from_json(json_data)
+            return mjd0
+        else:
+            logger.warning(f"Cannot convert to float: {sninfo_row['mjd0']}")
+
+    # try querying TNS
+    logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
+    credentials.prompt_for_tns_creds()
+    json_data = query_tns(
+        tnsname,
+        credentials.tns_api_key,
+        credentials.tns_id,
+        credentials.tns_bot_name,
+    )
+    mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
+    if mjd0 is not None and not np.isnan(mjd0):
         logger.success()
-        return mjd0, coords
+        return mjd0
+    else:
+        logger.warning(
+            "Could not resolve SN MJD0 from command line, SnInfoTable, or TNS discovery date"
+        )
+        return None
 
 
 def get_tns_data(

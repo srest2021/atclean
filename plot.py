@@ -336,6 +336,7 @@ class Plot:
         filename: str = "original",
     ):
         fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
@@ -363,19 +364,24 @@ class Plot:
                     label = None
 
         if sn.mjd0 is None:
-            raise ValueError(
-                "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
+            # raise ValueError(
+            #     "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
+            # )
+            self._plot_lc(ax1, sn, 0, self.color_scheme["sn_flux"][sn.filt])
+        else:
+            # plot pre-MJD0 SN light curve
+            self._plot_lc(
+                ax1,
+                sn,
+                0,
+                "magenta",
+                indices=sn.lcs[0].pre_mjd0_ix,
+                label="Pre-MJD0 SN",
             )
-
-        # plot pre-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "magenta", indices=sn.lcs[0].pre_mjd0_ix, label="Pre-MJD0 SN"
-        )
-
-        # plot post-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
-        )
+            # plot post-MJD0 SN light curve
+            self._plot_lc(
+                ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
+            )
 
         if plot_template_changes:
             ax1.axvline(
