@@ -311,7 +311,7 @@ class Supernova:
             for control_index in self.lcs
             if control_index > 0
         ]
-        all_controls = LightCurve(self.colnames)
+        all_controls = LightCurve(deepcopy(self.colnames))
         all_controls.t = pd.concat(controls, ignore_index=True)
         return all_controls
 
@@ -368,13 +368,18 @@ class Supernova:
                 pda4MJD.statparams, c2_param2columnmapping, destindex=index
             )
 
+        self.lcs[0].t["c2_abs_stn"] = (
+            self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
+        )
         self.logger.success()
 
     def apply_controls_cut(self, cut: ControlLightCurveCut, previous_flags: int):
         self.calculate_control_stats(previous_flags)
-        self.lcs[0].t["c2_abs_stn"] = (
-            self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
-        )
+
+        # self.lcs[0].t["duJy"] = self.lcs[0].t["duJy_new"]
+        # self.lcs[0].t.drop(["flux/dflux", "duJy_new"], axis=1, inplace=True)
+        # self.lcs[0].t.to_string("test.txt", index=False)
+        # sys.exit()
 
         # flag SN measurements
         self.lcs[0].flag_by_control_stats(cut)
