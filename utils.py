@@ -944,6 +944,12 @@ class PresetColumnNames:
         for key, name in coldict.items():
             self.update(key, name, is_required=is_required)
 
+    def remove(self, key: str):
+        if key in self.optional_columns:
+            del self.optional_columns[key]
+        if key in self.optional_columns:
+            del self.optional_columns[key]
+
     def get_required_column_names(self, is_averaged: bool = False):
         if is_averaged:
             return [
@@ -1869,6 +1875,10 @@ class CutList:
             )
         self.list[cut.name()] = cut
 
+    def add_many(self, cuts: List[Cut]):
+        for cut in cuts:
+            self.add(cut)
+
     def get(self, name: str) -> Cut | None:
         if not name in self.list:
             return None
@@ -1972,6 +1982,24 @@ class CutList:
             if not name in skip_names and flag is not None:
                 mask = mask | flag
         return mask
+
+    def iterator(self):
+        names: List = (
+            [
+                UncertaintyCut.name(),
+                UncertaintyEstimation.name(),
+                ChiSquareCut.name(),
+                ControlLightCurveCut.name(),
+            ]
+            + list(self.get_custom_cuts().keys())
+            + [
+                BadDayCut.name(),
+            ]
+        )
+
+        for name in names:
+            if name in self.list:
+                yield self.list[name]
 
     def __str__(self):
         output = []

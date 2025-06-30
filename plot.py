@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import matplotlib
 from matplotlib import gridspec
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -1904,8 +1905,12 @@ class PlotPdf(Plot):
         self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
-        self.logger.saving("Saving PDF of plots", newline=True)
+        self.logger.saving(f"Saving PDF of plots at {self.filename}", newline=True)
         self.pdf.close()
+
+    def save_fig(self, fig: Figure):
+        self.pdf.savefig(fig)
+        plt.close(fig)
 
     def plot_SN(
         self,
@@ -1922,7 +1927,7 @@ class PlotPdf(Plot):
         fig = super().plot_SN(
             sn, custom_lims, plot_controls, plot_template_changes, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_all_controls(
         self,
@@ -1940,7 +1945,7 @@ class PlotPdf(Plot):
         fig = super().plot_all_controls(
             sn, flag, custom_lims, two_columns, include_sn, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_cut(
         self,
@@ -1955,7 +1960,7 @@ class PlotPdf(Plot):
         fig = super().plot_cut(
             sn, flag, control_index, custom_lims, title, save_filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_cleaned_SN(
         self,
@@ -1973,7 +1978,7 @@ class PlotPdf(Plot):
         fig = super().plot_cleaned_SN(
             sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_averaged_SN(
         self,
@@ -1991,7 +1996,7 @@ class PlotPdf(Plot):
         fig = super().plot_averaged_SN(
             avg_sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_limcuts(
         self,
@@ -2002,7 +2007,7 @@ class PlotPdf(Plot):
     ):
         self.logger.plot("Plotting LimCutsTable")
         fig = super().plot_limcuts(limcuts, cut, save, filename)
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_uncert_est(
         self,
@@ -2014,9 +2019,9 @@ class PlotPdf(Plot):
         self.logger.plot("Plotting true uncertainties estimation")
         fig = super().plot_uncert_est(sn, custom_lims, save, filename)
         if not fig is None:
-            self.pdf.savefig(fig)
+            self.save_fig(fig)
 
     def plot_template_correction(self, lc: LightCurve):
         self.logger.plot("Plotting ATLAS template chanages correction")
         fig = super().plot_template_correction(lc)
-        self.pdf.savefig(fig)
+        self.save_fig(fig)

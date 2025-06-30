@@ -800,7 +800,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--sn_coords",
         type=parse_arg_coords,
         default=None,
-        help="comma-separated RA and Dec of SN light curve to download",
+        help="comma-separated RA and Dec (degrees or sexagesimal) of SN light curve to download",
     )
     parser.add_argument(
         "--mjd0", type=float, default=None, help="transient start date in MJD"
@@ -840,7 +840,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--center_coords",
         type=parse_arg_coords,
         default=None,
-        help="comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle",
+        help="comma-separated RA and Dec (degrees or sexagesimal) of a nearby bright object interfering with the light curve to become center of control light curve circle",
     )
 
     return parser

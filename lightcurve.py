@@ -1022,17 +1022,17 @@ class LightCurve(pdastrostatsclass):
         )
         self.update_mask_column(cut.flag, AnotB(self.getindices(), unmasked_ix))
 
-    def copy_flags(self, flags_to_copy):
+    def copy_flags(self, flag_arr):
         self.t[self.colnames.mask] = self.t[self.colnames.mask].astype(np.int32)
         if len(self.t) < 1:
             return
         elif len(self.t) == 1:
             self.t.at[0, self.colnames.mask] = (
-                int(self.t.at[0, self.colnames.mask]) | flags_to_copy
+                int(self.t.at[0, self.colnames.mask]) | flag_arr
             )
         else:
             self.t[self.colnames.mask] = np.bitwise_or(
-                self.t[self.colnames.mask], flags_to_copy
+                self.t[self.colnames.mask], flag_arr
             )
 
     def get_zpt(self):
@@ -1248,19 +1248,27 @@ class LightCurve(pdastrostatsclass):
             )
 
         all_ix = self.getindices()
-        kept_ix = self.ix_inrange(
-            colnames=[cut.column], lowlim=cut.min_value, uplim=cut.max_value
+        cut_ix = self.ix_outrange(
+            colnames=[cut.column],
+            lowlim=cut.min_value,
+            uplim=cut.max_value,
+            exclude_lowlim=True,
+            exclude_uplim=True,
+            indices=all_ix,
         )
-        cut_ix = AnotB(all_ix, kept_ix)
 
         self.update_mask_column(cut.flag, cut_ix)
 
         percent_cut = 100 * len(cut_ix) / len(all_ix)
         return percent_cut
 
-    def remove_flag(self, flag):
-        self.t[self.colnames.mask] = np.bitwise_and(
-            self.t[self.colnames.mask].astype(int), ~flag
+    def remove_flag(self, flag: int, indices: Optional[List[int]] = None):
+        if self.t is None or self.t.empty or self.colnames.mask not in self.t.columns:
+            return
+
+        indices = self.getindices(indices)
+        self.t.loc[indices, self.colnames.mask] = np.bitwise_and(
+            self.t.loc[indices, self.colnames.mask].astype(int), ~flag
         )
 
     def update_mask_column(self, flag, indices, remove_old=True):
@@ -1608,7 +1616,7 @@ class LimCutsTable:
         self.logger = CustomLogger(self.__class__.__name__)
         self.t = None
 
-        self.lc = lc
+        self.lc = deepcopy(lc)
         if indices is None:
             indices = self.lc.getindices()
         self.indices = indices
