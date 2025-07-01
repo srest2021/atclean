@@ -570,12 +570,31 @@ class StatParams:
         self.mean: float = nan_if_none(statparams["mean"])
         self.mean_err: float = nan_if_none(statparams["mean_err"])
         self.stdev: float = nan_if_none(statparams["stdev"])
-        self.x2: float = nan_if_none(statparams["X2norm"])
+        self.X2norm: float = nan_if_none(statparams["X2norm"])
         self.Nclip: int | float = nan_if_none(statparams["Nclip"])
         self.Ngood: int | float = nan_if_none(statparams["Ngood"])
         # self.Nexcluded: int | float = nan_if_none(statparams["Nexcluded"])
         self.ix_good: List[int] = list(statparams["ix_good"])
         self.ix_clip: List[int] = list(statparams["ix_clip"])
+
+    def __str__(self):
+        parts = []
+        for key in [
+            "mean",
+            "mean_err",
+            "stdev",
+            "X2norm",
+            "Nclip",
+            "Ngood",
+            "ix_good",
+            "ix_clip",
+        ]:
+            val = getattr(self, key, None)
+            if isinstance(val, float):
+                parts.append(f"{key}={val:.17g}")  # Full float precision
+            else:
+                parts.append(f"{key}={val}")
+        return f"StatParams({', '.join(parts)})"
 
 
 class PlotLimits:

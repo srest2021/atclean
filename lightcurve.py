@@ -376,11 +376,6 @@ class Supernova:
     def apply_controls_cut(self, cut: ControlLightCurveCut, previous_flags: int):
         self.calculate_control_stats(previous_flags)
 
-        # self.lcs[0].t["duJy"] = self.lcs[0].t["duJy_new"]
-        # self.lcs[0].t.drop(["flux/dflux", "duJy_new"], axis=1, inplace=True)
-        # self.lcs[0].t.to_string("test.txt", index=False)
-        # sys.exit()
-
         # flag SN measurements
         self.lcs[0].flag_by_control_stats(cut)
 
@@ -392,8 +387,6 @@ class Supernova:
         flags_to_copy = np.bitwise_and(self.lcs[0].t[self.colnames.mask], flags_arr)
         for control_index in self.control_lc_indices:
             self.lcs[control_index].copy_flags(flags_to_copy)
-
-        # self.drop_extra_columns()
 
         len_ix = len(self.lcs[0].getindices())
         x2_percent_cut = (
@@ -1081,7 +1074,7 @@ class LightCurve(pdastrostatsclass):
         self, cut: BadDayCut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
-            self.colnames,
+            deepcopy(self.colnames),
             self.control_index,
             filt=self.filt,
             mjdbinsize=mjdbinsize,
@@ -1091,7 +1084,7 @@ class LightCurve(pdastrostatsclass):
                 self.colnames.flux,
                 self.colnames.dflux,
                 "stdev",
-                "x2",
+                "X2norm",
                 "Nclip",
                 "Ngood",
                 "Nexcluded",
@@ -1147,7 +1140,7 @@ class LightCurve(pdastrostatsclass):
                     self.colnames.flux: flux_statparams.mean,
                     self.colnames.dflux: flux_statparams.mean_err,
                     "stdev": flux_statparams.stdev,
-                    "x2": flux_statparams.x2,
+                    "X2norm": flux_statparams.X2norm,
                     "Nclip": flux_statparams.Nclip,
                     "Ngood": flux_statparams.Ngood,
                     self.colnames.mask: 0,
@@ -1181,7 +1174,7 @@ class LightCurve(pdastrostatsclass):
                 self.colnames.flux: flux_statparams.mean,
                 self.colnames.dflux: flux_statparams.mean_err,
                 "stdev": flux_statparams.stdev,
-                "x2": flux_statparams.x2,
+                "X2norm": flux_statparams.X2norm,
                 "Nclip": flux_statparams.Nclip,
                 "Ngood": flux_statparams.Ngood,
                 self.colnames.mask: 0,
@@ -1211,7 +1204,10 @@ class LightCurve(pdastrostatsclass):
                     is_bad = True
                 if flux_statparams.Nclip > cut.Nclip_max:
                     is_bad = True
-                if flux_statparams.x2 is not None and flux_statparams.x2 > cut.x2_max:
+                if (
+                    flux_statparams.X2norm is not None
+                    and flux_statparams.X2norm > cut.x2_max
+                ):
                     is_bad = True
                 if is_bad:
                     self.update_mask_column(
