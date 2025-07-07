@@ -1791,7 +1791,7 @@ class FullLightCurve(pdastrostatsclass):
                 )
                 break
             except Exception as e:
-                self.logger.warning("Exception caught: " + str(e))
+                self.logger.warning(str(e))
                 self.logger.body("Trying again in 20 seconds! Waiting...")
                 time.sleep(20)
                 continue
