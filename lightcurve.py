@@ -2057,7 +2057,7 @@ class SimDetecSupernova(AveragedSupernova):
         for control_index in self.lc_indices:
             self.lcs[control_index].remove_simulations()
 
-    def load(self, input_dir: str, control_index: int = 0):
+    def load(self, input_dir: str, control_index: int = 0, **kwargs):
         self.lcs[control_index] = SimDetecLightCurve(
             self.colnames,
             control_index=control_index,
@@ -2065,7 +2065,7 @@ class SimDetecSupernova(AveragedSupernova):
             mjdbinsize=self.mjdbinsize,
         )
 
-        self.lcs[control_index].load_lc(input_dir, self.tnsname)
+        self.lcs[control_index].load_lc(input_dir, self.tnsname, **kwargs)
 
         if self.mjd0 is not None:
             self.set_pre_and_post_mjd0_ix(control_index=control_index)
@@ -2191,15 +2191,18 @@ class SimDetecLightCurve(AveragedLightCurve):
                 f"Cannot apply rolling sum with sigma_kern ({sigma_kern} days) less than MJD bin size ({self.mjdbinsize} days)"
             )
 
-        if indices is None:
-            indices = self.getindices()
-        if len(indices) < 1:
+        all_ix = self.getindices()
+        if len(all_ix) < 1:
             raise RuntimeError("Not enough measurements to apply simulated gaussian")
-        good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
+        good_ix = self.ix_unmasked(self.colnames.mask, flag, indices=indices)
+        if len(good_ix) < 1:
+            raise RuntimeError(
+                "Not enough good measurements to apply simulated gaussian"
+            )
 
         self.remove_rolling_sum()
         self.cur_sigma_kern = sigma_kern
-        self.t.loc[indices, self.colnames.snr] = 0.0
+        self.t.loc[all_ix, self.colnames.snr] = 0.0
         self.t.loc[good_ix, self.colnames.snr] = (
             self.t.loc[good_ix, self.colnames.flux]
             / self.t.loc[good_ix, self.colnames.dflux]
@@ -2214,16 +2217,16 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
 
         # calculate the rolling SNR sum
-        l = len(self.t.loc[indices])
+        l = len(self.t.loc[all_ix])
         dataindices = np.array(range(l) + np.full(l, halfwindowsize))
         temp = pd.Series(
             np.zeros(l + 2 * halfwindowsize), name=self.colnames.snr, dtype=np.float64
         )
-        temp[dataindices] = self.t.loc[indices, self.colnames.snr]
+        temp[dataindices] = self.t.loc[all_ix, self.colnames.snr]
         SNRsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        self.t.loc[indices, self.colnames.snrsum] = list(SNRsum[dataindices])
+        self.t.loc[all_ix, self.colnames.snrsum] = list(SNRsum[dataindices])
 
         # normalize it
         norm_temp = pd.Series(
@@ -2233,7 +2236,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         norm_temp_sum = norm_temp.rolling(
             windowsize, center=True, win_type="gaussian"
         ).sum(std=new_gaussian_sigma)
-        self.t.loc[indices, self.colnames.snrsumnorm] = list(
+        self.t.loc[all_ix, self.colnames.snrsumnorm] = list(
             SNRsum.loc[dataindices]
             / norm_temp_sum.loc[dataindices]
             * max(norm_temp_sum.loc[dataindices])

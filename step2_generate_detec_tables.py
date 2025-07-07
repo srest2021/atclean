@@ -1267,7 +1267,7 @@ class TessInjectionLoop(InjectionLoop):
         verbose=False,
         **params,
     ):
-        sim_flux, lc = super().add_simulation_to_lc(
+        return super().add_simulation_to_lc(
             sigma_kern, brightness, control_index, sim, remove_old, verbose, **params
         )
 

@@ -996,7 +996,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][sn.filt],
-            indices=avg_sn.get_good_indices(flag=flag),
+            indices=avg_sn.lcs[0].get_good_indices(flag=flag),
             label="Cleaned",
         )
         self._plot_lc(
@@ -1004,7 +1004,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flagged_flux"],
-            indices=avg_sn.get_bad_indices(flag=flag),
+            indices=avg_sn.lcs[0].get_bad_indices(flag=flag),
             label="Flagged",
             open=True,
         )
@@ -1178,6 +1178,7 @@ class Plot:
         self,
         avg_sn: AveragedSupernova,
         select_control_index: int,
+        flag: Optional[int] = None,
         custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "binned_examples",
@@ -1198,7 +1199,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][avg_sn.filt],
-            indices=avg_sn.get_good_indices(),
+            indices=avg_sn.lcs[select_control_index].get_good_indices(flag=avg_sn.flag),
         )
 
         self._setup_ax(ax2, lims)
@@ -1210,7 +1211,7 @@ class Plot:
             avg_sn,
             select_control_index,
             self.color_scheme["select_control_flux"],
-            indices=avg_sn.get_good_indices(),
+            indices=avg_sn.lcs[select_control_index].get_good_indices(flag=avg_sn.flag),
         )
 
         is_preMJD0 = ax1.get_xlim()[0] <= avg_sn.mjd0 <= ax1.get_xlim()[1]
@@ -1380,12 +1381,15 @@ class Plot:
     def plot_fom_single(
         self,
         sn: SimDetecSupernova,
+        all_fom_dict: Dict[float, pd.Series],
         sigma_kern: float,
         select_control_index: int,
+        custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "single_fom_plot",
     ):
         fig, ax = plt.subplots(figsize=(5.5, 2.5))
+        ax: Axes
 
         # Apply rolling sums for the specified kernel
         sn.apply_rolling_sums(
@@ -1394,7 +1398,18 @@ class Plot:
             pre_mjd0_ix=sn.has_pre_mjd0_ix(),
         )
 
-        self._setup_ax(ax, PlotLimits(), ylabel=r"$\Sigma_{\rm FOM}$")
+        lims = self.get_snr_lims(
+            sn,
+            all_fom_dict[sigma_kern],
+            custom_lims=custom_lims,
+            # fom_limit=fom_limits[sigma_kern] if fom_limits else None,
+        )
+
+        self._setup_ax(
+            ax,
+            lims,
+            ylabel=r"$\Sigma_{\rm FOM}$",
+        )
 
         ax.set_xlabel("MJD")
 
