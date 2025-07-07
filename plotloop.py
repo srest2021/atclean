@@ -24,7 +24,7 @@ from utils import (
     UncertaintyCut,
     find_all_filts,
     get_allowed_presets,
-    get_mjd0_from_tns,
+    resolve_mjd0,
     load_config,
     load_preset_column_names_from_config,
     make_dir_if_not_exists,
@@ -228,10 +228,10 @@ class PlotLoop:
                 filters = find_all_filts(self.output_dir, tnsname)
 
             if mjd0 is None:
-                mjd0, coords = get_mjd0_from_tns(tnsname, self.sninfo, self.credentials)
-                if not coords is None:
+                mjd0 = resolve_mjd0(tnsname, self.sninfo, self.credentials)
+                if not mjd0 is None:
                     self.logger.info(f"Setting MJD0 to {mjd0}", newline=True)
-                    self.sninfo.update_row(tnsname, coords=coords, mjd0=mjd0)
+                    self.sninfo.update_row(tnsname, mjd0=mjd0)
             else:
                 self.logger.info(f"Setting MJD0 to {mjd0}", newline=True)
 

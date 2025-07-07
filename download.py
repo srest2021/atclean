@@ -93,7 +93,7 @@ class ControlCoordinatesTable:
         self.sn_min_dist = sn_min_dist
 
         self.logger.info(
-            f'Setting circle pattern of {self.num_controls} control light curves around center location {self.center_coords}, with minimum {self.sn_min_dist}" distance from SN'
+            f'Setting circle pattern of {self.num_controls} control light curves around center location {self.center_coords} with radius of {self.radius}" and minimum {self.sn_min_dist}" distance from SN'
         )
 
     def init_default(self, num_controls: int, radius: float):
@@ -229,7 +229,7 @@ class ControlCoordinatesTable:
 
         self.t = new_row(self.t, row)
 
-    def construct_row(self, control_index: int):
+    def calculate_and_add_row(self, control_index: int):
         if self.num_controls is None:
             raise RuntimeError("Number of control light curves cannot be None")
 
@@ -303,7 +303,7 @@ class ControlCoordinatesTable:
 
         # add row for each control light curve
         for i in range(1, self.num_controls + 1):
-            self.construct_row(i)
+            self.calculate_and_add_row(i)
 
         self.logger.success(
             f"Control light curve coordinates generated: \n{self.__str__()}"
@@ -569,7 +569,7 @@ class AtlasLightCurveDownloader:
 
         self.headers = AtlasAuthenticator.authenticate(atlas_username, atlas_password)
         if self.headers is None:
-            raise RuntimeError("No token header!")
+            raise RuntimeError("No token header")
 
         self._lcs: Dict[int, FullLightCurve] = None
 
@@ -800,7 +800,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--sn_coords",
         type=parse_arg_coords,
         default=None,
-        help="comma-separated RA and Dec of SN light curve to download",
+        help="comma-separated RA and Dec (degrees or sexagesimal) of SN light curve to download",
     )
     parser.add_argument(
         "--mjd0", type=float, default=None, help="transient start date in MJD"
@@ -840,7 +840,7 @@ def define_args(parser=None, usage=None, conflict_handler="resolve"):
         "--center_coords",
         type=parse_arg_coords,
         default=None,
-        help="comma-separated RA and Dec coordinates of a nearby bright object interfering with the light curve to become center of control light curve circle",
+        help="comma-separated RA and Dec (degrees or sexagesimal) of a nearby bright object interfering with the light curve to become center of control light curve circle",
     )
 
     return parser
@@ -898,8 +898,12 @@ if __name__ == "__main__":
         input_dir, creds.atlas_username, creds.atlas_password
     )
 
-    for tnsname in args.tnsnames:
-        logger.header(f"Downloading ATLAS light curves for {tnsname}")
+    l = len(args.tnsnames)
+    for obj_index in range(l):
+        tnsname = args.tnsnames[obj_index]
+        logger.header(
+            f"Downloading ATLAS light curves for {tnsname} ({obj_index+1}/{l})"
+        )
 
         make_dir_if_not_exists(os.path.join(input_dir, tnsname))
         make_dir_if_not_exists(os.path.join(output_dir, tnsname))

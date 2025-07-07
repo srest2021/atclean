@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import matplotlib
 from matplotlib import gridspec
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -336,6 +337,7 @@ class Plot:
         filename: str = "original",
     ):
         fig, ax1 = plt.subplots(1, constrained_layout=True)
+        ax1: Axes
         fig.set_figwidth(7)
         fig.set_figheight(4)
 
@@ -363,19 +365,24 @@ class Plot:
                     label = None
 
         if sn.mjd0 is None:
-            raise ValueError(
-                "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
+            # raise ValueError(
+            #     "MJD0 must be provided to plot SN pre-MJD0 and post-MJD0 indices"
+            # )
+            self._plot_lc(ax1, sn, 0, self.color_scheme["sn_flux"][sn.filt])
+        else:
+            # plot pre-MJD0 SN light curve
+            self._plot_lc(
+                ax1,
+                sn,
+                0,
+                "magenta",
+                indices=sn.lcs[0].pre_mjd0_ix,
+                label="Pre-MJD0 SN",
             )
-
-        # plot pre-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "magenta", indices=sn.lcs[0].pre_mjd0_ix, label="Pre-MJD0 SN"
-        )
-
-        # plot post-MJD0 SN light curve
-        self._plot_lc(
-            ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
-        )
+            # plot post-MJD0 SN light curve
+            self._plot_lc(
+                ax1, sn, 0, "lime", indices=sn.lcs[0].post_mjd0_ix, label="Post-MJD0 SN"
+            )
 
         if plot_template_changes:
             ax1.axvline(
@@ -989,7 +996,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][sn.filt],
-            indices=avg_sn.get_good_indices(flag=flag),
+            indices=avg_sn.lcs[0].get_good_indices(flag=flag),
             label="Cleaned",
         )
         self._plot_lc(
@@ -997,7 +1004,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flagged_flux"],
-            indices=avg_sn.get_bad_indices(flag=flag),
+            indices=avg_sn.lcs[0].get_bad_indices(flag=flag),
             label="Flagged",
             open=True,
         )
@@ -1171,6 +1178,7 @@ class Plot:
         self,
         avg_sn: AveragedSupernova,
         select_control_index: int,
+        flag: Optional[int] = None,
         custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "binned_examples",
@@ -1191,7 +1199,7 @@ class Plot:
             avg_sn,
             0,
             self.color_scheme["sn_flux"][avg_sn.filt],
-            indices=avg_sn.get_good_indices(),
+            indices=avg_sn.lcs[select_control_index].get_good_indices(flag=avg_sn.flag),
         )
 
         self._setup_ax(ax2, lims)
@@ -1203,7 +1211,7 @@ class Plot:
             avg_sn,
             select_control_index,
             self.color_scheme["select_control_flux"],
-            indices=avg_sn.get_good_indices(),
+            indices=avg_sn.lcs[select_control_index].get_good_indices(flag=avg_sn.flag),
         )
 
         is_preMJD0 = ax1.get_xlim()[0] <= avg_sn.mjd0 <= ax1.get_xlim()[1]
@@ -1373,12 +1381,15 @@ class Plot:
     def plot_fom_single(
         self,
         sn: SimDetecSupernova,
+        all_fom_dict: Dict[float, pd.Series],
         sigma_kern: float,
         select_control_index: int,
+        custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "single_fom_plot",
     ):
         fig, ax = plt.subplots(figsize=(5.5, 2.5))
+        ax: Axes
 
         # Apply rolling sums for the specified kernel
         sn.apply_rolling_sums(
@@ -1387,7 +1398,18 @@ class Plot:
             pre_mjd0_ix=sn.has_pre_mjd0_ix(),
         )
 
-        self._setup_ax(ax, PlotLimits(), ylabel=r"$\Sigma_{\rm FOM}$")
+        lims = self.get_snr_lims(
+            sn,
+            all_fom_dict[sigma_kern],
+            custom_lims=custom_lims,
+            # fom_limit=fom_limits[sigma_kern] if fom_limits else None,
+        )
+
+        self._setup_ax(
+            ax,
+            lims,
+            ylabel=r"$\Sigma_{\rm FOM}$",
+        )
 
         ax.set_xlabel("MJD")
 
@@ -1898,8 +1920,12 @@ class PlotPdf(Plot):
         self.pdf = PdfPages(self.filename)
 
     def save_pdf(self):
-        self.logger.saving("Saving PDF of plots", newline=True)
+        self.logger.saving(f"Saving PDF of plots at {self.filename}", newline=True)
         self.pdf.close()
+
+    def save_fig(self, fig: Figure):
+        self.pdf.savefig(fig)
+        plt.close(fig)
 
     def plot_SN(
         self,
@@ -1916,7 +1942,7 @@ class PlotPdf(Plot):
         fig = super().plot_SN(
             sn, custom_lims, plot_controls, plot_template_changes, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_all_controls(
         self,
@@ -1934,7 +1960,7 @@ class PlotPdf(Plot):
         fig = super().plot_all_controls(
             sn, flag, custom_lims, two_columns, include_sn, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_cut(
         self,
@@ -1949,7 +1975,7 @@ class PlotPdf(Plot):
         fig = super().plot_cut(
             sn, flag, control_index, custom_lims, title, save_filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_cleaned_SN(
         self,
@@ -1967,7 +1993,7 @@ class PlotPdf(Plot):
         fig = super().plot_cleaned_SN(
             sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_averaged_SN(
         self,
@@ -1985,7 +2011,7 @@ class PlotPdf(Plot):
         fig = super().plot_averaged_SN(
             avg_sn, flag, custom_lims, plot_controls, plot_flagged, save, filename
         )
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_limcuts(
         self,
@@ -1996,7 +2022,7 @@ class PlotPdf(Plot):
     ):
         self.logger.plot("Plotting LimCutsTable")
         fig = super().plot_limcuts(limcuts, cut, save, filename)
-        self.pdf.savefig(fig)
+        self.save_fig(fig)
 
     def plot_uncert_est(
         self,
@@ -2008,9 +2034,9 @@ class PlotPdf(Plot):
         self.logger.plot("Plotting true uncertainties estimation")
         fig = super().plot_uncert_est(sn, custom_lims, save, filename)
         if not fig is None:
-            self.pdf.savefig(fig)
+            self.save_fig(fig)
 
     def plot_template_correction(self, lc: LightCurve):
         self.logger.plot("Plotting ATLAS template chanages correction")
         fig = super().plot_template_correction(lc)
-        self.pdf.savefig(fig)
+        self.save_fig(fig)

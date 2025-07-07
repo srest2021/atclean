@@ -107,10 +107,10 @@ def zip_directory(zf: zipfile.ZipFile, in_dirnames: List[str]):
 def zip_sne_in_bulk(
     tnsnames: List[str], input_dir: str, output_dir: str, out_filename: str
 ):
+    check_that_out_zipfile_does_not_exist(out_filename)
     zf = new_zipfile(out_filename)
     for i in range(0, len(tnsnames)):
         print(f"\n📦 Zipping {tnsnames[i]} into {out_filename}...")
-        check_that_out_zipfile_does_not_exist(out_filename)
 
         in_dirnames = get_in_dirnames(tnsnames[i], input_dir, output_dir)
         zf = zip_directory(zf, in_dirnames)

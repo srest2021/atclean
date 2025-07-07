@@ -106,7 +106,7 @@ class CustomLogger:
         print(f"{newline_part}{symbol_part}{self.prefix}{message_part}{suffix}")
 
     def warning(self, message: str, newline: bool = False, dots: bool = False):
-        self._print(message, symbol="⚠️ WARNING:", newline=newline, dots=dots)
+        self._print(message, symbol="⚠️  WARNING:", newline=newline, dots=dots)
 
     def error(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, symbol="❌ ERROR:", newline=newline, dots=dots)
@@ -131,7 +131,7 @@ class CustomLogger:
         self.header(message, num_dashes=2, newline=newline)
 
     def step(self, message: str, newline: bool = True, dots: bool = False):
-        self._print(message, symbol="⚙️", newline=newline, dots=dots)
+        self._print(message, symbol="⚙️ ", newline=newline, dots=dots)
 
     def body(self, message: str, newline: bool = False, dots: bool = False):
         self._print(message, newline=newline, dots=dots)
@@ -570,12 +570,31 @@ class StatParams:
         self.mean: float = nan_if_none(statparams["mean"])
         self.mean_err: float = nan_if_none(statparams["mean_err"])
         self.stdev: float = nan_if_none(statparams["stdev"])
-        self.x2: float = nan_if_none(statparams["X2norm"])
+        self.X2norm: float = nan_if_none(statparams["X2norm"])
         self.Nclip: int | float = nan_if_none(statparams["Nclip"])
         self.Ngood: int | float = nan_if_none(statparams["Ngood"])
         # self.Nexcluded: int | float = nan_if_none(statparams["Nexcluded"])
         self.ix_good: List[int] = list(statparams["ix_good"])
         self.ix_clip: List[int] = list(statparams["ix_clip"])
+
+    def __str__(self):
+        parts = []
+        for key in [
+            "mean",
+            "mean_err",
+            "stdev",
+            "X2norm",
+            "Nclip",
+            "Ngood",
+            "ix_good",
+            "ix_clip",
+        ]:
+            val = getattr(self, key, None)
+            if isinstance(val, float):
+                parts.append(f"{key}={val:.17g}")  # Full float precision
+            else:
+                parts.append(f"{key}={val}")
+        return f"StatParams({', '.join(parts)})"
 
 
 class PlotLimits:
@@ -940,6 +959,16 @@ class PresetColumnNames:
                 )
             self.optional_columns[key] = name
 
+    def update_many(self, coldict: Dict, is_required: bool = False):
+        for key, name in coldict.items():
+            self.update(key, name, is_required=is_required)
+
+    def remove(self, key: str):
+        if key in self.optional_columns:
+            del self.optional_columns[key]
+        if key in self.optional_columns:
+            del self.optional_columns[key]
+
     def get_required_column_names(self, is_averaged: bool = False):
         if is_averaged:
             return [
@@ -1190,7 +1219,7 @@ class Coordinates:
             output.append(f"Dec {self.get_Dec_str()}")
 
         if len(output) < 1:
-            return f"⚠️ WARNING: Coordinates are empty and cannot be printed."
+            return f"⚠️  WARNING: Coordinates are empty and cannot be printed."
         return ", ".join(output)
 
 
@@ -1214,6 +1243,8 @@ class SnInfoTable:
                 raise RuntimeError('SN info table must have a "tnsname" column.')
             self.t["ra"] = self.t["ra"].astype(str)
             self.t["dec"] = self.t["dec"].astype(str)
+            if "mjd0" not in self.t.columns:
+                self.t["mjd0"] = np.nan
             self.logger.success()
         except Exception:
             self.logger.body(
@@ -1268,8 +1299,7 @@ class SnInfoTable:
         if "center_dec" in row and not self.is_nan(row["center_dec"]):
             center_dec = row["center_dec"]
 
-        assert "mjd0" in row
-        if self.is_nan(row["mjd0"]):
+        if "mjd0" not in row or self.is_nan(row["mjd0"]):
             mjd0 = None
         else:
             if not isinstance(row["mjd0"], (int, float, np.integer, np.floating)):
@@ -1286,7 +1316,11 @@ class SnInfoTable:
         overwrite=False,
     ):
         try:
-            if overwrite or np.isnan(self.t.at[index, "mjd0"]):
+            if (
+                (overwrite or np.isnan(self.t.at[index, "mjd0"]))
+                and mjd0 is not None
+                and not np.isnan(mjd0)
+            ):
                 self.t.loc[index, "mjd0"] = mjd0
 
             if (
@@ -1349,7 +1383,7 @@ class SnInfoTable:
                 index, coords=coords, mjd0=mjd0, overwrite=overwrite
             )
         else:
-            self.add_new_row(tnsname, coords, mjd0)
+            self.add_new_row(tnsname, coords=coords, mjd0=mjd0)
 
     def save(self):
         self.logger.saving(f"Saving SN info table at {self.filename}", newline=True)
@@ -1453,10 +1487,14 @@ def get_tns_mjd0_from_json(json_data, use_disc_date_buffer: bool = True):
         raise RuntimeError(f"Failed to get discovery date from TNS JSON data: {str(e)}")
 
 
-def get_mjd0_from_tns(
-    tnsname: str, sninfo: SnInfoTable, credentials: Credentials
-) -> Tuple[float, Coordinates | None]:
+def resolve_mjd0(
+    tnsname: str,
+    sninfo: SnInfoTable,
+    credentials: Credentials,
+    use_disc_date_buffer: bool = True,
+) -> float | None:
     logger = CustomLogger("get_mjd0_from_tns")
+    logger.subheader("Resolving MJD0")
 
     _, sninfo_row = sninfo.get_row(tnsname)
     if not sninfo_row is None and not np.isnan(sninfo_row["mjd0"]):
@@ -1465,25 +1503,30 @@ def get_mjd0_from_tns(
             f'Setting MJD0 to {sninfo_row["mjd0"]} MJD from SN info table', newline=True
         )
         mjd0 = float(sninfo_row["mjd0"])
-        if not isinstance(mjd0, (int, float)):
-            raise RuntimeError(f"Invalid MJD0: {mjd0}")
-        else:
+        if isinstance(mjd0, (int, float)):
             logger.success()
-            return mjd0, None
-    else:
-        # get MJD0 from TNS
-        logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
-        credentials.prompt_for_tns_creds()
-        json_data = query_tns(
-            tnsname,
-            credentials.tns_api_key,
-            credentials.tns_id,
-            credentials.tns_bot_name,
-        )
-        mjd0 = get_tns_mjd0_from_json(json_data)
-        coords = get_tns_coords_from_json(json_data)
+            return mjd0
+        else:
+            logger.warning(f"Cannot convert to float: {sninfo_row['mjd0']}")
+
+    # try querying TNS
+    logger.api(f"Querying TNS for SN {tnsname} discovery date", newline=True)
+    credentials.prompt_for_tns_creds()
+    json_data = query_tns(
+        tnsname,
+        credentials.tns_api_key,
+        credentials.tns_id,
+        credentials.tns_bot_name,
+    )
+    mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
+    if mjd0 is not None and not np.isnan(mjd0):
         logger.success()
-        return mjd0, coords
+        return mjd0
+    else:
+        logger.warning(
+            "Could not resolve SN MJD0 from command line, SnInfoTable, or TNS discovery date"
+        )
+        return None
 
 
 def get_tns_data(
@@ -1851,6 +1894,10 @@ class CutList:
             )
         self.list[cut.name()] = cut
 
+    def add_many(self, cuts: List[Cut]):
+        for cut in cuts:
+            self.add(cut)
+
     def get(self, name: str) -> Cut | None:
         if not name in self.list:
             return None
@@ -1954,6 +2001,24 @@ class CutList:
             if not name in skip_names and flag is not None:
                 mask = mask | flag
         return mask
+
+    def iterator(self):
+        names: List = (
+            [
+                UncertaintyCut.name(),
+                UncertaintyEstimation.name(),
+                ChiSquareCut.name(),
+                ControlLightCurveCut.name(),
+            ]
+            + list(self.get_custom_cuts().keys())
+            + [
+                BadDayCut.name(),
+            ]
+        )
+
+        for name in names:
+            if name in self.list:
+                yield self.list[name]
 
     def __str__(self):
         output = []

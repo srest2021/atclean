@@ -311,7 +311,7 @@ class Supernova:
             for control_index in self.lcs
             if control_index > 0
         ]
-        all_controls = LightCurve(self.colnames)
+        all_controls = LightCurve(deepcopy(self.colnames))
         all_controls.t = pd.concat(controls, ignore_index=True)
         return all_controls
 
@@ -368,13 +368,13 @@ class Supernova:
                 pda4MJD.statparams, c2_param2columnmapping, destindex=index
             )
 
+        self.lcs[0].t["c2_abs_stn"] = (
+            self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
+        )
         self.logger.success()
 
     def apply_controls_cut(self, cut: ControlLightCurveCut, previous_flags: int):
         self.calculate_control_stats(previous_flags)
-        self.lcs[0].t["c2_abs_stn"] = (
-            self.lcs[0].t["c2_mean"] / self.lcs[0].t["c2_mean_err"]
-        )
 
         # flag SN measurements
         self.lcs[0].flag_by_control_stats(cut)
@@ -387,8 +387,6 @@ class Supernova:
         flags_to_copy = np.bitwise_and(self.lcs[0].t[self.colnames.mask], flags_arr)
         for control_index in self.control_lc_indices:
             self.lcs[control_index].copy_flags(flags_to_copy)
-
-        # self.drop_extra_columns()
 
         len_ix = len(self.lcs[0].getindices())
         x2_percent_cut = (
@@ -534,7 +532,7 @@ class Supernova:
 
         if control_index in self.lcs.keys():
             self.logger.warning(
-                f"Light curve with control index {control_index} already exists; overwriting",
+                f"Light curve with control index {control_index} already loaded; overwriting",
                 dots=True,
             )
 
@@ -617,14 +615,17 @@ class Supernova:
 
     @property
     def lc_indices(self):
-        if not self._all_indices:
+        if not self._all_indices or len(self._all_indices) != len(self.lcs.keys()):
             self._all_indices = list(self.lcs.keys())
             self._all_indices.sort()
         return self._all_indices
 
     @property
     def control_lc_indices(self):
-        if not self._control_indices:
+        if (
+            not self._control_indices
+            or len(self._control_indices) != len(self.lcs.keys()) - 1
+        ):
             self._control_indices = list(self.lcs.keys())
             if 0 in self._control_indices:
                 self._control_indices.remove(0)
@@ -816,6 +817,8 @@ class LightCurve(pdastrostatsclass):
         self._set_pre_and_post_mjd0_ix(mjd0, self.colnames.mjd)
 
     def get_flags(self) -> int:
+        if self.t is None or len(self.t) < 1:
+            return 0
         return np.bitwise_or.reduce(self.t[self.colnames.mask])
 
     def get_good_indices(self, flag: Optional[int] = None) -> List[int]:
@@ -1017,17 +1020,17 @@ class LightCurve(pdastrostatsclass):
         )
         self.update_mask_column(cut.flag, AnotB(self.getindices(), unmasked_ix))
 
-    def copy_flags(self, flags_to_copy):
+    def copy_flags(self, flag_arr):
         self.t[self.colnames.mask] = self.t[self.colnames.mask].astype(np.int32)
         if len(self.t) < 1:
             return
         elif len(self.t) == 1:
             self.t.at[0, self.colnames.mask] = (
-                int(self.t.at[0, self.colnames.mask]) | flags_to_copy
+                int(self.t.at[0, self.colnames.mask]) | flag_arr
             )
         else:
             self.t[self.colnames.mask] = np.bitwise_or(
-                self.t[self.colnames.mask], flags_to_copy
+                self.t[self.colnames.mask], flag_arr
             )
 
     def get_zpt(self):
@@ -1071,7 +1074,7 @@ class LightCurve(pdastrostatsclass):
         self, cut: BadDayCut, previous_flags, mjdbinsize=1.0, flux2mag_sigmalimit=3.0
     ):
         avg_lc = AveragedLightCurve(
-            self.colnames,
+            deepcopy(self.colnames),
             self.control_index,
             filt=self.filt,
             mjdbinsize=mjdbinsize,
@@ -1081,7 +1084,7 @@ class LightCurve(pdastrostatsclass):
                 self.colnames.flux,
                 self.colnames.dflux,
                 "stdev",
-                "x2",
+                "X2norm",
                 "Nclip",
                 "Ngood",
                 "Nexcluded",
@@ -1137,7 +1140,7 @@ class LightCurve(pdastrostatsclass):
                     self.colnames.flux: flux_statparams.mean,
                     self.colnames.dflux: flux_statparams.mean_err,
                     "stdev": flux_statparams.stdev,
-                    "x2": flux_statparams.x2,
+                    "X2norm": flux_statparams.X2norm,
                     "Nclip": flux_statparams.Nclip,
                     "Ngood": flux_statparams.Ngood,
                     self.colnames.mask: 0,
@@ -1171,7 +1174,7 @@ class LightCurve(pdastrostatsclass):
                 self.colnames.flux: flux_statparams.mean,
                 self.colnames.dflux: flux_statparams.mean_err,
                 "stdev": flux_statparams.stdev,
-                "x2": flux_statparams.x2,
+                "X2norm": flux_statparams.X2norm,
                 "Nclip": flux_statparams.Nclip,
                 "Ngood": flux_statparams.Ngood,
                 self.colnames.mask: 0,
@@ -1201,7 +1204,10 @@ class LightCurve(pdastrostatsclass):
                     is_bad = True
                 if flux_statparams.Nclip > cut.Nclip_max:
                     is_bad = True
-                if flux_statparams.x2 is not None and flux_statparams.x2 > cut.x2_max:
+                if (
+                    flux_statparams.X2norm is not None
+                    and flux_statparams.X2norm > cut.x2_max
+                ):
                     is_bad = True
                 if is_bad:
                     self.update_mask_column(
@@ -1243,19 +1249,27 @@ class LightCurve(pdastrostatsclass):
             )
 
         all_ix = self.getindices()
-        kept_ix = self.ix_inrange(
-            colnames=[cut.column], lowlim=cut.min_value, uplim=cut.max_value
+        cut_ix = self.ix_outrange(
+            colnames=[cut.column],
+            lowlim=cut.min_value,
+            uplim=cut.max_value,
+            exclude_lowlim=True,
+            exclude_uplim=True,
+            indices=all_ix,
         )
-        cut_ix = AnotB(all_ix, kept_ix)
 
         self.update_mask_column(cut.flag, cut_ix)
 
         percent_cut = 100 * len(cut_ix) / len(all_ix)
         return percent_cut
 
-    def remove_flag(self, flag):
-        self.t[self.colnames.mask] = np.bitwise_and(
-            self.t[self.colnames.mask].astype(int), ~flag
+    def remove_flag(self, flag: int, indices: Optional[List[int]] = None):
+        if self.t is None or self.t.empty or self.colnames.mask not in self.t.columns:
+            return
+
+        indices = self.getindices(indices)
+        self.t.loc[indices, self.colnames.mask] = np.bitwise_and(
+            self.t.loc[indices, self.colnames.mask].astype(int), ~flag
         )
 
     def update_mask_column(self, flag, indices, remove_old=True):
@@ -1603,7 +1617,7 @@ class LimCutsTable:
         self.logger = CustomLogger(self.__class__.__name__)
         self.t = None
 
-        self.lc = lc
+        self.lc = deepcopy(lc)
         if indices is None:
             indices = self.lc.getindices()
         self.indices = indices
@@ -1752,7 +1766,7 @@ class FullLightCurve(pdastrostatsclass):
         lookbacktime: Optional[float] = None,
         max_mjd: Optional[float] = None,
     ):
-        if lookbacktime:
+        if lookbacktime is not None:
             min_mjd = float(Time.now().mjd - lookbacktime)
         else:
             min_mjd = 50000.0
@@ -2043,7 +2057,7 @@ class SimDetecSupernova(AveragedSupernova):
         for control_index in self.lc_indices:
             self.lcs[control_index].remove_simulations()
 
-    def load(self, input_dir: str, control_index: int = 0):
+    def load(self, input_dir: str, control_index: int = 0, **kwargs):
         self.lcs[control_index] = SimDetecLightCurve(
             self.colnames,
             control_index=control_index,
@@ -2051,7 +2065,7 @@ class SimDetecSupernova(AveragedSupernova):
             mjdbinsize=self.mjdbinsize,
         )
 
-        self.lcs[control_index].load_lc(input_dir, self.tnsname)
+        self.lcs[control_index].load_lc(input_dir, self.tnsname, **kwargs)
 
         if self.mjd0 is not None:
             self.set_pre_and_post_mjd0_ix(control_index=control_index)
@@ -2177,15 +2191,18 @@ class SimDetecLightCurve(AveragedLightCurve):
                 f"Cannot apply rolling sum with sigma_kern ({sigma_kern} days) less than MJD bin size ({self.mjdbinsize} days)"
             )
 
-        if indices is None:
-            indices = self.getindices()
-        if len(indices) < 1:
+        all_ix = self.getindices()
+        if len(all_ix) < 1:
             raise RuntimeError("Not enough measurements to apply simulated gaussian")
-        good_ix = AandB(indices, self.ix_unmasked(self.colnames.mask, flag))
+        good_ix = self.ix_unmasked(self.colnames.mask, flag, indices=indices)
+        if len(good_ix) < 1:
+            raise RuntimeError(
+                "Not enough good measurements to apply simulated gaussian"
+            )
 
         self.remove_rolling_sum()
         self.cur_sigma_kern = sigma_kern
-        self.t.loc[indices, self.colnames.snr] = 0.0
+        self.t.loc[all_ix, self.colnames.snr] = 0.0
         self.t.loc[good_ix, self.colnames.snr] = (
             self.t.loc[good_ix, self.colnames.flux]
             / self.t.loc[good_ix, self.colnames.dflux]
@@ -2200,16 +2217,16 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
 
         # calculate the rolling SNR sum
-        l = len(self.t.loc[indices])
+        l = len(self.t.loc[all_ix])
         dataindices = np.array(range(l) + np.full(l, halfwindowsize))
         temp = pd.Series(
             np.zeros(l + 2 * halfwindowsize), name=self.colnames.snr, dtype=np.float64
         )
-        temp[dataindices] = self.t.loc[indices, self.colnames.snr]
+        temp[dataindices] = self.t.loc[all_ix, self.colnames.snr]
         SNRsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        self.t.loc[indices, self.colnames.snrsum] = list(SNRsum[dataindices])
+        self.t.loc[all_ix, self.colnames.snrsum] = list(SNRsum[dataindices])
 
         # normalize it
         norm_temp = pd.Series(
@@ -2219,7 +2236,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         norm_temp_sum = norm_temp.rolling(
             windowsize, center=True, win_type="gaussian"
         ).sum(std=new_gaussian_sigma)
-        self.t.loc[indices, self.colnames.snrsumnorm] = list(
+        self.t.loc[all_ix, self.colnames.snrsumnorm] = list(
             SNRsum.loc[dataindices]
             / norm_temp_sum.loc[dataindices]
             * max(norm_temp_sum.loc[dataindices])

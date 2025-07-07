@@ -205,12 +205,9 @@ class ConvertLoop:
         sninfo_filename: Optional[str] = None,
     ):
         self.logger = CustomLogger()
-
         self.colnames: PresetColumnNames = colnames
         self.input_dir: str = input_dir
         self.output_dir: str = output_dir
-
-        print()
         self.sninfo: SnInfoTable = SnInfoTable(
             self.output_dir, filename=sninfo_filename
         )
