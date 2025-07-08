@@ -1581,9 +1581,12 @@ def query_atlas(headers, ra, dec, min_mjd, max_mjd):
                 logger.body(f"Waiting {waittime} seconds")
                 time.sleep(waittime)
             else:
-                logger.error(f"{resp.status_code}")
-                logger.body(resp.text)
-                sys.exit()
+                raise RuntimeError(
+                    f"Error querying ATLAS API: {resp.status_code} {resp.text}"
+                )
+                # logger.error(f"{resp.status_code}")
+                # logger.body(resp.text)
+                # sys.exit()
 
     result_url = None
     taskstarted_printed = False
