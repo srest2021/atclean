@@ -33,6 +33,7 @@ from utils import (
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
+    flatten,
     flux2mag,
     format_float_string,
     get_filepath,
@@ -1033,7 +1034,7 @@ class LightCurve(pdastrostatsclass):
                 self.t[self.colnames.mask], flag_arr
             )
 
-    def get_zpt(self):
+    def get_zpt(self) -> float:
         if self.t is None or len(self.t) < 1:
             raise RuntimeError("Cannot get zeropoint because table is empty")
         if not self.colnames.has("zpt"):
@@ -1045,11 +1046,11 @@ class LightCurve(pdastrostatsclass):
                 f"Cannot get zeropoint because zeropoint column '{self.colnames.zpt}' does not exist"
             )
 
-        if self.t[self.colnames.zpt].nunique(dropna=False) == 1:
-            return self.t.at[0, self.colnames.zpt]
-        raise RuntimeError(
-            f"Cannot get zeropoint because values in zeropoint column '{self.colnames.zpt}' are not all the same"
-        )
+        if self.t[self.colnames.zpt].nunique(dropna=False) != 1:
+            self.logger.warning(
+                f"Values in zeropoint column '{self.colnames.zpt}' are unique; using first value as zeropoint"
+            )
+        return self.t.at[0, self.colnames.zpt]
 
     def _get_average_flux(self, indices=None) -> StatParams:
         self.calcaverage_sigmacutloop(
@@ -1877,7 +1878,7 @@ class Simulation:
         brightness_to_flux_fn: Callable = mag2flux,
         flux_to_brightness_fn: Callable = flux2mag,
         **kwargs,
-    ):
+    ) -> Any:
         """
         Compute the simulated flux for the given MJDs and peak apparent magnitude.
 
@@ -2015,6 +2016,7 @@ class SimDetecSupernova(AveragedSupernova):
         sigma_kern: float,
         valid_mjd_ix: bool = False,
         pre_mjd0_ix: bool = False,
+        flatten: bool = False,
     ):
         if valid_mjd_ix and not self.has_valid_mjd_ix():
             raise RuntimeError(
@@ -2039,7 +2041,9 @@ class SimDetecSupernova(AveragedSupernova):
         self.logger.body(msg)
 
         # apply rolling sum to SN lc
-        self.lcs[0].apply_rolling_sum(sigma_kern, flag=self.flag, indices=sn_indices)
+        self.lcs[0].apply_rolling_sum(
+            sigma_kern, flag=self.flag, indices=sn_indices, flatten=flatten
+        )
 
         # apply rolling sum to control lcs, filtering by valid MJD ranges if needed
         for control_index in self.control_lc_indices:
@@ -2047,6 +2051,7 @@ class SimDetecSupernova(AveragedSupernova):
                 sigma_kern,
                 flag=self.flag,
                 indices=self.lcs[control_index].valid_mjd_ix if valid_mjd_ix else None,
+                flatten=flatten,
             )
 
     def remove_rolling_sums(self):
@@ -2088,6 +2093,9 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "fluxsim": f"{colnames.flux}_sim",
                 "snrsim": "SNR_sim",
                 "snrsimsum": "SNR_simsum",
+                # "mjdflat": f"{colnames.mjdbin}_flat",
+                # "fluxflat": f"{colnames.flux}_flat",
+                # "dfluxflat": f"{colnames.dflux}_flat",
             }
         )
 
@@ -2135,6 +2143,53 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
         return count, mjds
 
+    # def add_flattened_columns(self):
+    #     if self.colnames.mjdflat not in self.t.columns:
+    #         self.t[self.colnames.mjdflat] = np.nan
+    #     if self.colnames.fluxflat not in self.t.columns:
+    #         self.t[self.colnames.fluxflat] = np.nan
+    #     if self.colnames.dfluxflat not in self.t.columns:
+    #         self.t[self.colnames.dfluxflat] = np.nan
+
+    def flatten(
+        self,
+        y_colname_attr: str = "flux",
+        indices=None,
+        valid_mjd_ix: bool = False,
+        verbose: bool = False,
+    ) -> pd.DataFrame:
+        if valid_mjd_ix and not self.has_valid_mjd_ix():
+            raise RuntimeError(
+                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
+            )
+
+        indices = self.getindices(indices)
+        if valid_mjd_ix:
+            indices = AandB(indices, self.valid_mjd_ix)
+
+        y_colname = getattr(self.colnames, y_colname_attr)
+
+        fit_mjd, fit_flux, fit_dflux = flatten(
+            self.t.loc[indices, self.colnames.mjdbin].values,
+            self.t.loc[indices, y_colname].values,
+            self.t.loc[indices, self.colnames.dflux].values,
+        )
+
+        self.t[y_colname] = np.nan
+        self.t.loc[indices, y_colname] = self.t.loc[indices, y_colname] - fit_flux
+
+        self.t[self.colnames.dflux] = np.nan
+        self.t.loc[indices, self.colnames.dflux] = fit_dflux
+
+        # self.add_flattened_columns()
+
+        # # assign fit results only to the selected indices, leaving the rest as NaN
+        # self.t.loc[indices, self.colnames.mjdflat] = fit_mjd
+        # self.t.loc[indices, self.colnames.fluxflat] = (
+        #     self.t[self.colnames.flux] - fit_flux
+        # )
+        # self.t.loc[indices, self.colnames.dfluxflat] = fit_dflux
+
     def remove_columns(self, colnames: List[str]):
         dropcols = []
         for col in colnames:
@@ -2142,6 +2197,15 @@ class SimDetecLightCurve(AveragedLightCurve):
                 dropcols.append(col)
         if len(dropcols) > 0:
             self.t.drop(columns=dropcols, inplace=True)
+
+    # def remove_flattened(self):
+    #     self.remove_columns(
+    #         [
+    #             self.colnames.mjdflat,
+    #             self.colnames.fluxflat,
+    #             self.colnames.dfluxflat,
+    #         ]
+    #     )
 
     # remove rolling sum columns
     def remove_rolling_sum(self):
@@ -2184,7 +2248,12 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     # apply a rolling sum to the light curve and add SNR, SNRsum, and SNRsumnorm columns
     def apply_rolling_sum(
-        self, sigma_kern: float, indices=None, flag=0x800000, verbose=False
+        self,
+        sigma_kern: float,
+        indices=None,
+        flag=0x800000,
+        flatten: bool = False,
+        verbose=False,
     ):
         if sigma_kern < self.mjdbinsize:
             raise ValueError(
@@ -2198,6 +2267,15 @@ class SimDetecLightCurve(AveragedLightCurve):
         if len(good_ix) < 1:
             raise RuntimeError(
                 "Not enough good measurements to apply simulated gaussian"
+            )
+
+        if flatten:
+            if verbose:
+                self.logger.info("Flattening light curve before applying rolling sum")
+            self.flatten(
+                indices=indices,
+                valid_mjd_ix=self.has_valid_mjd_ix(),
+                verbose=verbose,
             )
 
         self.remove_rolling_sum()
@@ -2247,6 +2325,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         sim_flux,
         cur_sigma_kern: Optional[float] = None,
         indices: Optional[List[int]] = None,
+        flatten: bool = False,
         verbose: bool = False,
         remove_old: bool = True,
     ):
@@ -2265,8 +2344,7 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
-        if indices is None:
-            indices = self.getindices()
+        indices = self.getindices(indices)
 
         if remove_old:
             self.remove_simulations()
@@ -2275,6 +2353,16 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
 
         self.t.loc[indices, self.colnames.fluxsim] += sim_flux
+
+        if flatten:
+            if verbose:
+                self.logger.info("Flattening light curve before applying rolling sum")
+            self.flatten(
+                y_colname_attr="fluxsim",
+                indices=indices,
+                valid_mjd_ix=self.has_valid_mjd_ix(),
+                verbose=verbose,
+            )
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         self.t[self.colnames.snrsim] = 0.0

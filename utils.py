@@ -564,6 +564,81 @@ def get_inverse_mjd_ranges(
     return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
 
 
+def sigma_weighted_polyfit(x, y, dy, order=2):
+    """
+    Fit a polynomial of given order to data with sigma-weighted least squares.
+
+    :param x: array-like, independent variable
+    :param y: array-like, dependent variable
+    :param dy: array-like, uncertainties (i.e., sigma) in y
+    :param order: int, order of the polynomial
+
+    Returns:
+    - y_fit: fitted y values at x
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    dy = np.asarray(dy)
+
+    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(dy) & (dy > 0)
+    if np.sum(mask) < order + 1:
+        raise ValueError(
+            "Not enough valid data points for the requested polynomial order."
+        )
+
+    x = x[mask]
+    y = y[mask]
+    dy = dy[mask]
+    weights = 1.0 / dy**2
+
+    coeffs = np.polyfit(x, y, deg=order, w=weights)
+    y_fit = np.polyval(coeffs, x)
+
+    return x, y_fit, dy
+
+
+def get_gap_ix(arr, gap_threshold=0.5) -> List[int]:
+    """
+    Identify indices where there are large gaps in the array.
+
+    :param arr: array-like, time values
+    :param gap_threshold: float, minimum gap size to be considered a split
+
+    Returns:
+    - gap_ix: list of indices after which time gaps occur
+    """
+    arr = np.asarray(arr)
+    gap = np.gradient(arr)
+    gap_ix = np.where(gap > gap_threshold)[0]
+    return np.sort(gap_ix).tolist()
+
+
+def flatten(x, y, dy, order=2):
+    """
+    Use a long-term gaussian process to flatten the data.
+
+    :param x: array-like, independent variable
+    :param y: array-like, dependent variable
+    :param dy: array-like, uncertainties (i.e., sigma) in y
+    :param order: int, order of the polynomial
+    """
+    gap_ix = get_gap_ix(x)
+    segment_bounds = [0] + gap_ix + [len(x)]
+
+    x_all, y_all, s_all = [], [], []
+    for i in range(len(segment_bounds) - 1):
+        start, end = segment_bounds[i], segment_bounds[i + 1]
+        xi, yi, si = sigma_weighted_polyfit(
+            x[start:end], y[start:end], dy[start:end], order=order
+        )
+
+        x_all.extend(xi)
+        y_all.extend(yi)
+        s_all.extend(si)
+
+    return np.array(x_all), np.array(y_all), np.array(s_all)
+
+
 class StatParams:
     def __init__(self, statparams: Dict[str, int | float | None]):
         statparams = deepcopy(statparams)

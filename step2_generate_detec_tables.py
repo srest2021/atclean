@@ -987,6 +987,7 @@ class InjectionLoop(ABC):
         control_index: int,
         sim: Simulation,
         remove_old: bool = True,
+        flatten: bool = False,
         verbose: bool = False,
         **params,
     ):
@@ -1027,11 +1028,26 @@ class InjectionLoop(ABC):
             sim_flux,
             cur_sigma_kern=sigma_kern,
             indices=good_ix,
-            verbose=verbose,
             remove_old=remove_old,
+            flatten=flatten,
+            verbose=verbose,
         )
 
         return sim_flux, lc
+
+    def apply_rolling_sums(self, sigma_kern: float, flatten: bool = False):
+        """
+        Apply rolling sums to the supernova light curve with the specified sigma_kern.
+
+        :param sigma_kern: Sigma kernel of the rolling sum.
+        :param flatten: Whether to flatten the flux before applying the rolling sums.
+        """
+        self._sn.apply_rolling_sums(
+            sigma_kern,
+            flatten=flatten,
+            valid_mjd_ix=self._sn.has_valid_mjd_ix(),
+            pre_mjd0_ix=False,
+        )
 
     @abstractmethod
     def get_injection_search_indices(
@@ -1116,9 +1132,10 @@ class InjectionLoop(ABC):
             self.logger.subheader(
                 f"Using rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days"
             )
-            self._sn.apply_rolling_sums(
-                sigma_kern, valid_mjd_ix=self._sn.has_valid_mjd_ix(), pre_mjd0_ix=False
-            )
+            # self._sn.apply_rolling_sums(
+            #     sigma_kern, valid_mjd_ix=self._sn.has_valid_mjd_ix(), pre_mjd0_ix=False
+            # )
+            self.apply_rolling_sums(sigma_kern)
 
             sim_factory = SimulationFactory()
 
@@ -1171,6 +1188,9 @@ class AtlasInjectionLoop(InjectionLoop):
 
     def get_brightness_param_from_sim_tables(self):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
+
+    def apply_rolling_sums(self, sigma_kern):
+        return super().apply_rolling_sums(sigma_kern, flatten=False)
 
     def get_injection_search_indices(
         self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None
@@ -1268,10 +1288,18 @@ class TessInjectionLoop(InjectionLoop):
         **params,
     ):
         return super().add_simulation_to_lc(
-            sigma_kern, brightness, control_index, sim, remove_old, verbose, **params
+            sigma_kern,
+            brightness,
+            control_index,
+            sim,
+            remove_old=remove_old,
+            flatten=True,
+            verbose=verbose,
+            **params,
         )
 
-        # TODO: flatten/detrend
+    def apply_rolling_sums(self, sigma_kern):
+        return super().apply_rolling_sums(sigma_kern, flatten=True)
 
 
 def mjd_range_type(value):
