@@ -2050,7 +2050,7 @@ class SimDetecSupernova(AveragedSupernova):
                 "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix()"
             )
 
-        msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves (with valid_mjd_ix={valid_mjd_ix}, pre_mjd0_ix={pre_mjd0_ix})"
+        msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
         out = []
         sn_indices = self.lcs[0].getindices()
         if valid_mjd_ix:

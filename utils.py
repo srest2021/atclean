@@ -642,6 +642,7 @@ def flatten(x, y, dy, order=2):
     :param order: int, order of the polynomial
     """
     gap_ix = get_gap_ix(x)
+
     x_all, y_all, s_all = [], [], []
     for start, end in gap_ix:
         xi, yi, si = sigma_weighted_polyfit(

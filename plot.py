@@ -1911,6 +1911,159 @@ class Plot:
 
         return fig
 
+    def plot_all_flattened(
+        self,
+        avg_sn: SimDetecSupernova,
+        flag: Optional[int] = None,
+        two_columns: bool = False,
+        save: bool = False,
+        filename: str = "all_flattened",
+    ):
+        flattened_avg_sn = avg_sn.get_flattened()
+
+        if avg_sn.num_controls < 1:
+            self.logger.warning("No control light curves to plot")
+            return
+        total_panels = avg_sn.num_controls + 1
+        if two_columns and total_panels % 2 != 0:
+            raise RuntimeError(
+                f"Number of control light curves ({total_panels}) must be even; "
+                "set two_columns=False for one column"
+            )
+
+        # set up figure and axes
+        if two_columns:
+            num_rows = total_panels // 2
+            fig, axes = plt.subplots(
+                num_rows, 2, constrained_layout=True, figsize=(7, num_rows * 1.2)
+            )
+            axes = axes.flatten()
+        else:
+            fig, axes = plt.subplots(
+                total_panels,
+                1,
+                constrained_layout=True,
+                figsize=(5, total_panels),
+            )
+            axes = np.atleast_1d(axes)
+
+        idx = 0
+
+        # SN light curve
+        ax: Axes = axes[idx]
+        is_last_row = idx >= total_panels - (2 if two_columns else 1)
+        is_rightmost_col = idx % 2 == 1 if two_columns else False
+
+        self._setup_ax(
+            ax,
+            PlotLimits(),
+            xlabel=is_last_row,
+            xticks=is_last_row,
+            ylabel=False,
+            yticks=not is_rightmost_col,
+        )
+
+        if flag is not None:
+            good_ix = avg_sn.lcs[0].get_good_indices(flag)
+        else:
+            good_ix = avg_sn.lcs[0].getindices()
+
+        self._plot_lc(
+            ax,
+            avg_sn,
+            0,
+            self.color_scheme["sn_flux"][avg_sn.filt],
+            indices=good_ix,
+            label="original",
+        )
+
+        self._plot_lc(
+            ax,
+            flattened_avg_sn,
+            0,
+            self.color_scheme["select_control_flux"],
+            indices=good_ix,
+            label="flattened",
+        )
+
+        ax.text(
+            0.03,
+            0.92,
+            f"{'Binned & ' if isinstance(avg_sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}SN Light Curve",
+            ha="left",
+            va="top",
+            transform=ax.transAxes,
+            fontsize=11,
+            zorder=20,
+        )
+
+        ax.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
+
+        idx += 1
+
+        # loop over control light curves
+        for control_index in avg_sn.control_lc_indices:
+            ax: Axes = axes[idx]
+
+            is_last_row = idx >= total_panels - (2 if two_columns else 1)
+            is_rightmost_col = idx % 2 == 1 if two_columns else False
+            self._setup_ax(
+                ax,
+                PlotLimits(),
+                xlabel=is_last_row,
+                xticks=is_last_row,
+                ylabel=False,
+                yticks=not is_rightmost_col,
+            )
+
+            if flag is not None:
+                good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
+            else:
+                good_ix = avg_sn.lcs[control_index].getindices()
+
+            self._plot_lc(
+                ax,
+                avg_sn,
+                control_index,
+                self.color_scheme["control_flux"],
+                indices=good_ix,
+                label="original",
+            )
+
+            self._plot_lc(
+                ax,
+                flattened_avg_sn,
+                control_index,
+                self.color_scheme["select_control_flux"],
+                indices=good_ix,
+                label="flattened",
+            )
+
+            label_text = (
+                f"{'Binned & ' if isinstance(avg_sn, AveragedSupernova) else ''}{'Cleaned ' if flag is not None and flag > 0 else ' '}Control Light Curve #{control_index}"
+                if idx == 1  # int(include_sn)
+                else f"#{control_index}"
+            )
+            ax.text(
+                0.03,
+                0.92,
+                label_text,
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                fontsize=11,
+                zorder=20,
+            )
+
+            idx += 1
+
+        fig.supylabel(r"Flux")
+
+        if save:
+            self.save_plot(filename, bbox_inches="tight")
+
+        return fig
+
 
 class PlotPdf(Plot):
     def __init__(self, output_dir, tnsname, filt="o"):
