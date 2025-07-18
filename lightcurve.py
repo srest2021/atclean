@@ -822,7 +822,7 @@ class LightCurve(pdastrostatsclass):
             return 0
         return np.bitwise_or.reduce(self.t[self.colnames.mask])
 
-    def get_good_indices(self, flag: Optional[int] = None) -> List[int]:
+    def get_good_indices(self, flag: Optional[int] = None, indices=None) -> List[int]:
         # if flag is 0, return all indices
         if flag == 0:
             return self.getindices()
@@ -834,9 +834,9 @@ class LightCurve(pdastrostatsclass):
 
             # return all unmasked indices
             flag = self.get_flags()
-        return self.ix_unmasked(self.colnames.mask, maskval=flag)
+        return self.ix_unmasked(self.colnames.mask, maskval=flag, indices=indices)
 
-    def get_bad_indices(self, flag: Optional[int] = None) -> List[int]:
+    def get_bad_indices(self, flag: Optional[int] = None, indices=None) -> List[int]:
         # if flag is 0, return no indices
         if flag == 0:
             return []
@@ -848,7 +848,7 @@ class LightCurve(pdastrostatsclass):
 
             # return all masked indices
             flag = self.get_flags()
-        return self.ix_masked(self.colnames.mask, maskval=flag)
+        return self.ix_masked(self.colnames.mask, maskval=flag, indices=indices)
 
     def get_ylims(
         self,
@@ -2070,6 +2070,13 @@ class SimDetecSupernova(AveragedSupernova):
 
         # apply rolling sum to control lcs, filtering by valid MJD ranges if needed
         for control_index in self.control_lc_indices:
+            # print(
+            #     control_index,
+            #     self.lcs[control_index].valid_mjd_ix,
+            #     self.lcs[control_index]
+            #     .t.loc[self.lcs[control_index].valid_mjd_ix[0], :]
+            #     .to_string(),
+            # )
             self.lcs[control_index].apply_rolling_sum(
                 sigma_kern,
                 flag=self.flag,

@@ -970,8 +970,7 @@ class InjectionLoop(ABC):
         :param brightness_to_flux_fn: Function to convert brightness to flux.
         :param flux_to_brightness_fn: Function to convert flux to brightness.
         """
-        if indices is None:
-            indices = lc.getindices()
+        indices = lc.getindices(indices)
         return sim.get_sim_flux(
             lc.t.loc[indices, self._sn.colnames.mjdbin],
             brightness,
@@ -1014,20 +1013,25 @@ class InjectionLoop(ABC):
                 f"Control index {control_index} missing from control light curve indices (may have been excluded): {self._sn.control_lc_indices}"
             )
 
-        lc = deepcopy(self._sn.lcs[control_index])
+        lc: SimDetecLightCurve = deepcopy(self._sn.lcs[control_index])
         if not lc.colnames.snrsumnorm in lc.t.columns:
-            self.logger.warning(
-                "Rolling sum not applied to light curve prior to injecting simulation"
-            )
+            # self.logger.warning(
+            #     "Rolling sum not applied to light curve prior to injecting simulation"
+            # )
+            pass
 
-        good_ix = lc.get_good_indices(flag=self._sn.flag)
+        # indices are good, valid measurements
+        indices = lc.get_good_indices(
+            flag=self._sn.flag,
+            indices=lc.valid_mjd_ix if lc.has_valid_mjd_ix() else None,
+        )
 
-        sim_flux = self.compute_sim_flux(sim, brightness, lc, indices=good_ix, **params)
+        sim_flux = self.compute_sim_flux(sim, brightness, lc, indices=indices, **params)
 
         lc.add_sim_flux(
             sim_flux,
             cur_sigma_kern=sigma_kern,
-            indices=good_ix,
+            indices=indices,
             remove_old=remove_old,
             flatten=flatten,
             verbose=verbose,
@@ -1132,7 +1136,7 @@ class InjectionLoop(ABC):
             self.logger.subheader(
                 f"Using rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days"
             )
-            self.apply_rolling_sums(sigma_kern)
+            # self.apply_rolling_sums(sigma_kern, flatten=False)
 
             sim_factory = SimulationFactory()
 
@@ -1186,9 +1190,6 @@ class AtlasInjectionLoop(InjectionLoop):
     def get_brightness_param_from_sim_tables(self):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
 
-    def apply_rolling_sums(self, sigma_kern):
-        return super().apply_rolling_sums(sigma_kern, flatten=False)
-
     def get_injection_search_indices(
         self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None
     ):
@@ -1206,12 +1207,20 @@ class AtlasInjectionLoop(InjectionLoop):
                 "A Simulation sigma parameter ('sigma_sim') is required to find the max FOM"
             )
 
-        # measurements within 1 sigma of the peak MJD
+        # good, valid measurements
+        indices = sim_lc.get_good_indices(
+            flag=self._sn.flag,
+            indices=sim_lc.valid_mjd_ix if sim_lc.has_valid_mjd_ix() else None,
+        )
+
+        # good, valid measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
             colnames=sim_lc.colnames.mjdbin,
             lowlim=time_peak_mjd - sigma_sim,
             uplim=time_peak_mjd + sigma_sim,
+            indices=indices,
         )
+
         return indices
 
 
@@ -1302,8 +1311,10 @@ class TessInjectionLoop(InjectionLoop):
             **params,
         )
 
-    def apply_rolling_sums(self, sigma_kern):
-        return super().apply_rolling_sums(sigma_kern, flatten=self.flatten)
+    def apply_rolling_sums(self, sigma_kern, **kwargs):
+        # check if flatten in kwargs; if not, use self.flatten:
+        flatten = kwargs.get("flatten", self.flatten)
+        return super().apply_rolling_sums(sigma_kern, flatten=flatten)
 
 
 def mjd_range_type(value):
