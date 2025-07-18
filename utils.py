@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 from pathlib import Path
-
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel as C
+from sklearn.gaussian_process import GaussianProcessRegressor
 
 # number of days to subtract from TNS discovery date to make sure no SN flux before discovery date
 DISC_DATE_BUFFER = 20
@@ -564,39 +565,6 @@ def get_inverse_mjd_ranges(
     return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
 
 
-def sigma_weighted_polyfit(x, y, dy, order=2):
-    """
-    Fit a polynomial of given order to data with sigma-weighted least squares.
-
-    :param x: array-like, independent variable
-    :param y: array-like, dependent variable
-    :param dy: array-like, uncertainties (i.e., sigma) in y
-    :param order: int, order of the polynomial
-
-    Returns:
-    - y_fit: fitted y values at x
-    """
-    x = np.asarray(x)
-    y = np.asarray(y)
-    dy = np.asarray(dy)
-
-    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(dy) & (dy > 0)
-    if np.sum(mask) < order + 1:
-        raise ValueError(
-            "Not enough valid data points for the requested polynomial order."
-        )
-
-    x = x[mask]
-    y = y[mask]
-    dy = dy[mask]
-    weights = 1.0 / dy**2
-
-    coeffs = np.polyfit(x, y, deg=order, w=weights)
-    y_fit = np.polyval(coeffs, x)
-
-    return x, y_fit, dy
-
-
 def get_gap_ix(arr: np.ndarray) -> List[List[int]]:
     """
     Identify consecutive non-NaN sequences in the array.
@@ -632,28 +600,23 @@ def get_gap_ix(arr: np.ndarray) -> List[List[int]]:
     return ranges
 
 
-def flatten(x, y, dy, order=2):
-    """
-    Use a long-term gaussian process to flatten the data.
+def gauss_process_flatten(time_arr, flux_arr):
+    # kernel that models only long-term variations (>= ~10 days)
+    kernel = C(1.0) * RBF(
+        length_scale=10.0, length_scale_bounds=(8.0, 20.0)
+    ) + WhiteKernel(noise_level=1e-4)
 
-    :param x: array-like, independent variable
-    :param y: array-like, dependent variable
-    :param dy: array-like, uncertainties (i.e., sigma) in y
-    :param order: int, order of the polynomial
-    """
-    gap_ix = get_gap_ix(x)
+    base_alpha = 0.15
+    alpha_per_point = base_alpha**2
 
-    x_all, y_all, s_all = [], [], []
-    for start, end in gap_ix:
-        xi, yi, si = sigma_weighted_polyfit(
-            x[start : end + 1], y[start : end + 1], dy[start : end + 1], order=order
-        )
+    gp = GaussianProcessRegressor(
+        kernel=kernel, alpha=alpha_per_point, normalize_y=True, optimizer=None
+    )
+    gp.fit(time_arr[:, None], flux_arr)
 
-        x_all.extend(xi)
-        y_all.extend(yi)
-        s_all.extend(si)
-
-    return np.array(x_all), np.array(y_all), np.array(s_all)
+    long_term_trend = gp.predict(time_arr[:, None])
+    detrended_flux_arr = flux_arr - long_term_trend
+    return detrended_flux_arr
 
 
 class StatParams:

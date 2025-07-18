@@ -1132,9 +1132,6 @@ class InjectionLoop(ABC):
             self.logger.subheader(
                 f"Using rolling sum kernel size sigma_kern={format_float_string(sigma_kern)} days"
             )
-            # self._sn.apply_rolling_sums(
-            #     sigma_kern, valid_mjd_ix=self._sn.has_valid_mjd_ix(), pre_mjd0_ix=False
-            # )
             self.apply_rolling_sums(sigma_kern)
 
             sim_factory = SimulationFactory()
@@ -1220,11 +1217,18 @@ class AtlasInjectionLoop(InjectionLoop):
 
 class TessInjectionLoop(InjectionLoop):
     def __init__(
-        self, sigma_kerns, model_name, sim_tables_dir, detec_tables_dir, **kwargs
+        self,
+        sigma_kerns,
+        model_name,
+        sim_tables_dir,
+        detec_tables_dir,
+        flatten=True,
+        **kwargs,
     ):
         super().__init__(
             sigma_kerns, model_name, sim_tables_dir, detec_tables_dir, **kwargs
         )
+        self.flatten = flatten
 
     def get_brightness_param_from_sim_tables(self):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
@@ -1293,13 +1297,13 @@ class TessInjectionLoop(InjectionLoop):
             control_index,
             sim,
             remove_old=remove_old,
-            flatten=True,
+            flatten=self.flatten,
             verbose=verbose,
             **params,
         )
 
     def apply_rolling_sums(self, sigma_kern):
-        return super().apply_rolling_sums(sigma_kern, flatten=True)
+        return super().apply_rolling_sums(sigma_kern, flatten=self.flatten)
 
 
 def mjd_range_type(value):

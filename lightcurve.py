@@ -33,9 +33,9 @@ from utils import (
     UncertaintyEstimation,
     combine_flags,
     find_all_control_indices,
-    flatten,
     flux2mag,
     format_float_string,
+    gauss_process_flatten,
     get_filepath,
     get_tns_coords_from_json,
     get_tns_data,
@@ -2181,18 +2181,13 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         y_colname = getattr(self.colnames, y_colname_attr)
 
-        fit_mjd, fit_flux, fit_dflux = flatten(
+        flattened_flux = gauss_process_flatten(
             self.t.loc[indices, self.colnames.mjdbin].values,
             self.t.loc[indices, y_colname].values,
-            self.t.loc[indices, self.colnames.dflux].values,
         )
 
-        modified_flux = self.t.loc[indices, y_colname] - fit_flux
         self.t[y_colname] = np.nan
-        self.t.loc[indices, y_colname] = modified_flux
-
-        self.t[self.colnames.dflux] = np.nan
-        self.t.loc[indices, self.colnames.dflux] = fit_dflux
+        self.t.loc[indices, y_colname] = flattened_flux
 
     def remove_columns(self, colnames: List[str]):
         dropcols = []
@@ -2268,8 +2263,8 @@ class SimDetecLightCurve(AveragedLightCurve):
             if verbose:
                 self.logger.info("Flattening light curve before applying rolling sum")
             self.flatten(
-                indices=indices,
-                valid_mjd_ix=self.has_valid_mjd_ix(),
+                indices=good_ix,
+                # valid_mjd_ix=self.has_valid_mjd_ix(),
                 verbose=verbose,
             )
 
