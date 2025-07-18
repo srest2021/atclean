@@ -552,7 +552,7 @@ def resolve_sn_coords_and_mjd0(
             "Could not resolve SN coordinates from command line, SnInfoTable, or TNS"
         )
     if mjd0 is None or np.isnan(mjd0):
-        raise RuntimeError(
+        logger.warning(
             "Could not resolve SN MJD0 from command line, SnInfoTable, or TNS discovery date"
         )
 

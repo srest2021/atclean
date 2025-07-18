@@ -597,20 +597,39 @@ def sigma_weighted_polyfit(x, y, dy, order=2):
     return x, y_fit, dy
 
 
-def get_gap_ix(arr, gap_threshold=0.5) -> List[int]:
+def get_gap_ix(arr: np.ndarray) -> List[List[int]]:
     """
-    Identify indices where there are large gaps in the array.
+    Identify consecutive non-NaN sequences in the array.
 
-    :param arr: array-like, time values
-    :param gap_threshold: float, minimum gap size to be considered a split
+    Parameters:
+    - arr: array-like, numeric values (e.g., flux, time, etc.)
 
     Returns:
-    - gap_ix: list of indices after which time gaps occur
+    - A list of [start_index, end_index] pairs representing each
+      consecutive non-NaN segment (inclusive).
     """
     arr = np.asarray(arr)
-    gap = np.gradient(arr)
-    gap_ix = np.where(gap > gap_threshold)[0]
-    return np.sort(gap_ix).tolist()
+    is_valid = np.isfinite(arr)
+
+    if not np.any(is_valid):
+        return []
+
+    ranges = []
+    start = None
+
+    for i, valid in enumerate(is_valid):
+        if valid:
+            if start is None:
+                start = i  # mark beginning of new sequence
+        else:
+            if start is not None:
+                ranges.append([start, i - 1])  # end the previous sequence
+                start = None
+
+    if start is not None:
+        ranges.append([start, len(arr) - 1])  # close the final sequence
+
+    return ranges
 
 
 def flatten(x, y, dy, order=2):
@@ -623,13 +642,10 @@ def flatten(x, y, dy, order=2):
     :param order: int, order of the polynomial
     """
     gap_ix = get_gap_ix(x)
-    segment_bounds = [0] + gap_ix + [len(x)]
-
     x_all, y_all, s_all = [], [], []
-    for i in range(len(segment_bounds) - 1):
-        start, end = segment_bounds[i], segment_bounds[i + 1]
+    for start, end in gap_ix:
         xi, yi, si = sigma_weighted_polyfit(
-            x[start:end], y[start:end], dy[start:end], order=order
+            x[start : end + 1], y[start : end + 1], dy[start : end + 1], order=order
         )
 
         x_all.extend(xi)
@@ -1611,9 +1627,9 @@ def get_tns_data(
     logger.api(f"Querying TNS for {tnsname} RA, Dec, and MJD0", newline=True)
 
     json_data = query_tns(tnsname, tns_api_key, tns_id, tns_bot_name)
-    if json_data is None:
+    if json_data is None or json_data.get("data") is None:
         logger.warning(f"No data returned; skipping", dots=True)
-        return
+        return None, None
 
     coords = get_tns_coords_from_json(json_data)
     mjd0 = get_tns_mjd0_from_json(json_data, use_disc_date_buffer=use_disc_date_buffer)
