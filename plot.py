@@ -1747,6 +1747,11 @@ class Plot:
         save: bool = False,
         filename: str = "sim_lc",
     ):
+        indices = sim_lc.get_good_indices(
+            flag=flag,
+            indices=sim_lc.valid_mjd_ix if sim_lc.has_valid_mjd_ix() else None,
+        )
+
         fig, (ax1, ax3) = plt.subplots(2, gridspec_kw={"hspace": 0.07})
         ax1: Axes
         ax3: Axes
@@ -1822,7 +1827,7 @@ class Plot:
             sim_lc,
             None,
             self.color_scheme["select_control_flux"],
-            indices=sim_lc.get_good_indices(),
+            indices=indices,
         )
         ax2.scatter(
             [0, 1],
@@ -1852,7 +1857,7 @@ class Plot:
             None,
             self.color_scheme["select_control_flux"],
             y_colname_attr="fluxsim",
-            indices=sim_lc.get_good_indices(),
+            indices=indices,
         )
         ax4.scatter(
             [0, 1],
@@ -1867,7 +1872,7 @@ class Plot:
 
         # bottom panel Simulation object
         ax3.plot(
-            sim_lc.t.loc[sim_lc.get_good_indices(flag=flag), sim_lc.colnames.mjdbin],
+            sim_lc.t.loc[indices, sim_lc.colnames.mjdbin],
             sim_flux,
             color=self.color_scheme["sim_object_flux"],
             linewidth=1.5,
@@ -1897,7 +1902,7 @@ class Plot:
 
         self._set_symmetric_ylim(
             [ax1, ax3],
-            sim_lc.t.loc[sim_lc.get_good_indices(), sim_lc.colnames.flux],
+            sim_lc.t.loc[indices, sim_lc.colnames.flux],
             custom_window=flux_window,
         )
         self._set_symmetric_ylim(
