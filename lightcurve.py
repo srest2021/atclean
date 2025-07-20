@@ -184,9 +184,9 @@ class Supernova:
                                 f"Couldn't find MJD={mjd} in MJD column, but should be there!"
                             )
                         ix_to_skip.extend(matching_ix)
-                    ix = AnotB(self.lcs[control_index].getindices(), ix_to_skip)
+                    ix = AnotB(self.lcs[control_index].get_indices(), ix_to_skip)
                 else:
-                    ix = self.lcs[control_index].getindices()
+                    ix = self.lcs[control_index].get_indices()
 
                 # sort again
                 sorted_ix = self.lcs[control_index].ix_sort_by_cols(
@@ -389,7 +389,7 @@ class Supernova:
         for control_index in self.control_lc_indices:
             self.lcs[control_index].copy_flags(flags_to_copy)
 
-        len_ix = len(self.lcs[0].getindices())
+        len_ix = len(self.lcs[0].get_indices())
         x2_percent_cut = (
             100
             * len(self.lcs[0].ix_masked(self.colnames.mask, maskval=cut.x2_flag))
@@ -825,12 +825,12 @@ class LightCurve(pdastrostatsclass):
     def get_good_indices(self, flag: Optional[int] = None, indices=None) -> List[int]:
         # if flag is 0, return all indices
         if flag == 0:
-            return self.getindices()
+            return self.get_indices()
 
         if flag is None:  # if no flag is given
             # check if mask column exists
             if not self.colnames.mask in self.t.columns:
-                return self.getindices()
+                return self.get_indices()
 
             # return all unmasked indices
             flag = self.get_flags()
@@ -844,7 +844,7 @@ class LightCurve(pdastrostatsclass):
         if flag is None:  # if no flag is given
             # check if mask column exists
             if not self.colnames.mask in self.t.columns:
-                return self.getindices()
+                return self.get_indices()
 
             # return all masked indices
             flag = self.get_flags()
@@ -865,7 +865,7 @@ class LightCurve(pdastrostatsclass):
             if flag is not None:
                 indices = self.get_good_indices(flag)
             elif use_all or not self.colnames.dflux_new in self.t.columns:
-                indices = self.getindices()
+                indices = self.get_indices()
             else:
                 # by default, exclude all measurements with dflux > 160 from the flux min & max calculation
                 indices = self.ix_inrange(colnames=self.colnames.dflux_new, uplim=160)
@@ -949,7 +949,7 @@ class LightCurve(pdastrostatsclass):
 
     def get_median_dflux(self, indices=None):
         if indices is None:
-            indices = self.getindices()
+            indices = self.get_indices()
         return np.nanmedian(self.t.loc[indices, self.colnames.dflux])
 
     def get_mean(
@@ -959,7 +959,7 @@ class LightCurve(pdastrostatsclass):
         round_result: bool = False,
     ) -> float:
         if indices is None:
-            indices = self.getindices()
+            indices = self.get_indices()
 
         self.calcaverage_sigmacutloop(
             colname, indices=indices, Nsigma=3.0, median_firstiteration=True
@@ -1019,7 +1019,7 @@ class LightCurve(pdastrostatsclass):
         self.update_mask_column(
             cut.questionable_flag, AnotB(unmasked_ix, zero_Nclip_ix)
         )
-        self.update_mask_column(cut.flag, AnotB(self.getindices(), unmasked_ix))
+        self.update_mask_column(cut.flag, AnotB(self.get_indices(), unmasked_ix))
 
     def copy_flags(self, flag_arr):
         self.t[self.colnames.mask] = self.t[self.colnames.mask].astype(np.int32)
@@ -1249,7 +1249,7 @@ class LightCurve(pdastrostatsclass):
                 f"No column name '{cut.column}' exists in light curve; cannot apply cut"
             )
 
-        all_ix = self.getindices()
+        all_ix = self.get_indices()
         cut_ix = self.ix_outrange(
             colnames=[cut.column],
             lowlim=cut.min_value,
@@ -1268,7 +1268,7 @@ class LightCurve(pdastrostatsclass):
         if self.t is None or self.t.empty or self.colnames.mask not in self.t.columns:
             return
 
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         self.t.loc[indices, self.colnames.mask] = np.bitwise_and(
             self.t.loc[indices, self.colnames.mask].astype(int), ~flag
         )
@@ -1406,7 +1406,7 @@ class LightCurve(pdastrostatsclass):
         self._clear_flux_offset_column()
 
         region_ix_dict = self._get_region_indices()
-        region_ix_dict["global"] = self.getindices()
+        region_ix_dict["global"] = self.get_indices()
         offset_dict = self._get_offsets(
             mjd0, region_ix_dict, maskval=maskval, num_measurements=num_measurements
         )
@@ -1620,7 +1620,7 @@ class LimCutsTable:
 
         self.lc = deepcopy(lc)
         if indices is None:
-            indices = self.lc.getindices()
+            indices = self.lc.get_indices()
         self.indices = indices
 
         self.good_ix, self.bad_ix = self.get_goodbad_indices(snr_bound)
@@ -1923,11 +1923,13 @@ class SimDetecSupernova(AveragedSupernova):
         self.logger = CustomLogger()
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
-    def get_all_fom(self, sigma_kern: float) -> pd.Series:
+    def get_all_fom(self, sigma_kern: float, flatten: bool = False) -> pd.Series:
         self.apply_rolling_sums(
             sigma_kern,
             valid_mjd_ix=self.has_valid_mjd_ix(),
             pre_mjd0_ix=self.has_pre_mjd0_ix(),
+            good_ix=True,
+            flatten=flatten,
         )
 
         fom_list: List[pd.Series] = []
@@ -1942,19 +1944,22 @@ class SimDetecSupernova(AveragedSupernova):
             return pd.concat(fom_list, ignore_index=True)
         return pd.Series(dtype=float)
 
-    def get_all_fom_dict(self, sigma_kerns: List[float]) -> Dict[float, pd.Series]:
-        self.logger.body(f"Getting all control FOM for MJD ranges {self._mjd_ranges}")
+    def get_all_fom_dict(
+        self, sigma_kerns: List[float], flatten: bool = False
+    ) -> Dict[float, pd.Series]:
+        self.logger.body(
+            f"Getting all {'flattened ' if flatten else ''}control FOM for MJD ranges {self._mjd_ranges}"
+        )
         if self._mjd_ranges is None:
             raise RuntimeError(f"Valid MJD ranges cannot be None")
 
         res = {}
         for sigma_kern in sigma_kerns:
-            res[sigma_kern] = self.get_all_fom(sigma_kern)
+            res[sigma_kern] = self.get_all_fom(sigma_kern, flatten=flatten)
         return res
 
     def get_prelim_fom_limit_ranges(
-        self,
-        sigma_kerns: List[float],
+        self, sigma_kerns: List[float], flatten: bool = False
     ) -> tuple[Dict[float, pd.Series], FomLimits]:
         self.logger.subheader(
             f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}"
@@ -1967,7 +1972,7 @@ class SimDetecSupernova(AveragedSupernova):
                 "Set self._mjd_ranges before calling self.get_prelim_fom_limit_ranges()"
             )
 
-        all_fom_dict = self.get_all_fom_dict(sigma_kerns)
+        all_fom_dict = self.get_all_fom_dict(sigma_kerns, flatten=flatten)
 
         for sigma_kern in sigma_kerns:
             max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
@@ -1976,13 +1981,15 @@ class SimDetecSupernova(AveragedSupernova):
         self.logger.success(f"Valid FOM limit ranges: {res}")
         return all_fom_dict, res
 
-    def scan_sn_for_detections(self, sigma_kerns: List[float], fom_limits: FomLimits):
+    def scan_sn_for_detections(
+        self, sigma_kerns: List[float], fom_limits: FomLimits, flatten: bool = False
+    ):
         self.logger.body("Scanning for detections in SN light curve")
         print("-" * 50)
         for sigma_kern in sigma_kerns:
             fom_limit = fom_limits.get(sigma_kern)
             count, mjds = self.get_num_detections(
-                sigma_kern, fom_limit, control_index=0, verbose=False
+                sigma_kern, fom_limit, control_index=0, flatten=flatten, verbose=False
             )
             self.logger.body(f"Sigma kernel: {format_float_string(sigma_kern)} days")
             self.logger.listitem(
@@ -2001,88 +2008,91 @@ class SimDetecSupernova(AveragedSupernova):
         sigma_kern: float,
         fom_limit: float,
         control_index: int = 0,
+        flatten: bool = False,
         verbose: bool = False,
     ) -> tuple[int, List]:
         return self.lcs[control_index].get_num_detections(
             sigma_kern,
             fom_limit,
-            self.mjd0,
+            mjd0=self.mjd0,
             flag=self.flag,
+            flatten=flatten,
             verbose=verbose,
         )
 
-    def get_flattened(
-        self,
-        valid_mjd_ix: bool = False,
-    ) -> Self:
-        self.logger.info(
-            f"Flattening all light curves (with valid_mjd_ix={valid_mjd_ix})"
-        )
-        if valid_mjd_ix and not self.has_valid_mjd_ix():
-            raise RuntimeError(
-                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
+    def flatten(self, good_ix: bool = False, valid_mjd_ix: bool = False):
+        for control_index in self.lc_indices:
+            self.lcs[control_index].flatten(
+                good_ix=good_ix,
+                flag=self.flag,
+                valid_mjd_ix=(
+                    self.lcs[control_index].has_valid_mjd_ix()
+                    if valid_mjd_ix
+                    else False
+                ),
             )
-
-        new_self = deepcopy(self)
-
-        # flatten each light curve in the copy
-        for control_index in new_self.lc_indices:
-            new_self.lcs[control_index].flatten(
-                indices=new_self.lcs[control_index].get_good_indices(new_self.flag),
-                valid_mjd_ix=valid_mjd_ix,
-            )
-
-        return new_self
 
     def apply_rolling_sums(
         self,
         sigma_kern: float,
         valid_mjd_ix: bool = False,
         pre_mjd0_ix: bool = False,
+        good_ix: bool = False,
         flatten: bool = False,
     ):
-        if valid_mjd_ix and not self.has_valid_mjd_ix():
-            raise RuntimeError(
-                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
-            )
-        if pre_mjd0_ix and not self.has_pre_mjd0_ix():
-            raise RuntimeError(
-                "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix()"
-            )
-
         msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
         out = []
-        sn_indices = self.lcs[0].getindices()
-        if valid_mjd_ix:
-            out.append("using only MJDs in included MJD ranges for all light curves")
-            sn_indices = AandB(sn_indices, self.lcs[0].valid_mjd_ix)
-        if pre_mjd0_ix:
-            out.append("using only pre-MJD0 MJDs for SN light curve")
-            sn_indices = AandB(sn_indices, self.lcs[0].pre_mjd0_ix)
+
+        try:
+            if valid_mjd_ix:
+                out.append(
+                    "using only MJDs in included MJD ranges for all light curves"
+                )
+                if not self.has_valid_mjd_ix():
+                    raise RuntimeError(
+                        "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
+                    )
+            if pre_mjd0_ix:
+                out.append("using only pre-MJD0 MJDs for SN light curve")
+                if not self.has_pre_mjd0_ix():
+                    raise RuntimeError(
+                        "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix()"
+                    )
+        except Exception as e:
+            if out:
+                msg += " (" + "; ".join(out) + ")"
+            self.logger.body(msg)
+            self.logger.error(str(e))
+            sys.exit(1)
+
         if out:
             msg += " (" + "; ".join(out) + ")"
         self.logger.body(msg)
 
         # apply rolling sum to SN lc
         self.lcs[0].apply_rolling_sum(
-            sigma_kern, flag=self.flag, indices=sn_indices, flatten=flatten
+            sigma_kern,
+            indices=self.lcs[0].pre_mjd0_ix if pre_mjd0_ix else None,
+            good_ix=good_ix,
+            flag=self.flag,
+            valid_mjd_ix=valid_mjd_ix,
+            flatten=flatten,
         )
 
         # apply rolling sum to control lcs, filtering by valid MJD ranges if needed
         for control_index in self.control_lc_indices:
-            # print(
-            #     control_index,
-            #     self.lcs[control_index].valid_mjd_ix,
-            #     self.lcs[control_index]
-            #     .t.loc[self.lcs[control_index].valid_mjd_ix[0], :]
-            #     .to_string(),
-            # )
             self.lcs[control_index].apply_rolling_sum(
                 sigma_kern,
+                indices=self.lcs[control_index].pre_mjd0_ix if pre_mjd0_ix else None,
+                good_ix=good_ix,
                 flag=self.flag,
-                indices=self.lcs[control_index].valid_mjd_ix if valid_mjd_ix else None,
+                valid_mjd_ix=valid_mjd_ix,
                 flatten=flatten,
             )
+
+    def remove_flattening(self):
+        for control_index in self.lc_indices:
+            self.lcs[control_index].remove_flattening()
 
     def remove_rolling_sums(self):
         for control_index in self.lc_indices:
@@ -2137,19 +2147,27 @@ class SimDetecLightCurve(AveragedLightCurve):
         self,
         sigma_kern: float,
         fom_limit: float,
-        mjd0: float,
-        flag=0x800000,
-        verbose=False,
+        mjd0: Optional[float] = None,
+        flag: int = 0x800000,
+        flatten: bool = False,
+        verbose: bool = False,
     ) -> tuple[int, List]:
-        if self._pre_mjd0_ix is None:
+        if mjd0 is not None and self._pre_mjd0_ix is None:
             self.set_pre_and_post_mjd0_ix(mjd0)
 
         # for control light curves, loop through all valid indices
-        # for the SN light curve, only loop through valid indices before MJD0
-        indices = self.valid_mjd_ix if self.has_valid_mjd_ix() else self.getindices()
-        if self.control_index == 0 and self.has_pre_mjd0_ix():
-            indices = AandB(indices, self.pre_mjd0_ix)
-        self.apply_rolling_sum(sigma_kern, flag=flag, indices=indices)
+        # for the SN light curve, only loop through pre-MJD0 valid indices
+        use_pre_mjd0_ix = (
+            self.control_index == 0 and mjd0 is not None and self.has_pre_mjd0_ix()
+        )
+        indices = self.get_good_valid_indices(
+            indices=self.pre_mjd0_ix if use_pre_mjd0_ix else None,
+            good_ix=True,
+            flag=flag,
+            valid_mjd_ix=self.has_valid_mjd_ix(),
+        )
+
+        self.apply_rolling_sum(sigma_kern, indices=indices, flatten=flatten)
 
         # find any triggers above the FOM limit
         count = 0
@@ -2170,10 +2188,44 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
         return count, mjds
 
+    def get_good_valid_indices(
+        self,
+        indices=None,
+        good_ix: bool = False,
+        flag: int = 0x800000,
+        valid_mjd_ix: bool = False,
+    ):
+        if valid_mjd_ix and not self.has_valid_mjd_ix():
+            raise ValueError(
+                "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
+            )
+
+        if indices is None:
+            indices = self.valid_mjd_ix if valid_mjd_ix else self.get_indices()
+        else:
+            if len(indices) < 1:
+                raise RuntimeError(
+                    "Not enough measurements to apply simulated gaussian"
+                )
+            if valid_mjd_ix:
+                indices = AandB(indices, self.valid_mjd_ix)
+
+        if good_ix:
+            indices = self.get_good_indices(flag=flag, indices=indices)
+
+        if len(indices) < 1:
+            raise RuntimeError(
+                f"Not enough {'good ' if good_ix else ''}{'valid ' if valid_mjd_ix else ''}measurements to apply simulated gaussian"
+            )
+
+        return indices
+
     def flatten(
         self,
         y_colname_attr: str = "flux",
         indices=None,
+        good_ix: bool = False,
+        flag: int = 0x800000,
         valid_mjd_ix: bool = False,
         verbose: bool = False,
     ) -> pd.DataFrame:
@@ -2182,9 +2234,9 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "Valid MJD indices missing; set valid_mjd_ix=False or call self.set_valid_mjd_ix()"
             )
 
-        indices = self.getindices(indices)
-        if valid_mjd_ix:
-            indices = AandB(indices, self.valid_mjd_ix)
+        indices = self.get_good_valid_indices(
+            indices=indices, good_ix=good_ix, flag=flag, valid_mjd_ix=valid_mjd_ix
+        )
 
         y_colname = getattr(self.colnames, y_colname_attr)
 
@@ -2193,8 +2245,9 @@ class SimDetecLightCurve(AveragedLightCurve):
             self.t.loc[indices, y_colname].values,
         )
 
-        self.t[y_colname] = np.nan
-        self.t.loc[indices, y_colname] = flattened_flux
+        self.colnames.add("fluxflat", f"{y_colname}_flat")
+        self.t[self.colnames.fluxflat] = np.nan
+        self.t.loc[indices, self.colnames.fluxflat] = flattened_flux
 
     def remove_columns(self, colnames: List[str]):
         dropcols = []
@@ -2227,6 +2280,15 @@ class SimDetecLightCurve(AveragedLightCurve):
             ]
         )
 
+    def remove_flattening(self):
+        columns = [
+            col
+            for col in self.colnames.get_optional_column_names()
+            if col.endswith("_flat")
+        ]
+        self.colnames.remove_many(columns)
+        self.remove_columns(columns)
+
     def _get_new_gaussian_sigma(self, sigma_kern: float):
         """
         new_gaussian_sigma = round(sigma_kern / self.mjdbinsize)
@@ -2248,7 +2310,9 @@ class SimDetecLightCurve(AveragedLightCurve):
         self,
         sigma_kern: float,
         indices=None,
-        flag=0x800000,
+        good_ix: bool = False,
+        flag: int = 0x800000,
+        valid_mjd_ix: bool = False,
         flatten: bool = False,
         verbose=False,
     ):
@@ -2257,30 +2321,26 @@ class SimDetecLightCurve(AveragedLightCurve):
                 f"Cannot apply rolling sum with sigma_kern ({sigma_kern} days) less than MJD bin size ({self.mjdbinsize} days)"
             )
 
-        all_ix = self.getindices()
-        if len(all_ix) < 1:
+        all_indices = self.get_indices()
+        if len(all_indices) < 1:
             raise RuntimeError("Not enough measurements to apply simulated gaussian")
-        good_ix = self.ix_unmasked(self.colnames.mask, flag, indices=indices)
-        if len(good_ix) < 1:
-            raise RuntimeError(
-                "Not enough good measurements to apply simulated gaussian"
-            )
 
+        indices = self.get_good_valid_indices(
+            indices=indices, good_ix=good_ix, flag=flag, valid_mjd_ix=valid_mjd_ix
+        )
+
+        y_colname = self.colnames.flux
         if flatten:
             if verbose:
                 self.logger.info("Flattening light curve before applying rolling sum")
-            self.flatten(
-                indices=good_ix,
-                # valid_mjd_ix=self.has_valid_mjd_ix(),
-                verbose=verbose,
-            )
+            self.flatten(indices=indices, verbose=verbose)
+            y_colname = self.colnames.fluxflat
 
         self.remove_rolling_sum()
         self.cur_sigma_kern = sigma_kern
-        self.t.loc[all_ix, self.colnames.snr] = 0.0
-        self.t.loc[good_ix, self.colnames.snr] = (
-            self.t.loc[good_ix, self.colnames.flux]
-            / self.t.loc[good_ix, self.colnames.dflux]
+        self.t.loc[all_indices, self.colnames.snr] = 0.0
+        self.t.loc[indices, self.colnames.snr] = (
+            self.t.loc[indices, y_colname] / self.t.loc[indices, self.colnames.dflux]
         )
 
         new_gaussian_sigma = self._get_new_gaussian_sigma(sigma_kern)
@@ -2292,16 +2352,16 @@ class SimDetecLightCurve(AveragedLightCurve):
             )
 
         # calculate the rolling SNR sum
-        l = len(self.t.loc[all_ix])
+        l = len(self.t.loc[all_indices])
         dataindices = np.array(range(l) + np.full(l, halfwindowsize))
         temp = pd.Series(
             np.zeros(l + 2 * halfwindowsize), name=self.colnames.snr, dtype=np.float64
         )
-        temp[dataindices] = self.t.loc[all_ix, self.colnames.snr]
+        temp[dataindices] = self.t.loc[all_indices, self.colnames.snr]
         SNRsum = temp.rolling(windowsize, center=True, win_type="gaussian").sum(
             std=new_gaussian_sigma
         )
-        self.t.loc[all_ix, self.colnames.snrsum] = list(SNRsum[dataindices])
+        self.t.loc[all_indices, self.colnames.snrsum] = list(SNRsum[dataindices])
 
         # normalize it
         norm_temp = pd.Series(
@@ -2311,7 +2371,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         norm_temp_sum = norm_temp.rolling(
             windowsize, center=True, win_type="gaussian"
         ).sum(std=new_gaussian_sigma)
-        self.t.loc[all_ix, self.colnames.snrsumnorm] = list(
+        self.t.loc[all_indices, self.colnames.snrsumnorm] = list(
             SNRsum.loc[dataindices]
             / norm_temp_sum.loc[dataindices]
             * max(norm_temp_sum.loc[dataindices])
@@ -2322,6 +2382,9 @@ class SimDetecLightCurve(AveragedLightCurve):
         sim_flux,
         cur_sigma_kern: Optional[float] = None,
         indices: Optional[List[int]] = None,
+        good_ix: bool = False,
+        flag: int = 0x800000,
+        valid_mjd_ix: bool = False,
         flatten: bool = False,
         verbose: bool = False,
         remove_old: bool = True,
@@ -2331,7 +2394,11 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         :param sim_flux: Array of simulated flux to add to the light curve.
         :param cur_sigma_kern: The current kernel size of the rolling sum.
-        :param indices: Indices of the light curve (e.g., unmasked/unflagged indices) to use when calculating the resulting FOM.
+        :param indices: Indices of the light curve to use when calculating the resulting FOM.
+        :param good_ix: Only use unflagged indices when calculating the resulting FOM.
+        :param flag: Use this flag to identify unflagged indices when calculating the resulting FOM.
+        :param valid_mjd_ix: Use only indices of measurements within valid MJD ranges when calculating the resulting FOM.
+        :param flatten: Use a long-term Gaussian process to flatten the light curves when calculating the resulting FOM.
         :param remove_old: Remove any old simulations before adding the simulated flux.
         """
         if cur_sigma_kern is None:
@@ -2341,7 +2408,9 @@ class SimDetecLightCurve(AveragedLightCurve):
                 "No current sigma kern passed as argument or stored during previously applied rolling sum."
             )
 
-        indices = self.getindices(indices)
+        indices = self.get_good_valid_indices(
+            indices=indices, good_ix=good_ix, flag=flag, valid_mjd_ix=valid_mjd_ix
+        )
 
         if remove_old:
             self.remove_simulations()
@@ -2351,22 +2420,18 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         self.t.loc[indices, self.colnames.fluxsim] += sim_flux
 
+        y_colname = self.colnames.fluxsim
         if flatten:
             if verbose:
                 self.logger.info("Flattening light curve before applying rolling sum")
-            self.flatten(
-                y_colname_attr="fluxsim",
-                indices=indices,
-                valid_mjd_ix=self.has_valid_mjd_ix(),
-                verbose=verbose,
-            )
+            self.flatten(y_colname_attr="fluxsim", indices=indices, verbose=verbose)
+            y_colname = getattr(self.colnames, f"{self.colnames.fluxsim}_flat")
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         self.t[self.colnames.snrsim] = 0.0
         # include only simulated flux in the SNR
         self.t.loc[indices, self.colnames.snrsim] = (
-            self.t.loc[indices, self.colnames.fluxsim]
-            / self.t.loc[indices, self.colnames.dflux]
+            self.t.loc[indices, y_colname] / self.t.loc[indices, self.colnames.dflux]
         )
 
         new_gaussian_sigma = round(cur_sigma_kern / self.mjdbinsize)
@@ -2393,19 +2458,19 @@ class SimDetecLightCurve(AveragedLightCurve):
 
     # get max FOM (for simulated FOM, column=SNRsimsum; else column=SNRsumnorm)
     # of measurements within the given indices
-    def get_max_fom(self, indices: Optional[List[int]] = None):
-        if indices is None:
-            indices = self.getindices()
+    def get_max_fom(
+        self, indices: Optional[List[int]] = None, y_colname_attr="snrsimsum"
+    ):
+        indices = self.get_indices(indices)
 
-        if self.colnames.snrsimsum in self.t.columns:
-            colname = self.colnames.snrsimsum
-        elif self.colnames.snrsumnorm in self.t.columns:
-            colname = self.colnames.snrsumnorm
-        else:
-            raise RuntimeError(f"No FOM column found (columns: {self.t.columns})")
+        y_colname = getattr(self.colnames, y_colname_attr)
+        if y_colname not in self.t.columns:
+            raise ValueError(
+                f"FOM column '{y_colname}' not found (columns: {self.t.columns})"
+            )
 
-        max_fom_idx = self.t.loc[indices, colname].idxmax()
+        max_fom_idx = self.t.loc[indices, y_colname].idxmax()
 
         max_fom_mjd = self.t.loc[max_fom_idx, self.colnames.mjdbin]
-        max_fom = self.t.loc[max_fom_idx, colname]
+        max_fom = self.t.loc[max_fom_idx, y_colname]
         return max_fom_mjd, max_fom

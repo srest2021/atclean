@@ -304,7 +304,7 @@ class pdastroclass:
     ):
 
         # make sure indices are converted into a valid list
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # make sure columns are converted into a valid list
         columns = self.getcolnames(columns)
@@ -475,7 +475,7 @@ class pdastroclass:
 
         return 0
 
-    def getindices(self, indices=None):
+    def get_indices(self, indices=None):
         """make indices conform (input can be None,([list],), int, str, or list). The output is a list"""
 
         # If indices is None, return all values
@@ -520,7 +520,7 @@ class pdastroclass:
 
     def ix_not_null(self, colnames=None, indices=None):
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -532,7 +532,7 @@ class pdastroclass:
 
     def ix_is_null(self, colnames=None, indices=None):
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -552,7 +552,7 @@ class pdastroclass:
             indices = self.ix_is_null(colnames, indices=indices)
             return indices
 
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -570,7 +570,7 @@ class pdastroclass:
             indices = self.ix_not_null(colnames, indices=indices)
             return indices
 
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -591,7 +591,7 @@ class pdastroclass:
     ) -> List[int]:
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -625,7 +625,7 @@ class pdastroclass:
     ):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names over which to iterate
         colnames = self.getcolnames(colnames)
@@ -657,7 +657,7 @@ class pdastroclass:
     def ix_unmasked(self, maskcol, maskval=None, indices=None):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         if maskval is None:
             (keep,) = np.where(self.t.loc[indices, maskcol].eq(0))
@@ -675,7 +675,7 @@ class pdastroclass:
     def ix_masked(self, maskcol, maskval=None, indices=None):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         if maskval is None:
             (keep,) = np.where(self.t.loc[indices, maskcol].ne(0))
@@ -690,7 +690,7 @@ class pdastroclass:
 
     def ix_matchregex(self, col, regex, indices=None):
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         (keep,) = np.where((self.t.loc[indices, col].str.contains(regex) == True))
         # bla = self.t[col].str.contains(regex)==True
@@ -701,7 +701,7 @@ class pdastroclass:
     def ix_sort_by_cols(self, cols, indices=None, ascending=True):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # get the column names (makes sure that it is a list)
         cols = self.getcolnames(cols)
@@ -753,7 +753,7 @@ class pdastroclass:
                 col += suffix
             return col
 
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # initialize columns if necessary
         if requiredfitskeys != None:
@@ -815,7 +815,7 @@ class pdastroclass:
     def dateobs2mjd(
         self, dateobscol, mjdcol, timeobscol=None, indices=None, tformat="isot"
     ):
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         if len(indices) == 0:
             return 0
 
@@ -834,7 +834,7 @@ class pdastroclass:
         self.t.loc[indices, mjdcol] = mjds
 
     def mjd2dateobs(self, mjdcol, dateobscol, indices=None, tformat="isot"):
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         if len(indices) == 0:
             return 0
 
@@ -858,7 +858,7 @@ class pdastroclass:
         indices=None,
         color_formatter="{:.3f}".format,
     ):
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         if len(indices) == 0:
             return 0
 
@@ -899,7 +899,7 @@ class pdastroclass:
         if (racol is None) and (deccol is None):
             raise RuntimeError("You need to specify at least one of racol or deccol")
 
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         for col in [racol, deccol]:
             if col is None:
                 continue
@@ -1098,7 +1098,7 @@ class pdastroclass:
     ):
 
         if indices is None:
-            indices = self.getindices(indices)
+            indices = self.get_indices(indices)
         if len(indices) == 0:
             return 0
 
@@ -1202,7 +1202,7 @@ class pdastroclass:
         return self.spline[ycol](xval)
 
     def plot(self, indices=None, *args, **kwargs):
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         ax = self.t.loc[indices].plot(*args, **kwargs)
         return ax
 
@@ -1317,7 +1317,7 @@ class pdastrostatsclass(pdastroclass):
     ):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         # If N-sigma cut and second iteration (i.e. we have a stdev from the first iteration), skip bad measurements.
         if not (Nsigma is None) and not (mean is None):
@@ -1426,7 +1426,7 @@ class pdastrostatsclass(pdastroclass):
     ):
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
         if len(indices) == 0:
             print("WARNING: no data passed for sigma cut")
             self.reset()
@@ -1602,7 +1602,7 @@ class pdastrostatsclass(pdastroclass):
             sigmacutFlag = True
 
         # get the indices based on input.
-        indices = self.getindices(indices)
+        indices = self.get_indices(indices)
 
         self.reset()
 

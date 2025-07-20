@@ -95,7 +95,7 @@ def get_matching_ix(table_object: pdastrostatsclass, **kwargs):
     - Range: B=[1.0, 2.5] (must satisfy low < high)
     - List of ranges: C=[[1, 2], [3, 4]] (each must satisfy a < b)
     """
-    matching_ix = table_object.getindices()
+    matching_ix = table_object.get_indices()
     for col, value in kwargs.items():
         if not col in table_object.t.columns:
             raise ValueError(
@@ -744,7 +744,7 @@ class SimulationFactory:
             return False
         return None if np.isnan(row[colname]) else row[colname]
 
-    def from_table(
+    def new_from_table(
         self, table: Union[SimTable, SimDetecTable], row_index: int
     ) -> Simulation:
         """
@@ -856,6 +856,7 @@ class InjectionLoop(ABC):
                 "Supernova (self._sn) must be set before calling self._prepare_sn()"
             )
 
+        self._sn.remove_flattening()
         self._sn.remove_rolling_sums()
         self._sn.remove_simulations()
         if mjd_ranges is not None:
@@ -970,7 +971,7 @@ class InjectionLoop(ABC):
         :param brightness_to_flux_fn: Function to convert brightness to flux.
         :param flux_to_brightness_fn: Function to convert flux to brightness.
         """
-        indices = lc.getindices(indices)
+        indices = lc.get_indices(indices)
         return sim.get_sim_flux(
             lc.t.loc[indices, self._sn.colnames.mjdbin],
             brightness,
@@ -998,6 +999,7 @@ class InjectionLoop(ABC):
         :param control_index: The control index of the light curve to add the Simulation to.
         :param sim: The Simulation to add.
         :param remove_old: Remove any old simulations before adding the new simulated flux.
+        :param flatten: Use a long-term Gaussian process to flatten the light curve after adding the simulated flux.
         :param params: Additional Simulation parameters (e.g., sigma_sim=1.0 and time_peak_mjd=56780.5 for Gaussian)
         """
         if verbose:
@@ -1014,16 +1016,14 @@ class InjectionLoop(ABC):
             )
 
         lc: SimDetecLightCurve = deepcopy(self._sn.lcs[control_index])
-        if not lc.colnames.snrsumnorm in lc.t.columns:
-            # self.logger.warning(
-            #     "Rolling sum not applied to light curve prior to injecting simulation"
-            # )
-            pass
+        # if not lc.colnames.snrsumnorm in lc.t.columns:
+        #     self.logger.warning(
+        #         "Rolling sum not applied to light curve prior to injecting simulation"
+        #     )
 
         # indices are good, valid measurements
-        indices = lc.get_good_indices(
-            flag=self._sn.flag,
-            indices=lc.valid_mjd_ix if lc.has_valid_mjd_ix() else None,
+        indices = lc.get_good_valid_indices(
+            good_ix=True, flag=self._sn.flag, valid_mjd_ix=lc.has_valid_mjd_ix()
         )
 
         sim_flux = self.compute_sim_flux(sim, brightness, lc, indices=indices, **params)
@@ -1044,13 +1044,14 @@ class InjectionLoop(ABC):
         Apply rolling sums to the supernova light curve with the specified sigma_kern.
 
         :param sigma_kern: Sigma kernel of the rolling sum.
-        :param flatten: Whether to flatten the flux before applying the rolling sums.
+        :param flatten: Use a long-term Gaussian process to flatten the light curve when calculating the resulting FOM.
         """
         self._sn.apply_rolling_sums(
             sigma_kern,
-            flatten=flatten,
+            good_ix=True,
             valid_mjd_ix=self._sn.has_valid_mjd_ix(),
             pre_mjd0_ix=False,
+            flatten=flatten,
         )
 
     @abstractmethod
@@ -1067,14 +1068,14 @@ class InjectionLoop(ABC):
         """
         pass
 
-    def inject_and_record_sim(
+    def inject_sim(
         self,
-        sim_detec_table: SimDetecTable,
-        row_index: int,
         sim: Simulation,
         sigma_kern: float,
         brightness: float,
-    ):
+        flatten: bool = False,
+        **params,
+    ) -> tuple[int, float, float]:
         if self._sn is None:
             raise ValueError(
                 "Supernova (self._sn) must be set before injecting a simulation"
@@ -1088,25 +1089,15 @@ class InjectionLoop(ABC):
         rand_control_index = random.choice(self._sn.control_lc_indices)
 
         # add the simulated flux to the chosen control light curve
-        params = sim_detec_table.get_params_at_index(row_index)
         _, sim_lc = self.add_simulation_to_lc(
-            sigma_kern, brightness, rand_control_index, sim, **params
+            sigma_kern, brightness, rand_control_index, sim, flatten=flatten, **params
         )
 
         # get the max simulated FOM within certain indices of the light curve
         indices = self.get_injection_search_indices(sim_lc, **params)
         max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
 
-        # update the corresponding row in the SimDetecTable
-        self.tables.update_row(
-            sigma_kern,
-            brightness,
-            row_index,
-            self._sn.filt,
-            rand_control_index,
-            max_fom,
-            max_fom_mjd,
-        )
+        return rand_control_index, max_fom_mjd, max_fom
 
     def loop(
         self,
@@ -1151,7 +1142,7 @@ class InjectionLoop(ABC):
 
                 # load the Simulation object based on the data in the first row
                 # (we assume here that every row in a table adds the same type of model)
-                sim = sim_factory.from_table(sim_detec_table, 0)
+                sim = sim_factory.new_from_table(sim_detec_table, 0)
                 if sim.model_name != self.model_name:
                     raise ValueError(
                         f"Model name mismatch: expected {self.model_name}, got {sim.model_name}"
@@ -1163,9 +1154,25 @@ class InjectionLoop(ABC):
                         0, l, prefix="Progress:", suffix="Complete", length=50
                     )
                 for i in range(l):
-                    self.inject_and_record_sim(
-                        sim_detec_table, i, sim, sigma_kern, peak_appmag
+                    # get simulation parameters from SimDetecTable
+                    params = sim_detec_table.get_params_at_index(i)
+
+                    # inject simulation
+                    rand_control_index, max_fom_mjd, max_fom = self.inject_sim(
+                        sim, sigma_kern, peak_appmag, **params
                     )
+
+                    # update the corresponding row in the SimDetecTable with results
+                    self.tables.update_row(
+                        sigma_kern,
+                        peak_appmag,
+                        i,
+                        self._sn.filt,
+                        rand_control_index,
+                        max_fom,
+                        max_fom_mjd,
+                    )
+
                     if progress_bar:
                         print_progress_bar(
                             i + 1, l, prefix="Progress:", suffix="Complete", length=50
@@ -1292,29 +1299,46 @@ class TessInjectionLoop(InjectionLoop):
 
     def add_simulation_to_lc(
         self,
-        sigma_kern,
-        brightness,
-        control_index,
-        sim,
-        remove_old=True,
-        verbose=False,
+        sigma_kern: float,
+        brightness: float,
+        control_index: int,
+        sim: Simulation,
+        remove_old: bool = True,
+        flatten: Optional[bool] = None,
+        verbose: bool = False,
         **params,
     ):
+        if flatten is None:
+            flatten = self.flatten
         return super().add_simulation_to_lc(
             sigma_kern,
             brightness,
             control_index,
             sim,
             remove_old=remove_old,
-            flatten=self.flatten,
+            flatten=flatten,
             verbose=verbose,
             **params,
         )
 
-    def apply_rolling_sums(self, sigma_kern, **kwargs):
-        # check if flatten in kwargs; if not, use self.flatten:
-        flatten = kwargs.get("flatten", self.flatten)
+    def apply_rolling_sums(self, sigma_kern: float, flatten: Optional[bool] = None):
+        if flatten is None:
+            flatten = self.flatten
         return super().apply_rolling_sums(sigma_kern, flatten=flatten)
+
+    def inject_sim(
+        self,
+        sim: Simulation,
+        sigma_kern: float,
+        brightness: float,
+        flatten: Optional[bool] = None,
+        **params,
+    ):
+        if flatten is None:
+            flatten = self.flatten
+        return super().inject_sim(
+            sim, sigma_kern, brightness, flatten=flatten, **params
+        )
 
 
 def mjd_range_type(value):

@@ -157,12 +157,22 @@ class Plot:
         sn: SimDetecSupernova,
         all_fom: pd.Series,
         fom_limit: Optional[float] = None,
+        pre_sn: bool = True,
         custom_lims: Optional[PlotLimits] = None,
     ) -> PlotLimits:
         lims = PlotLimits()
 
         # get auto xlims using min and max of mjd ranges
-        lims.set_xlims((sn.get_mjd_ranges()[0][0], sn.get_mjd_ranges()[-1][-1]))
+        lims.set_xlims(
+            (
+                sn.get_mjd_ranges()[0][0],
+                (
+                    min(sn.get_mjd_ranges()[-1][-1], sn.mjd0)
+                    if pre_sn
+                    else sn.get_mjd_ranges()[-1][-1]
+                ),
+            )
+        )
 
         # override auto xlims with custom ones where they exist
         if custom_lims is not None and custom_lims.get_xlims() is not None:
@@ -239,7 +249,7 @@ class Plot:
             obj = obj.lcs[control_index]
 
         if indices is None:
-            indices = obj.getindices()
+            indices = obj.get_indices()
 
         y_colname = getattr(obj.colnames, y_colname_attr)
         if not obj.can_plot(indices, columns=[y_colname]):
@@ -279,7 +289,7 @@ class Plot:
         dy_colname = getattr(obj.colnames, dy_colname_attr)
 
         if indices is None:
-            indices = obj.getindices()
+            indices = obj.get_indices()
         if not obj.can_plot(indices):
             self.logger.warning(
                 f"Light curve (control index #{control_index}) cannot be plotted with indices of length {len(indices)}; skipping",
@@ -1099,7 +1109,7 @@ class Plot:
             if flag is not None:
                 good_ix = sn.lcs[0].get_good_indices(flag)
             else:
-                good_ix = sn.lcs[0].getindices()
+                good_ix = sn.lcs[0].get_indices()
 
             self._plot_lc(
                 ax,
@@ -1139,7 +1149,7 @@ class Plot:
             if flag is not None:
                 good_ix = sn.lcs[control_index].get_good_indices(flag)
             else:
-                good_ix = sn.lcs[control_index].getindices()
+                good_ix = sn.lcs[control_index].get_indices()
 
             self._plot_lc(
                 ax,
@@ -1232,6 +1242,7 @@ class Plot:
         sigma_kerns: List[float],
         select_control_index: int,
         fom_limits: Optional[Dict[float, float]] = None,
+        flatten_sn: bool = False,
         save: bool = False,
         filename: str = "all_fom",
     ):
@@ -1249,11 +1260,18 @@ class Plot:
 
         for i, row in enumerate(axes):
             sigma_kern = sigma_kerns[i]
+
             sn.apply_rolling_sums(
                 sigma_kern,
                 valid_mjd_ix=sn.has_valid_mjd_ix(),
-                pre_mjd0_ix=sn.has_pre_mjd0_ix(),
+                pre_mjd0_ix=False if flatten_sn else sn.has_pre_mjd0_ix(),
             )
+            if flatten_sn:
+                sn.lcs[0].flatten(
+                    good_ix=True,
+                    flag=sn.flag,
+                    valid_mjd_ix=sn.lcs[0].has_valid_mjd_ix(),
+                )
 
             if len(sigma_kerns) == 1:
                 sigma_kern = sigma_kerns[0]
@@ -1268,7 +1286,9 @@ class Plot:
                 sn,
                 all_fom_dict[sigma_kern],
                 fom_limit=fom_limits[sigma_kern] if fom_limits else None,
+                pre_sn=not flatten_sn,
             )
+
             self._setup_ax(ax1, lims, ylabel=r"$\Sigma_{\rm FOM}$")
             self._setup_ax(ax2, lims, ylabel=False, yticks=False, axhline=False)
             if i >= len(sigma_kerns) - 1:  # bottom row
@@ -1304,13 +1324,13 @@ class Plot:
             )
 
             # pre-SN lc fom
-            is_preMJD0 = ax1.get_xlim()[0] <= sn.mjd0 <= ax1.get_xlim()[1]
+            is_preMJD0 = sn.mjd0 >= ax1.get_xlim()[1]
             self._plot_fom(
                 ax1,
                 sn,
                 0,
                 self.color_scheme["sn_fom"],
-                label=f"{'Pre-' if is_preMJD0 else ''}SN",
+                label=f"{'Flattened ' if flatten_sn else ''}{'Pre-' if is_preMJD0 else ''}SN",
             )
 
             # sigma_kern label
@@ -1971,7 +1991,7 @@ class Plot:
         if flag is not None:
             good_ix = avg_sn.lcs[0].get_good_indices(flag)
         else:
-            good_ix = avg_sn.lcs[0].getindices()
+            good_ix = avg_sn.lcs[0].get_indices()
 
         self._plot_lc(
             ax,
@@ -2024,7 +2044,7 @@ class Plot:
             if flag is not None:
                 good_ix = avg_sn.lcs[control_index].get_good_indices(flag)
             else:
-                good_ix = avg_sn.lcs[control_index].getindices()
+                good_ix = avg_sn.lcs[control_index].get_indices()
 
             self._plot_lc(
                 ax,

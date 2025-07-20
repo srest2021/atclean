@@ -984,11 +984,25 @@ class PresetColumnNames:
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"Column name for key '{key}' must be a non-empty string.")
 
-        # if key exists but the name is different, raise an error
+        # check if key already exists with a different name
         existing_name = self.required_columns.get(key) or self.optional_columns.get(key)
         if existing_name and existing_name != name and not overwrite:
             raise RuntimeError(
                 f"Column key '{key}' is already defined with a different name '{existing_name}'."
+            )
+
+        # check if name already exists under a different key
+        all_columns = {**self.required_columns, **self.optional_columns}
+        for existing_key, existing_name in all_columns.items():
+            if existing_name == name and existing_key != key and not overwrite:
+                raise RuntimeError(
+                    f"Column name '{name}' is already used for a different key '{existing_key}'."
+                )
+
+        # check if name exists as an extra column
+        if name in self.extra_columns and not overwrite:
+            raise RuntimeError(
+                f"Column name '{name}' already exists as an extra column."
             )
 
         if is_required:
@@ -1023,6 +1037,10 @@ class PresetColumnNames:
             del self.optional_columns[key]
         if key in self.optional_columns:
             del self.optional_columns[key]
+
+    def remove_many(self, keys: List[str]):
+        for key in keys:
+            self.remove(key)
 
     def get_required_column_names(self, is_averaged: bool = False):
         if is_averaged:
