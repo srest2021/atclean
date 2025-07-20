@@ -60,6 +60,7 @@ class ContaminationTable:
         sn: SimDetecSupernova,
         sigma_kern: float,
         fom_limit: float,
+        flatten: bool = False,
     ) -> Dict:
         row = {
             "sigma_kern": sigma_kern,
@@ -71,7 +72,7 @@ class ContaminationTable:
 
         for control_index in sn.lc_indices:
             n_falsepos, _ = sn.get_num_detections(
-                sigma_kern, fom_limit, control_index=control_index
+                sigma_kern, fom_limit, control_index=control_index, flatten=flatten
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
 
@@ -89,6 +90,7 @@ class ContaminationTable:
         sn: SimDetecSupernova,
         sigma_kerns: List[float],
         fom_limits: FomLimits,
+        flatten: bool = False,
     ):
         self.logger.subheader(
             "Calculating preliminary contamination table for valid MJD ranges and preliminary FOM limit ranges"
@@ -104,7 +106,7 @@ class ContaminationTable:
             self.t = pd.DataFrame()
             for sigma_kern in sigma_kerns:
                 for fom_limit in fom_limits.get_multi(sigma_kern):
-                    row = self.calculate_row(sn, sigma_kern, fom_limit)
+                    row = self.calculate_row(sn, sigma_kern, fom_limit, flatten=flatten)
                     self.t = new_row(self.t, row)
 
             # number of false positives should always be 0 for min fom limits
@@ -148,6 +150,7 @@ class ContaminationTable:
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
+        flatten: bool = False,
     ) -> FomLimits:
         """
         Calculate contamination metrics and refine FOM limits to achieve the target contamination level.
@@ -168,7 +171,9 @@ class ContaminationTable:
             )
 
         if self.t is None or not self.is_prelim:
-            self.construct_prelim_t(sn, sigma_kerns, prelim_fom_limit_ranges)
+            self.construct_prelim_t(
+                sn, sigma_kerns, prelim_fom_limit_ranges, flatten=flatten
+            )
         if self.t is None or self.t.empty:
             raise RuntimeError(
                 "Calculated preliminary contamination table is None or empty--failed"
@@ -197,7 +202,9 @@ class ContaminationTable:
             best_row = None
             for step in range(n_steps):
                 new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
-                new_row = self.calculate_row(sn, sigma_kern, new_fom_limit)
+                new_row = self.calculate_row(
+                    sn, sigma_kern, new_fom_limit, flatten=flatten
+                )
                 cur_value = new_row["n_pos_controls"]
                 if verbose:
                     self.logger.body(
@@ -864,6 +871,7 @@ class AnalysisLoop:
                 "Supernova (self._sn) must be set before calling self._prepare_sn()"
             )
 
+        self._sn.remove_flattening()
         self._sn.remove_rolling_sums()
         self._sn.remove_simulations()
         if mjd_ranges is not None:
@@ -933,7 +941,7 @@ class AnalysisLoop:
         self._prepare_sn(mjd_ranges=mjd_ranges, skip_control_ix=skip_control_ix)
 
     def calculate_best_fom_limits(
-        self, target_value: int = 2, n_steps: int = 15
+        self, target_value: int = 2, n_steps: int = 15, flatten: bool = False
     ) -> FomLimits:
         if self._sn is None:
             raise RuntimeError(
@@ -945,11 +953,13 @@ class AnalysisLoop:
             raise ValueError("n_steps must be >= 2")
 
         _, prelim_fom_limit_ranges = self._sn.get_prelim_fom_limit_ranges(
-            self.sigma_kerns
+            self.sigma_kerns, flatten=flatten
         )
 
         contam = ContaminationTable()
-        contam.construct_prelim_t(self._sn, self.sigma_kerns, prelim_fom_limit_ranges)
+        contam.construct_prelim_t(
+            self._sn, self.sigma_kerns, prelim_fom_limit_ranges, flatten=flatten
+        )
 
         fom_limits = contam.calculate(
             self._sn,
@@ -957,6 +967,7 @@ class AnalysisLoop:
             self.sigma_kerns,
             target_value=target_value,
             n_steps=n_steps,
+            flatten=flatten,
             verbose=True,
         )
         contam.save(self.detec_tables_dir)
@@ -1023,7 +1034,7 @@ class AnalysisLoop:
         self._params.validate(check_time=False)
 
     def calculate_efficiencies(
-        self, target_value: int = 2, n_steps: int = 15
+        self, target_value: int = 2, n_steps: int = 15, flatten: bool = False
     ) -> EfficiencyTable:
         if self._params is None:
             raise RuntimeError(
@@ -1036,7 +1047,7 @@ class AnalysisLoop:
 
         self.logger.header("Calculating best FOM limits and their contamination")
         fom_limits = self.calculate_best_fom_limits(
-            target_value=target_value, n_steps=n_steps
+            target_value=target_value, n_steps=n_steps, flatten=flatten
         )
 
         self.logger.header("Calculating efficiencies using best FOM limits")
