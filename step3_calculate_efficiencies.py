@@ -60,6 +60,7 @@ class ContaminationTable:
         sn: SimDetecSupernova,
         sigma_kern: float,
         fom_limit: float,
+        pre_sn: bool = True,
         flatten: bool = False,
     ) -> Dict:
         row = {
@@ -72,7 +73,11 @@ class ContaminationTable:
 
         for control_index in sn.lc_indices:
             n_falsepos, _ = sn.get_num_detections(
-                sigma_kern, fom_limit, control_index=control_index, flatten=flatten
+                sigma_kern,
+                fom_limit,
+                control_index=control_index,
+                pre_sn=pre_sn,
+                flatten=flatten,
             )
             row[f"n_falsepos_{control_index:02d}"] = n_falsepos
 
@@ -90,6 +95,7 @@ class ContaminationTable:
         sn: SimDetecSupernova,
         sigma_kerns: List[float],
         fom_limits: FomLimits,
+        pre_sn: bool = True,
         flatten: bool = False,
     ):
         self.logger.subheader(
@@ -106,7 +112,9 @@ class ContaminationTable:
             self.t = pd.DataFrame()
             for sigma_kern in sigma_kerns:
                 for fom_limit in fom_limits.get_multi(sigma_kern):
-                    row = self.calculate_row(sn, sigma_kern, fom_limit, flatten=flatten)
+                    row = self.calculate_row(
+                        sn, sigma_kern, fom_limit, pre_sn=pre_sn, flatten=flatten
+                    )
                     self.t = new_row(self.t, row)
 
             # number of false positives should always be 0 for min fom limits
@@ -151,6 +159,7 @@ class ContaminationTable:
         n_steps: int = 15,
         verbose: bool = False,
         convergence_threshold: float = 0.01,
+        pre_sn: bool = True,
         flatten: bool = False,
     ) -> FomLimits:
         """
@@ -173,7 +182,7 @@ class ContaminationTable:
 
         if self.t is None or not self.is_prelim:
             self.construct_prelim_t(
-                sn, sigma_kerns, prelim_fom_limit_ranges, flatten=flatten
+                sn, sigma_kerns, prelim_fom_limit_ranges, pre_sn=pre_sn, flatten=flatten
             )
         if self.t is None or self.t.empty:
             raise RuntimeError(
@@ -204,7 +213,7 @@ class ContaminationTable:
             for step in range(n_steps):
                 new_fom_limit = round((upper_limit + lower_limit) / 2, 2)
                 new_row = self.calculate_row(
-                    sn, sigma_kern, new_fom_limit, flatten=flatten
+                    sn, sigma_kern, new_fom_limit, pre_sn=pre_sn, flatten=flatten
                 )
                 cur_value = new_row["n_pos_controls"]
                 if verbose:

@@ -144,6 +144,19 @@ class Param(ABC):
         """
         pass
 
+    def trim(
+        self, min_value: Optional[float] = None, max_value: Optional[float] = None
+    ):
+        if self._values is None:
+            return
+
+        self._values = [
+            v
+            for v in self._values
+            if (min_value is None or v >= min_value)
+            and (max_value is None or v <= max_value)
+        ]
+
     def round_to(self, n_digits: int):
         if self._values:
             self._values = [round(v, n_digits) for v in self.values]

@@ -565,6 +565,20 @@ def get_inverse_mjd_ranges(
     return _expand_ranges(inverse, min_mjd, max_mjd, expand_edges=expand_edges)
 
 
+def trim_mjd_ranges(mjd_ranges: List[List[float]], mjd0: float) -> List[List[float]]:
+    validate_mjd_ranges(mjd_ranges)
+    trimmed: List[List[float]] = []
+    for start, end in mjd_ranges:
+        if end <= mjd0:
+            # Entire range is before mjd0, keep it
+            trimmed.append([start, end])
+        elif start < mjd0:
+            # Range crosses mjd0, truncate it
+            trimmed.append([start, mjd0])
+        # If start >= mjd0, skip the range (it's fully after mjd0)
+    return trimmed
+
+
 def get_gap_ix(arr: np.ndarray) -> List[List[int]]:
     """
     Identify consecutive non-NaN sequences in the array.
@@ -600,6 +614,7 @@ def get_gap_ix(arr: np.ndarray) -> List[List[int]]:
     return ranges
 
 
+# TODO: make sure this is overridable in InjectionLoop
 def gauss_process_flatten(time_arr, flux_arr):
     # kernel that models only long-term variations (>= ~10 days)
     kernel = C(1.0) * RBF(

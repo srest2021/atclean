@@ -1923,11 +1923,13 @@ class SimDetecSupernova(AveragedSupernova):
         self.logger = CustomLogger()
         self.lcs: Dict[int, SimDetecLightCurve] = {}
 
-    def get_all_fom(self, sigma_kern: float, flatten: bool = False) -> pd.Series:
+    def get_all_fom(
+        self, sigma_kern: float, pre_sn: bool = True, flatten: bool = False
+    ) -> pd.Series:
         self.apply_rolling_sums(
             sigma_kern,
             valid_mjd_ix=self.has_valid_mjd_ix(),
-            pre_mjd0_ix=self.has_pre_mjd0_ix(),
+            pre_mjd0_ix=pre_sn,
             good_ix=True,
             flatten=flatten,
         )
@@ -1945,7 +1947,7 @@ class SimDetecSupernova(AveragedSupernova):
         return pd.Series(dtype=float)
 
     def get_all_fom_dict(
-        self, sigma_kerns: List[float], flatten: bool = False
+        self, sigma_kerns: List[float], pre_sn: bool = True, flatten: bool = False
     ) -> Dict[float, pd.Series]:
         self.logger.body(
             f"Getting all {'flattened ' if flatten else ''}control FOM for MJD ranges {self._mjd_ranges}"
@@ -1955,11 +1957,13 @@ class SimDetecSupernova(AveragedSupernova):
 
         res = {}
         for sigma_kern in sigma_kerns:
-            res[sigma_kern] = self.get_all_fom(sigma_kern, flatten=flatten)
+            res[sigma_kern] = self.get_all_fom(
+                sigma_kern, pre_sn=pre_sn, flatten=flatten
+            )
         return res
 
     def get_prelim_fom_limit_ranges(
-        self, sigma_kerns: List[float], flatten: bool = False
+        self, sigma_kerns: List[float], pre_sn: bool = True, flatten: bool = False
     ) -> tuple[Dict[float, pd.Series], FomLimits]:
         self.logger.subheader(
             f"Calculating preliminary valid FOM limit ranges for sigma_kerns {sigma_kerns}"
@@ -1972,7 +1976,9 @@ class SimDetecSupernova(AveragedSupernova):
                 "Set self._mjd_ranges before calling self.get_prelim_fom_limit_ranges()"
             )
 
-        all_fom_dict = self.get_all_fom_dict(sigma_kerns, flatten=flatten)
+        all_fom_dict = self.get_all_fom_dict(
+            sigma_kerns, pre_sn=pre_sn, flatten=flatten
+        )
 
         for sigma_kern in sigma_kerns:
             max_fom = round(max(all_fom_dict[sigma_kern]) + 0.01, 2)
@@ -1982,14 +1988,23 @@ class SimDetecSupernova(AveragedSupernova):
         return all_fom_dict, res
 
     def scan_sn_for_detections(
-        self, sigma_kerns: List[float], fom_limits: FomLimits, flatten: bool = False
+        self,
+        sigma_kerns: List[float],
+        fom_limits: FomLimits,
+        pre_sn: bool = True,
+        flatten: bool = False,
     ):
         self.logger.body("Scanning for detections in SN light curve")
         print("-" * 50)
         for sigma_kern in sigma_kerns:
             fom_limit = fom_limits.get(sigma_kern)
             count, mjds = self.get_num_detections(
-                sigma_kern, fom_limit, control_index=0, flatten=flatten, verbose=False
+                sigma_kern,
+                fom_limit,
+                control_index=0,
+                pre_sn=pre_sn,
+                flatten=flatten,
+                verbose=False,
             )
             self.logger.body(f"Sigma kernel: {format_float_string(sigma_kern)} days")
             self.logger.listitem(
@@ -2008,6 +2023,7 @@ class SimDetecSupernova(AveragedSupernova):
         sigma_kern: float,
         fom_limit: float,
         control_index: int = 0,
+        pre_sn: bool = True,
         flatten: bool = False,
         verbose: bool = False,
     ) -> tuple[int, List]:
@@ -2016,6 +2032,7 @@ class SimDetecSupernova(AveragedSupernova):
             fom_limit,
             mjd0=self.mjd0,
             flag=self.flag,
+            pre_sn=pre_sn,
             flatten=flatten,
             verbose=verbose,
         )
@@ -2151,28 +2168,27 @@ class SimDetecLightCurve(AveragedLightCurve):
         fom_limit: float,
         mjd0: Optional[float] = None,
         flag: int = 0x800000,
+        pre_sn: bool = True,
         flatten: bool = False,
         verbose: bool = False,
     ) -> tuple[int, List]:
         if mjd0 is not None and self._pre_mjd0_ix is None:
             self.set_pre_and_post_mjd0_ix(mjd0)
+        if pre_sn and not self.has_pre_mjd0_ix():
+            raise ValueError(
+                "Pre-MJD0 indices missing; set pre_sn=False or set SN MJD0"
+            )
 
-        # for control light curves, loop through all valid indices
-        # for the SN light curve, only loop through pre-MJD0 valid indices
-        # use_pre_mjd0_ix = (
-        #     self.control_index == 0 and mjd0 is not None and self.has_pre_mjd0_ix()
-        # )
         indices = self.get_good_valid_indices(
-            # indices=self.pre_mjd0_ix if use_pre_mjd0_ix else None,
-            indices=self.pre_mjd0_ix if self.has_pre_mjd0_ix() else None,
+            indices=self.pre_mjd0_ix if pre_sn else None,
             good_ix=True,
             flag=flag,
             valid_mjd_ix=self.has_valid_mjd_ix(),
         )
-
         self.apply_rolling_sum(sigma_kern, indices=indices, flatten=flatten)
 
         # find any triggers above the FOM limit
+        # TODO: make this faster with numpy
         count = 0
         mjds = []
         above_lim = False
@@ -2287,7 +2303,7 @@ class SimDetecLightCurve(AveragedLightCurve):
         columns = [
             col
             for col in self.colnames.get_optional_column_names()
-            if col.endswith("_flat")
+            if col is not None and col.endswith("_flat")
         ]
         self.colnames.remove_many(columns)
         self.remove_columns(columns)

@@ -1015,6 +1015,7 @@ class InjectionLoop(ABC):
                 f"Control index {control_index} missing from control light curve indices (may have been excluded): {self._sn.control_lc_indices}"
             )
 
+        # TODO: don't create a copy; just make sure essential colunmns not modified
         lc: SimDetecLightCurve = deepcopy(self._sn.lcs[control_index])
         # if not lc.colnames.snrsumnorm in lc.t.columns:
         #     self.logger.warning(
@@ -1039,7 +1040,9 @@ class InjectionLoop(ABC):
 
         return sim_flux, lc
 
-    def apply_rolling_sums(self, sigma_kern: float, flatten: bool = False):
+    def apply_rolling_sums(
+        self, sigma_kern: float, pre_sn: bool = True, flatten: bool = False
+    ):
         """
         Apply rolling sums to the supernova light curve with the specified sigma_kern.
 
@@ -1050,7 +1053,7 @@ class InjectionLoop(ABC):
             sigma_kern,
             good_ix=True,
             valid_mjd_ix=self._sn.has_valid_mjd_ix(),
-            pre_mjd0_ix=False,
+            pre_mjd0_ix=pre_sn,
             flatten=flatten,
         )
 
@@ -1058,6 +1061,7 @@ class InjectionLoop(ABC):
     def get_injection_search_indices(
         self,
         sim_lc: SimDetecLightCurve,
+        pre_sn: bool = True,
         **kwargs,
     ) -> List[int]:
         """
@@ -1074,6 +1078,7 @@ class InjectionLoop(ABC):
         sigma_kern: float,
         brightness: float,
         flatten: bool = False,
+        pre_sn: bool = True,
         **params,
     ) -> tuple[int, float, float]:
         if self._sn is None:
@@ -1094,13 +1099,15 @@ class InjectionLoop(ABC):
         )
 
         # get the max simulated FOM within certain indices of the light curve
-        indices = self.get_injection_search_indices(sim_lc, **params)
+        indices = self.get_injection_search_indices(sim_lc, pre_sn=pre_sn, **params)
         max_fom_mjd, max_fom = sim_lc.get_max_fom(indices=indices)
 
         return rand_control_index, max_fom_mjd, max_fom
 
     def loop(
         self,
+        pre_sn: bool = True,
+        flatten: bool = False,
         progress_bar: bool = True,
         **kwargs,
     ):
@@ -1121,6 +1128,10 @@ class InjectionLoop(ABC):
             raise RuntimeError(
                 "Supernova (self._sn) must be set before initializing injection loop"
             )
+
+        self.logger.header("Initializing injection loop")
+        self.logger.info(f"Search for bumps only in pre-SN indices: {pre_sn}")
+        self.logger.info(f"Flatten light curve after injecting simulation: {flatten}")
 
         # loop through each rolling sum kernel size
         for sigma_kern in self.sigma_kerns:
@@ -1159,7 +1170,12 @@ class InjectionLoop(ABC):
 
                     # inject simulation
                     rand_control_index, max_fom_mjd, max_fom = self.inject_sim(
-                        sim, sigma_kern, peak_appmag, **params
+                        sim,
+                        sigma_kern,
+                        peak_appmag,
+                        flatten=flatten,
+                        pre_sn=pre_sn,
+                        **params,
                     )
 
                     # update the corresponding row in the SimDetecTable with results
@@ -1198,7 +1214,11 @@ class AtlasInjectionLoop(InjectionLoop):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
 
     def get_injection_search_indices(
-        self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None
+        self,
+        sim_lc: SimDetecLightCurve,
+        pre_sn: bool = True,
+        time_peak_mjd: float = None,
+        sigma_sim: float = None,
     ):
         """
         Get indices of measurements within 1 sigma of the peak MJD.
@@ -1220,13 +1240,23 @@ class AtlasInjectionLoop(InjectionLoop):
             indices=sim_lc.valid_mjd_ix if sim_lc.has_valid_mjd_ix() else None,
         )
 
+        # make sure the cutoff point is at MJD0 if using only pre-SN lc
+        uplim = time_peak_mjd + sigma_sim
+        if pre_sn:
+            uplim = max(uplim, self._sn.mjd0)
+
         # good, valid measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
             colnames=sim_lc.colnames.mjdbin,
             lowlim=time_peak_mjd - sigma_sim,
-            uplim=time_peak_mjd + sigma_sim,
+            uplim=uplim,
             indices=indices,
         )
+
+        if len(indices) < 1:
+            raise RuntimeError(
+                f"No injection search indices for MJD range ({time_peak_mjd - sigma_sim}, {uplim}) {f'(using MJD0 as cutoff point)' if pre_sn else ''}"
+            )
 
         return indices
 
@@ -1238,19 +1268,21 @@ class TessInjectionLoop(InjectionLoop):
         model_name,
         sim_tables_dir,
         detec_tables_dir,
-        flatten=True,
         **kwargs,
     ):
         super().__init__(
             sigma_kerns, model_name, sim_tables_dir, detec_tables_dir, **kwargs
         )
-        self.flatten = flatten
 
     def get_brightness_param_from_sim_tables(self):
         return super().get_brightness_param_from_sim_tables(param_name="peak_appmag")
 
     def get_injection_search_indices(
-        self, sim_lc: SimDetecLightCurve, time_peak_mjd=None, sigma_sim=None
+        self,
+        sim_lc: SimDetecLightCurve,
+        pre_sn: bool = True,
+        time_peak_mjd: float = None,
+        sigma_sim: float = None,
     ):
         """
         Get indices of measurements within 1 sigma of the peak MJD.
@@ -1266,12 +1298,30 @@ class TessInjectionLoop(InjectionLoop):
                 "A Simulation sigma parameter ('sigma_sim') is required to find the max FOM"
             )
 
-        # measurements within 1 sigma of the peak MJD
+        # good, valid measurements
+        indices = sim_lc.get_good_indices(
+            flag=self._sn.flag,
+            indices=sim_lc.valid_mjd_ix if sim_lc.has_valid_mjd_ix() else None,
+        )
+
+        # make sure the cutoff point is at MJD0 if using only pre-SN lc
+        uplim = time_peak_mjd + sigma_sim
+        if pre_sn:
+            uplim = max(uplim, self._sn.mjd0)
+
+        # good, valid measurements within 1 sigma of the peak MJD
         indices = sim_lc.ix_inrange(
             colnames=sim_lc.colnames.mjdbin,
             lowlim=time_peak_mjd - sigma_sim,
-            uplim=time_peak_mjd + sigma_sim,
+            uplim=uplim,
+            indices=indices,
         )
+
+        if len(indices) < 1:
+            raise RuntimeError(
+                f"No injection search indices for MJD range ({time_peak_mjd - sigma_sim}, {uplim}) {f'(using MJD0 as cutoff point)' if pre_sn else ''}"
+            )
+
         return indices
 
     def compute_sim_flux(
@@ -1295,49 +1345,6 @@ class TessInjectionLoop(InjectionLoop):
             brightness_to_flux_fn=mag2count_zpt,
             flux_to_brightness_fn=count2mag_zpt,
             **kwargs,
-        )
-
-    def add_simulation_to_lc(
-        self,
-        sigma_kern: float,
-        brightness: float,
-        control_index: int,
-        sim: Simulation,
-        remove_old: bool = True,
-        flatten: Optional[bool] = None,
-        verbose: bool = False,
-        **params,
-    ):
-        if flatten is None:
-            flatten = self.flatten
-        return super().add_simulation_to_lc(
-            sigma_kern,
-            brightness,
-            control_index,
-            sim,
-            remove_old=remove_old,
-            flatten=flatten,
-            verbose=verbose,
-            **params,
-        )
-
-    def apply_rolling_sums(self, sigma_kern: float, flatten: Optional[bool] = None):
-        if flatten is None:
-            flatten = self.flatten
-        return super().apply_rolling_sums(sigma_kern, flatten=flatten)
-
-    def inject_sim(
-        self,
-        sim: Simulation,
-        sigma_kern: float,
-        brightness: float,
-        flatten: Optional[bool] = None,
-        **params,
-    ):
-        if flatten is None:
-            flatten = self.flatten
-        return super().inject_sim(
-            sim, sigma_kern, brightness, flatten=flatten, **params
         )
 
 
