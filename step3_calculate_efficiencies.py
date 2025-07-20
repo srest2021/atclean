@@ -111,6 +111,7 @@ class ContaminationTable:
 
             # number of false positives should always be 0 for min fom limits
             invalid_rows = self.t.iloc[1::2][self.t.iloc[1::2]["n_falsepos"] != 0]
+            # print(self.t.to_string())
             if not invalid_rows.empty:
                 raise ValueError(
                     f"Invalid `n_falsepos` values found at row(s): {invalid_rows.index.tolist()}"

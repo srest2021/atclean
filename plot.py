@@ -7,6 +7,8 @@ import matplotlib
 from matplotlib import gridspec
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.legend_handler import HandlerTuple
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -309,7 +311,7 @@ class Plot:
             alpha=0.5,
             zorder=10,
         )
-        ax.scatter(
+        return ax.scatter(
             obj.t.loc[indices, obj.colnames.mjd],
             obj.t.loc[indices, y_colname],
             s=MARKER_SIZE,
@@ -937,7 +939,7 @@ class Plot:
             ncol=1,
         ).set_zorder(100)
 
-        is_preMJD0 = ax1.get_xlim()[0] <= sn.mjd0 <= ax1.get_xlim()[1]
+        is_preMJD0 = sn.mjd0 <= ax1.get_xlim()[1]
         ax1.set_title(
             f"{'Pre-SN ' if is_preMJD0 else ''}Light Curve",
             fontsize=12,
@@ -1224,7 +1226,7 @@ class Plot:
             indices=avg_sn.lcs[select_control_index].get_good_indices(flag=avg_sn.flag),
         )
 
-        is_preMJD0 = ax1.get_xlim()[0] <= avg_sn.mjd0 <= ax1.get_xlim()[1]
+        is_preMJD0 = avg_sn.mjd0 <= ax1.get_xlim()[1]
         ax1.set_title(
             f"Binned & Cleaned {'Pre-SN ' if is_preMJD0 else ''}Light Curve",
             fontsize=12,
@@ -1242,7 +1244,8 @@ class Plot:
         sigma_kerns: List[float],
         select_control_index: int,
         fom_limits: Optional[Dict[float, float]] = None,
-        flatten_sn: bool = False,
+        pre_sn: bool = True,
+        flatten: bool = False,
         save: bool = False,
         filename: str = "all_fom",
     ):
@@ -1263,15 +1266,11 @@ class Plot:
 
             sn.apply_rolling_sums(
                 sigma_kern,
+                good_ix=True,
                 valid_mjd_ix=sn.has_valid_mjd_ix(),
-                pre_mjd0_ix=False if flatten_sn else sn.has_pre_mjd0_ix(),
+                pre_mjd0_ix=pre_sn,
+                flatten=flatten,
             )
-            if flatten_sn:
-                sn.lcs[0].flatten(
-                    good_ix=True,
-                    flag=sn.flag,
-                    valid_mjd_ix=sn.lcs[0].has_valid_mjd_ix(),
-                )
 
             if len(sigma_kerns) == 1:
                 sigma_kern = sigma_kerns[0]
@@ -1286,7 +1285,7 @@ class Plot:
                 sn,
                 all_fom_dict[sigma_kern],
                 fom_limit=fom_limits[sigma_kern] if fom_limits else None,
-                pre_sn=not flatten_sn,
+                pre_sn=pre_sn,
             )
 
             self._setup_ax(ax1, lims, ylabel=r"$\Sigma_{\rm FOM}$")
@@ -1330,7 +1329,7 @@ class Plot:
                 sn,
                 0,
                 self.color_scheme["sn_fom"],
-                label=f"{'Flattened ' if flatten_sn else ''}{'Pre-' if is_preMJD0 else ''}SN",
+                label=f"{'Flattened ' if flatten else ''}{'Pre-' if is_preMJD0 else ''}SN",
             )
 
             # sigma_kern label
@@ -1404,6 +1403,8 @@ class Plot:
         all_fom_dict: Dict[float, pd.Series],
         sigma_kern: float,
         select_control_index: int,
+        pre_sn: bool = True,
+        flatten: bool = False,
         custom_lims: Optional[PlotLimits] = None,
         save: bool = False,
         filename: str = "single_fom_plot",
@@ -1411,17 +1412,19 @@ class Plot:
         fig, ax = plt.subplots(figsize=(5.5, 2.5))
         ax: Axes
 
-        # Apply rolling sums for the specified kernel
         sn.apply_rolling_sums(
             sigma_kern,
+            good_ix=True,
             valid_mjd_ix=sn.has_valid_mjd_ix(),
-            pre_mjd0_ix=sn.has_pre_mjd0_ix(),
+            pre_mjd0_ix=pre_sn,
+            flatten=flatten,
         )
 
         lims = self.get_snr_lims(
             sn,
             all_fom_dict[sigma_kern],
             custom_lims=custom_lims,
+            pre_sn=pre_sn,
             # fom_limit=fom_limits[sigma_kern] if fom_limits else None,
         )
 
@@ -1443,7 +1446,7 @@ class Plot:
         )
 
         # Plot SN or pre-SN light curve FOM
-        is_preMJD0 = ax.get_xlim()[0] <= sn.mjd0 <= ax.get_xlim()[1]
+        is_preMJD0 = sn.mjd0 >= ax.get_xlim()[1]
         self._plot_fom(
             ax,
             sn,
@@ -1767,9 +1770,8 @@ class Plot:
         save: bool = False,
         filename: str = "sim_lc",
     ):
-        indices = sim_lc.get_good_indices(
-            flag=flag,
-            indices=sim_lc.valid_mjd_ix if sim_lc.has_valid_mjd_ix() else None,
+        indices = sim_lc.get_good_valid_indices(
+            good_ix=True, flag=flag, valid_mjd_ix=True
         )
 
         fig, (ax1, ax3) = plt.subplots(2, gridspec_kw={"hspace": 0.07})
@@ -1944,7 +1946,7 @@ class Plot:
         save: bool = False,
         filename: str = "all_flattened",
     ):
-        flattened_avg_sn = avg_sn.get_flattened()
+        avg_sn.flatten(good_ix=True, valid_mjd_ix=True)
 
         if avg_sn.num_controls < 1:
             self.logger.warning("No control light curves to plot")
@@ -1975,6 +1977,7 @@ class Plot:
         idx = 0
 
         # SN light curve
+
         ax: Axes = axes[idx]
         is_last_row = idx >= total_panels - (2 if two_columns else 1)
         is_rightmost_col = idx % 2 == 1 if two_columns else False
@@ -1993,22 +1996,23 @@ class Plot:
         else:
             good_ix = avg_sn.lcs[0].get_indices()
 
+        # original flux
         self._plot_lc(
             ax,
             avg_sn,
             0,
             self.color_scheme["sn_flux"][avg_sn.filt],
             indices=good_ix,
-            label="original",
         )
 
-        self._plot_lc(
+        # flattened flux
+        flattened_handle = self._plot_lc(
             ax,
-            flattened_avg_sn,
+            avg_sn,
             0,
             self.color_scheme["select_control_flux"],
             indices=good_ix,
-            label="flattened",
+            y_colname_attr="fluxflat",
         )
 
         ax.text(
@@ -2022,7 +2026,34 @@ class Plot:
             zorder=20,
         )
 
-        ax.legend(loc="upper right", facecolor="white", framealpha=1.0).set_zorder(100)
+        custom_marker = (
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color=self.color_scheme["sn_flux"][avg_sn.filt],
+                markerfacecolor=self.color_scheme["sn_flux"][avg_sn.filt],
+                markersize=5,
+                linestyle="None",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color=self.color_scheme["control_flux"],
+                markerfacecolor=self.color_scheme["control_flux"],
+                markersize=5,
+                linestyle="None",
+            ),
+        )
+        ax.legend(
+            [custom_marker, flattened_handle],
+            ["original", "flattened"],
+            handler_map={tuple: HandlerTuple(ndivide=None)},
+            loc="upper right",
+            facecolor="white",
+            framealpha=1.0,
+        ).set_zorder(100)
 
         idx += 1
 
@@ -2046,22 +2077,23 @@ class Plot:
             else:
                 good_ix = avg_sn.lcs[control_index].get_indices()
 
+            # original flux
             self._plot_lc(
                 ax,
                 avg_sn,
                 control_index,
                 self.color_scheme["control_flux"],
                 indices=good_ix,
-                label="original",
             )
 
+            # flattened flux
             self._plot_lc(
                 ax,
-                flattened_avg_sn,
+                avg_sn,
                 control_index,
                 self.color_scheme["select_control_flux"],
                 indices=good_ix,
-                label="flattened",
+                y_colname_attr="fluxflat",
             )
 
             label_text = (

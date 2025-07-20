@@ -2040,7 +2040,7 @@ class SimDetecSupernova(AveragedSupernova):
         good_ix: bool = False,
         flatten: bool = False,
     ):
-        msg = f"Applying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
+        msg = f"{'Flattening and a' if flatten else 'A'}pplying rolling sum of sigma_kern={format_float_string(sigma_kern)} to all light curves"
         out = []
 
         try:
@@ -2055,9 +2055,11 @@ class SimDetecSupernova(AveragedSupernova):
             if pre_mjd0_ix:
                 out.append("using only pre-MJD0 MJDs for SN light curve")
                 if not self.has_pre_mjd0_ix():
-                    raise RuntimeError(
-                        "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix()"
-                    )
+                    if self.mjd0 is None:
+                        raise RuntimeError(
+                            "Pre-MJD0 indices missing; set pre_mjd0_ix=False or call self.set_pre_and_post_mjd0_ix() or set self.mjd0"
+                        )
+                    self.set_pre_and_post_mjd0_ix()
         except Exception as e:
             if out:
                 msg += " (" + "; ".join(out) + ")"
@@ -2157,11 +2159,12 @@ class SimDetecLightCurve(AveragedLightCurve):
 
         # for control light curves, loop through all valid indices
         # for the SN light curve, only loop through pre-MJD0 valid indices
-        use_pre_mjd0_ix = (
-            self.control_index == 0 and mjd0 is not None and self.has_pre_mjd0_ix()
-        )
+        # use_pre_mjd0_ix = (
+        #     self.control_index == 0 and mjd0 is not None and self.has_pre_mjd0_ix()
+        # )
         indices = self.get_good_valid_indices(
-            indices=self.pre_mjd0_ix if use_pre_mjd0_ix else None,
+            # indices=self.pre_mjd0_ix if use_pre_mjd0_ix else None,
+            indices=self.pre_mjd0_ix if self.has_pre_mjd0_ix() else None,
             good_ix=True,
             flag=flag,
             valid_mjd_ix=self.has_valid_mjd_ix(),
