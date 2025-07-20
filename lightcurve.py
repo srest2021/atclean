@@ -2264,7 +2264,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             self.t.loc[indices, y_colname].values,
         )
 
-        self.colnames.add("fluxflat", f"{y_colname}_flat")
+        self.colnames.update("fluxflat", f"{y_colname}_flat")
         self.t[self.colnames.fluxflat] = np.nan
         self.t.loc[indices, self.colnames.fluxflat] = flattened_flux
 
@@ -2444,7 +2444,7 @@ class SimDetecLightCurve(AveragedLightCurve):
             if verbose:
                 self.logger.info("Flattening light curve before applying rolling sum")
             self.flatten(y_colname_attr="fluxsim", indices=indices, verbose=verbose)
-            y_colname = getattr(self.colnames, f"{self.colnames.fluxsim}_flat")
+            y_colname = self.colnames.fluxflat
 
         # make sure all bad rows have SNRsim = 0.0 so they have no impact on the rolling SNRsum
         self.t[self.colnames.snrsim] = 0.0

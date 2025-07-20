@@ -1031,16 +1031,16 @@ class PresetColumnNames:
 
     def update(self, key: str, name: str, is_required: bool = False):
         if is_required:
-            if key not in self.required_columns:
-                raise RuntimeError(
-                    f"Cannot update non-existing required column name {key} with '{name}'"
-                )
+            # if key not in self.required_columns:
+            #     raise RuntimeError(
+            #         f"Cannot update non-existing required column name {key} with '{name}'"
+            #     )
             self.required_columns[key] = name
         else:
-            if key not in self.optional_columns:
-                raise RuntimeError(
-                    f"Cannot update non-existing optional column name {key} with '{name}'"
-                )
+            # if key not in self.optional_columns:
+            #     raise RuntimeError(
+            #         f"Cannot update non-existing optional column name {key} with '{name}'"
+            #     )
             self.optional_columns[key] = name
 
     def update_many(self, coldict: Dict, is_required: bool = False):
