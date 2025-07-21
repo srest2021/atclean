@@ -35,8 +35,10 @@ from step1_generate_sim_tables import (
 )
 from lightcurve import SimDetecLightCurve, SimDetecSupernova, Simulation
 from utils import (
+    Credentials,
     CustomLogger,
     PresetColumnNames,
+    SnInfoTable,
     count2mag,
     extract_from_subdir,
     flux2mag,
@@ -48,6 +50,7 @@ from utils import (
     mag2count,
     mag2flux,
     print_progress_bar,
+    resolve_mjd0,
 )
 
 
@@ -1424,10 +1427,27 @@ def define_args(
         help="MJD bin size in days of the target averaged light curves",
     )
     parser.add_argument(
+        "--mjd0",
+        type=float,
+        default=None,
+        help="MJD0 (start or discovery date) of the object; needed if using only pre-SN light curve in analysis",
+    )
+    parser.add_argument(
         "--mjd_ranges",
         type=mjd_range_type,
         default=None,
         help="List of MJD ranges as JSON string, e.g. '[[57233.5, 57328.5], [57466.5, 57535.5]]'",
+    )
+
+    parser.add_argument(
+        "--flatten",
+        action="store_true",
+        help="Flatten the light curve using long-term Gaussian process when applying rolling sum",
+    )
+    parser.add_argument(
+        "--pre_sn",
+        action="store_true",
+        help="Only use the pre-MJD0 (pre-SN) portion of the light curves for the analysis",
     )
 
     return parser
@@ -1443,14 +1463,22 @@ if __name__ == "__main__":
         f"Generating SimDetecTables for SN {args.tnsname}, filter {args.filter}, MJD bin size of {format_float_string(args.mjd_bin_size)} days",
         newline=True,
     )
+
     logger.info(f"Simulations model name: {args.model_name}")
+    if " " in args.model_name:
+        raise RuntimeError("Model name cannot have spaces.")
+
     logger.info(
         f"Weighted Gaussian rolling sum kernel sizes (days): {args.sigma_kerns}"
     )
+
+    logger.info(f"Search for bumps only in pre-SN indices: {args.pre_sn}")
+    logger.info(f"Flatten light curve after injecting simulation: {args.flatten}")
+    if not args.pre_sn and not args.flatten:
+        logger.warning("Using entire light curve, but not flattening")
+
     if args.mjd_ranges is not None:
         logger.info(f"Valid MJD ranges: {args.mjd_ranges}")
-    if " " in args.model_name:
-        raise RuntimeError("Model name cannot have spaces.")
 
     colnames = load_preset_column_names_from_config(
         args.preset, config, filts=args.filter
@@ -1475,6 +1503,34 @@ if __name__ == "__main__":
         flag=hexstring_to_int(config["averaging"]["flag"]),
     )
 
+    mjd0 = args.mjd0
+    if args.pre_sn and mjd0 is None:
+        # need MJD0
+
+        sninfo_filename = config["dir"]["sninfo_filename"]
+        sninfo: SnInfoTable = SnInfoTable(
+            config["dir"]["output"], filename=sninfo_filename
+        )
+
+        creds = Credentials(
+            config["credentials"]["atlas_username"],
+            config["credentials"]["atlas_password"],
+            config["credentials"]["tns_api_key"],
+            config["credentials"]["tns_id"],
+            config["credentials"]["tns_bot_name"],
+        )
+        print()
+        logger.secret(f"TNS ID: {creds.tns_id}")
+        logger.secret(f"TNS bot name: {creds.tns_bot_name}")
+
+        mjd0 = resolve_mjd0(args.tnsname, sninfo, creds)
+
+        if mjd0 is None:
+            raise RuntimeError(
+                "Could not resolve MJD0; please provide it via --mjd0 argument or set --pre_sn to False"
+            )
+    injection_loop._sn.mjd0 = mjd0
+
     injection_loop.get_brightness_param_from_sim_tables()
     injection_loop.load_sim_tables()
-    injection_loop.loop()
+    injection_loop.loop(pre_sn=args.pre_sn, flatten=args.flatten)
